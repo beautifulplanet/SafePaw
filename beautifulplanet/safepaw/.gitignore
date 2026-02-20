@@ -1,0 +1,54 @@
+# Safepaw OPSEC & Environment Defaults
+
+# 1. Secrets & Environment Variables
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+secrets.json
+credentials.json
+
+# 2. Local Paths & OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 3. IDE & Editor Folders (Prevents leaking local workspace configs)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 4. Dependencies & Build Artifacts
+node_modules/
+dist/
+build/
+target/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.pytest_cache/
+coverage/
+
+# 5. Database & State
+*.sqlite
+*.sqlite3
+*.db
+postgres-data/
+redis-data/
