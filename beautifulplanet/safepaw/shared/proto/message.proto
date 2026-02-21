@@ -1,7 +1,7 @@
 // =============================================================
-// Safepaw Message Schema
+// NOPEnclaw Message Schema
 // =============================================================
-// THE core data structure. Every message flowing through Safepaw
+// THE core data structure. Every message flowing through NOPEnclaw
 // — from user → gateway → router → agent and back — uses this.
 //
 // Think of this as the "envelope" that carries every note
@@ -10,9 +10,9 @@
 
 syntax = "proto3";
 
-package safepaw.message;
+package nopenclaw.message;
 
-option go_package = "safepaw/shared/proto/gen/go/message";
+option go_package = "nopenclaw/shared/proto/gen/go/message";
 
 import "common.proto";
 
@@ -42,7 +42,7 @@ message Message {
   string conversation_id = 3;  // Links to agent.conversations
 
   // === Routing ===
-  safepaw.common.UserId sender    = 4;  // Who sent this
+  nopenclaw.common.UserId sender    = 4;  // Who sent this
   string channel       = 5;  // Channel name (e.g., "discord", "telegram")
   Direction direction  = 6;  // Inbound or outbound
 
@@ -52,8 +52,8 @@ message Message {
   map<string, string> metadata = 9;  // Extensible key-value pairs
 
   // === Timestamps ===
-  safepaw.common.Timestamp created_at  = 10;
-  safepaw.common.Timestamp processed_at = 11;
+  nopenclaw.common.Timestamp created_at  = 10;
+  nopenclaw.common.Timestamp processed_at = 11;
 
   // === Threading ===
   string reply_to_id   = 12;  // Optional: ID of message being replied to

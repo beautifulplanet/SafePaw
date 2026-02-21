@@ -1,4 +1,4 @@
-# Safepaw Agent (Node.js / TypeScript)
+# NOPEnclaw Agent (Node.js / TypeScript)
 
 The AI-powered message processor and channel integration layer.
 

@@ -1,4 +1,4 @@
-# Safepaw Shared: Protobuf Schemas
+# NOPEnclaw Shared: Protobuf Schemas
 
 The **single source of truth** for all data structures flowing between services.
 
@@ -13,7 +13,7 @@ The **single source of truth** for all data structures flowing between services.
 
 ## Compilation
 
-Run from the `safepaw/` root:
+Run from the project root:
 
 ```bash
 ./scripts/proto-gen.sh
