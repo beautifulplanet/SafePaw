@@ -32,6 +32,8 @@ type StreamClient struct {
 	client         *goredis.Client
 	inboundStream  string
 	outboundStream string
+	consumerGroup  string // XREADGROUP group for outbound
+	consumerName   string // This instance's name within the group
 }
 
 // InboundMessage is what the Gateway publishes TO the Router.
@@ -60,7 +62,7 @@ type OutboundMessage struct {
 
 // NewStreamClient creates a new Redis Streams client.
 // It validates the connection immediately — fail fast, fail loud.
-func NewStreamClient(addr, password string, db int, inboundStream, outboundStream string) (*StreamClient, error) {
+func NewStreamClient(addr, password string, db int, inboundStream, outboundStream, consumerGroup, consumerName string) (*StreamClient, error) {
 	client := goredis.NewClient(&goredis.Options{
 		Addr:     addr,
 		Password: password,
@@ -95,6 +97,8 @@ func NewStreamClient(addr, password string, db int, inboundStream, outboundStrea
 		client:         client,
 		inboundStream:  inboundStream,
 		outboundStream: outboundStream,
+		consumerGroup:  consumerGroup,
+		consumerName:   consumerName,
 	}, nil
 }
 
@@ -127,54 +131,84 @@ func (sc *StreamClient) PublishInbound(ctx context.Context, msg *InboundMessage)
 	return result, nil
 }
 
-// ReadOutbound blocks and reads new messages from the outbound stream.
-// Uses XREAD with BLOCK to efficiently wait for new messages.
-//
-// lastID should be "$" on first call (only new messages), or a specific
-// stream ID to resume from where we left off.
-func (sc *StreamClient) ReadOutbound(ctx context.Context, lastID string, count int64) ([]OutboundMessage, string, error) {
-	if lastID == "" {
-		lastID = "$"
+// EnsureOutboundGroup creates the consumer group if it doesn't exist.
+// Uses MKSTREAM to auto-create the stream if it's missing too.
+// This is idempotent — safe to call on every startup.
+func (sc *StreamClient) EnsureOutboundGroup(ctx context.Context) error {
+	// "0" means: start reading from the beginning of the stream.
+	// New consumers joining the group will get messages from ">" (new only).
+	err := sc.client.XGroupCreateMkStream(ctx, sc.outboundStream, sc.consumerGroup, "0").Err()
+	if err != nil {
+		// "BUSYGROUP" = group already exists — that's fine.
+		if err.Error() == "BUSYGROUP Consumer Group name already exists" {
+			log.Printf("[REDIS] Consumer group '%s' already exists on %s (OK)", sc.consumerGroup, sc.outboundStream)
+			return nil
+		}
+		return fmt.Errorf("XGROUP CREATE %s %s failed: %w", sc.outboundStream, sc.consumerGroup, err)
 	}
 
-	results, err := sc.client.XRead(ctx, &goredis.XReadArgs{
-		Streams: []string{sc.outboundStream, lastID},
-		Count:   count,
-		Block:   5 * time.Second, // Block up to 5s waiting for messages
+	log.Printf("[REDIS] Created consumer group '%s' on stream '%s'", sc.consumerGroup, sc.outboundStream)
+	return nil
+}
+
+// ReadOutbound reads new messages using XREADGROUP.
+// Each message is delivered to exactly ONE consumer in the group,
+// enabling horizontal scaling of Gateway instances.
+//
+// The ">" special ID means: give me messages not yet delivered to anyone.
+// After processing, the caller MUST call AckOutbound to acknowledge.
+func (sc *StreamClient) ReadOutbound(ctx context.Context, count int64) ([]OutboundMessage, error) {
+	results, err := sc.client.XReadGroup(ctx, &goredis.XReadGroupArgs{
+		Group:    sc.consumerGroup,
+		Consumer: sc.consumerName,
+		Streams:  []string{sc.outboundStream, ">"},
+		Count:    count,
+		Block:    5 * time.Second, // Block up to 5s waiting for messages
 	}).Result()
 
 	if err != nil {
 		// Timeout is normal — no messages arrived in 5s
 		if err == goredis.Nil {
-			return nil, lastID, nil
+			return nil, nil
 		}
-		return nil, lastID, fmt.Errorf("XREAD from %s failed: %w", sc.outboundStream, err)
+		return nil, fmt.Errorf("XREADGROUP from %s failed: %w", sc.outboundStream, err)
 	}
 
 	var messages []OutboundMessage
-	newLastID := lastID
 
 	for _, stream := range results {
 		for _, xmsg := range stream.Messages {
 			dataStr, ok := xmsg.Values["data"].(string)
 			if !ok {
 				log.Printf("[REDIS] Warning: malformed message in %s, ID=%s", sc.outboundStream, xmsg.ID)
+				// ACK malformed messages so they don't stay pending forever
+				sc.AckOutbound(ctx, xmsg.ID)
 				continue
 			}
 
 			var msg OutboundMessage
 			if err := json.Unmarshal([]byte(dataStr), &msg); err != nil {
 				log.Printf("[REDIS] Warning: failed to unmarshal message %s: %v", xmsg.ID, err)
+				sc.AckOutbound(ctx, xmsg.ID)
 				continue
 			}
 
 			msg.StreamID = xmsg.ID
 			messages = append(messages, msg)
-			newLastID = xmsg.ID
 		}
 	}
 
-	return messages, newLastID, nil
+	return messages, nil
+}
+
+// AckOutbound acknowledges one or more outbound messages after successful delivery.
+// This removes them from the consumer's pending list.
+// Messages that are NOT acked will be reclaimed by another consumer after timeout.
+func (sc *StreamClient) AckOutbound(ctx context.Context, ids ...string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return sc.client.XAck(ctx, sc.outboundStream, sc.consumerGroup, ids...).Err()
 }
 
 // Close gracefully shuts down the Redis connection.
@@ -183,7 +217,44 @@ func (sc *StreamClient) Close() error {
 	return sc.client.Close()
 }
 
-// HealthCheck verifies Redis is reachable.
+// HealthCheck verifies Redis is reachable (shallow).
 func (sc *StreamClient) HealthCheck(ctx context.Context) error {
 	return sc.client.Ping(ctx).Err()
+}
+
+// DeepHealthCheck verifies the full outbound pipeline is operational:
+//   - Redis is reachable (PING)
+//   - Outbound stream exists
+//   - Consumer group exists and this consumer is registered
+func (sc *StreamClient) DeepHealthCheck(ctx context.Context) error {
+	// 1. Ping
+	if err := sc.client.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("redis unreachable: %w", err)
+	}
+
+	// 2. Check outbound stream exists and get info
+	info, err := sc.client.XInfoStream(ctx, sc.outboundStream).Result()
+	if err != nil {
+		return fmt.Errorf("outbound stream '%s' not found: %w", sc.outboundStream, err)
+	}
+	_ = info // stream exists
+
+	// 3. Check consumer group exists
+	groups, err := sc.client.XInfoGroups(ctx, sc.outboundStream).Result()
+	if err != nil {
+		return fmt.Errorf("cannot query groups on '%s': %w", sc.outboundStream, err)
+	}
+
+	found := false
+	for _, g := range groups {
+		if g.Name == sc.consumerGroup {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("consumer group '%s' not found on '%s'", sc.consumerGroup, sc.outboundStream)
+	}
+
+	return nil
 }

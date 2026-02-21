@@ -29,6 +29,8 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_DEFAULT_TTL_HOURS: ${AUTH_DEFAULT_TTL_HOURS:-24}
       AUTH_MAX_TTL_HOURS: ${AUTH_MAX_TTL_HOURS:-168}
+      OUTBOUND_GROUP: "nopenclaw_gateway_deliverers"
+      DELIVERY_WORKERS: ${DELIVERY_WORKERS:-4}
       TLS_ENABLED: ${TLS_ENABLED:-false}
       TLS_CERT_FILE: ${TLS_CERT_FILE:-/certs/tls.crt}
       TLS_KEY_FILE: ${TLS_KEY_FILE:-/certs/tls.key}

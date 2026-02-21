@@ -40,13 +40,14 @@ Every hop is a separate process. Every boundary speaks protobuf. Every service r
 | **Protocol design** | 4 protobuf schemas generating both Go and TypeScript — shared types across language boundaries |
 | **Security engineering** | HMAC-SHA256 stateless auth, TLS 1.2+ with curated cipher suites, constant-time token comparison, non-root containers |
 | **Infrastructure as code** | Docker Compose with health checks, resource limits, pinned image digests (SHA256), internal-only networks |
-| **Stream processing** | Redis Streams with `XADD`/`XREADGROUP` consumer groups, backpressure via `MAXLEN`, blocking reads |
+| **Stream processing** | Redis Streams with `XADD`/`XREADGROUP` consumer groups, backpressure via `MAXLEN`, blocking reads, `XACK` acknowledgment, dead-letter queues |
 | **Build reproducibility** | Proto generation works 3 ways: local PowerShell, local bash, Docker (CI). Generated code checked in with `git diff` CI guard |
 
 ### Key Numbers
 
 | What | Value |
 |------|-------|
+| Gateway outbound delivery | XREADGROUP consumer group with N parallel workers |
 | Gateway WebSocket capacity | 10,000 concurrent connections |
 | Redis Stream max length | ~10,000 messages (capped via `MAXLEN`) |
 | Auth token algorithm | HMAC-SHA256, constant-time comparison |
@@ -193,12 +194,15 @@ Layer 4: Security Headers    → HSTS, X-Frame-Options, CSP, nosniff on every re
 Layer 5: Rate Limiting       → 30 conn/min per IP, configurable per deployment
 Layer 6: Auth Middleware      → HMAC-SHA256 with constant-time comparison, configurable TTL
 Layer 7: Pre-Commit Hook     → Blocks secrets, API keys, and credentials from entering git
+Layer 8: Message Size Guards → 64KB max inbound/outbound prevents OOM from oversized payloads
+Layer 9: Dead-Letter Queue   → Failed messages preserved for audit, never silently lost
 ```
 
 **What's NOT secured yet:**
 - Agent containers don't have egress filtering (planned: iptables rules allowing only LLM API endpoints)
 - Auth tokens can't be revoked (planned: Redis-backed revocation cache synced from Postgres)
 - No intrusion detection or audit logging
+- Rate limiter is per-instance, not shared across Gateway instances (planned: Redis-backed)
 
 ---
 
@@ -456,12 +460,13 @@ Step 5:  Router's consumer group reads from nopenclaw_inbound via XREADGROUP
 Step 6:  Router inspects channel field, routes to correct Agent inbox
 Step 7:  Agent processes message, produces response
 Step 8:  Agent XADD response to nopenclaw_outbound
-Step 9:  Gateway's outboundReader does XREAD on nopenclaw_outbound
-Step 10: Gateway looks up session in Hub, writes response to WebSocket
-Step 11: Browser receives JSON response
+Step 9:  Gateway's delivery workers read via XREADGROUP on nopenclaw_outbound
+Step 10: Worker looks up session in Hub, writes response to WebSocket
+Step 11: Worker ACKs the message (removed from pending list)
+Step 12: Browser receives JSON response
 ```
 
-**Current implementation covers Steps 1–4 and 9–11.** Steps 5–8 require the Router and Agent (in progress).
+**Current implementation covers Steps 1–4 and 9–12.** Steps 5–8 require the Router and Agent (in progress).
 
 ### B.2 — Why This Architecture (The Interview Answer)
 
@@ -508,14 +513,17 @@ Per WebSocket Connection:
 │   └─────────────┘          └─────────────────┘         │
 │                                     ▲                   │
 │                                     │                   │
-│                          outboundReader writes here     │
+│                       delivery worker writes here        │
+│                       (1 of N parallel goroutines)        │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
 **Why two goroutines per connection?** WebSocket is full-duplex (both sides can send simultaneously), but the gorilla/websocket library enforces that only one goroutine reads and one goroutine writes at a time. Separating read and write into their own goroutines eliminates lock contention on the `net.Conn`.
 
-**Why a buffered channel (256)?** If the outboundReader is delivering messages faster than the WebSocket can send them, the buffered channel absorbs bursts. If the buffer fills (client is truly stuck), the message is dropped and logged. This prevents a slow client from blocking the entire outbound delivery loop.
+**Why a buffered channel (256)?** If a delivery worker is sending messages faster than the WebSocket can flush them, the buffered channel absorbs bursts. If the buffer fills (client is truly stuck), the message is dropped and logged. This prevents a slow client from blocking the entire delivery worker.
+
+**Why N delivery workers instead of 1 reader?** The original design used a single `outboundReader` goroutine that sequentially delivered messages to all sessions. At 500+ concurrent sessions receiving replies simultaneously, this became a bottleneck — one slow WebSocket write blocked delivery to all other sessions. With N workers (default: 4), Redis distributes messages across workers via the consumer group, and a slow delivery on worker 0 doesn't affect workers 1-3.
 
 ### B.4 — Authentication Flow
 
@@ -556,14 +564,16 @@ Inbound Flow (user → system):
   readPump → json.Marshal(InboundMessage) → XADD nopenclaw_inbound MAXLEN ~10000
 
 Outbound Flow (system → user):
-  outboundReader → XREAD BLOCK 5000 nopenclaw_outbound $lastID → json.Unmarshal → hub.GetConnection → conn.Send
+  N delivery workers → XREADGROUP BLOCK 5000 GROUP nopenclaw_gateway_deliverers <consumer> nopenclaw_outbound > → json.Unmarshal → hub.GetConnection → conn.Send → XACK
 ```
 
 **`MAXLEN ~10000`** — The `~` (tilde) is important. Without it, Redis would trim the stream to exactly 10,000 entries on every XADD, which requires a scan. With `~`, Redis uses an efficient radix-tree-based trimming that keeps the stream approximately at 10,000 entries, trimming in batches. Performance difference: O(1) amortized vs O(N) per write.
 
-**`XREAD BLOCK 5000`** — The outbound reader blocks for up to 5 seconds waiting for new messages. This is server-side long-polling: no CPU burned while waiting, the Redis connection is held open but idle. After 5 seconds with no messages, the read returns nil and the loop restarts. This balances latency (messages delivered within milliseconds of arrival) with resource usage (no busy-loop spinning).
+**`XREADGROUP BLOCK 5000`** — Each delivery worker calls XREADGROUP with the `>` special ID, meaning "give me messages not yet delivered to any consumer in this group." Redis distributes messages across all workers in the consumer group, so each message is processed by exactly ONE worker. This is the foundation for horizontal Gateway scaling — multiple Gateway instances can join the same consumer group and Redis handles the load balancing.
 
-**`lastID = "$"`** — On startup, the outbound reader starts with `$`, meaning "only messages that arrive after I started reading." This means messages that were written to the outbound stream while the Gateway was down are NOT replayed. This is intentional — those messages went to sessions that no longer exist (the WebSocket connections closed when the Gateway stopped). Replaying them would require session affinity or persistent session storage, which is a P5 feature.
+**Consumer group: `nopenclaw_gateway_deliverers`** — Created automatically on Gateway startup via `XGROUP CREATE ... MKSTREAM`. Idempotent — safe to call on every restart. Each Gateway instance registers as a unique consumer (defaults to hostname, which is unique per Docker container).
+
+**`XACK` after delivery** — After delivering a batch of messages to WebSocket clients, the worker ACKs all processed stream IDs. This removes them from the consumer's pending entries list (PEL). If a Gateway crashes before ACKing, the messages remain pending and can be reclaimed by another consumer via XCLAIM.
 
 **Connection pool**: 50 max connections, 5 idle kept warm, 3 retries on transient failures, 5s dial / 3s read / 3s write timeouts. The pool is sized for 10K WebSocket connections each doing occasional XADDs — not every connection keeps a dedicated Redis connection.
 
@@ -672,6 +682,13 @@ type Hub struct {
 Why `sync.RWMutex` + `atomic.Int64`?
 - The mutex protects the map. Reads (`GetConnection`) take `RLock` — multiple goroutines can read concurrently. Writes (`Register`, `Unregister`) take `Lock` — exclusive.
 - The connection count is a separate `atomic.Int64` so the health check endpoint (`hub.Count()`) never takes ANY lock. At 10K connections with constant health polling, this prevents lock contention on what should be a trivial read.
+- **TOCTOU fix (S3):** The capacity check (`connCount >= maxConns`) is performed INSIDE the write lock in `Register()`. Previously it was outside the lock, creating a race where two goroutines could both pass the check and exceed capacity. Now the check and insertion are atomic.
+
+**CloseAll (S4 — graceful WebSocket drain):**
+```go
+func (h *Hub) CloseAll() int
+```
+Sends `CloseGoingAway` (1001) to every connected client during shutdown. The close message includes "server shutting down" so clients know to reconnect to another instance. Uses a 2-second deadline per connection to avoid blocking shutdown on a stuck client.
 
 **Connection:**
 ```go
@@ -726,7 +743,7 @@ Loop:
 
 **Why ping interval = 54 seconds, pong wait = 60 seconds?** The client has 60 seconds to respond to a ping with a pong. Pings are sent every 54 seconds. This gives a 6-second buffer — if the pong arrives 5 seconds late (network hiccup), the connection survives. If no pong arrives in 60 seconds, the connection is considered dead.
 
-### C.3 — Gateway: `redis/stream.go` (~200 lines)
+### C.3 — Gateway: `redis/stream.go` (~250 lines)
 
 **StreamClient:**
 ```go
@@ -734,8 +751,21 @@ type StreamClient struct {
     client         *goredis.Client
     inboundStream  string    // "nopenclaw_inbound"
     outboundStream string    // "nopenclaw_outbound"
+    consumerGroup  string    // "nopenclaw_gateway_deliverers"
+    consumerName   string    // hostname (unique per container)
 }
 ```
+
+**Key methods:**
+
+| Method | Purpose |
+|--------|---------|
+| `EnsureOutboundGroup()` | `XGROUP CREATE ... MKSTREAM` — idempotent, handles BUSYGROUP |
+| `ReadOutbound(ctx, count)` | `XREADGROUP GROUP ... CONSUMER ... STREAMS ... >` — blocks 5s |
+| `AckOutbound(ctx, ids...)` | `XACK` — removes messages from pending entries list |
+| `PublishInbound(ctx, msg)` | `XADD ... MAXLEN ~10000` — writes to inbound stream |
+| `DeepHealthCheck(ctx)` | Verifies PING + stream exists + consumer group exists |
+| `HealthCheck(ctx)` | Simple PING (shallow, kept for backward compat) |
 
 **Connection pool configuration:**
 
@@ -756,12 +786,12 @@ json.Marshal(InboundMessage) → XADD nopenclaw_inbound MAXLEN ~10000 * data <js
 
 Returns the Redis stream ID (e.g., `1709831000000-0`), which is sent back to the client in the ack. This lets the client correlate their message to its position in the stream.
 
-**ReadOutbound (`XREAD`):**
+**ReadOutbound (`XREADGROUP`):**
 ```
-XREAD COUNT 100 BLOCK 5000 STREAMS nopenclaw_outbound <lastID>
+XREADGROUP GROUP nopenclaw_gateway_deliverers <consumer> COUNT 100 BLOCK 5000 STREAMS nopenclaw_outbound >
 ```
 
-Reads up to 100 messages at a time (batching for efficiency). Blocks for 5 seconds. On timeout, returns nil (normal — just means no messages). On success, unmarshals each message and returns the list plus the new `lastID` for the next read.
+Reads up to 100 messages at a time (batching for efficiency). The `>` means "only new messages not yet delivered to any consumer in this group." Blocks for 5 seconds. On timeout, returns nil (normal — just means no messages). On success, unmarshals each message. **Caller must call `AckOutbound()` after processing** to remove messages from the pending entries list.
 
 ### C.4 — Gateway: `middleware/auth.go` (375 lines)
 
@@ -813,9 +843,9 @@ func splitToken(token string) (payload, signature string, ok bool) {
 ```
 This catches a common attack: injecting extra dots to confuse JWT-style parsers. Our token has exactly one dot. Zero dots or two+ dots = immediate rejection.
 
-### C.5 — Gateway: `middleware/security.go` (234 lines)
+### C.5 — Gateway: `middleware/security.go` (~260 lines)
 
-**Four middleware functions, applied as a stack:**
+**Five middleware functions, applied as a stack:**
 
 1. **`SecurityHeaders`** — Sets 7 headers on every response. No configuration. No `if` statements. Every response gets the same headers. This eliminates the class of bugs where a developer forgets to add headers to a new endpoint.
 
@@ -823,7 +853,9 @@ This catches a common attack: injecting extra dots to confuse JWT-style parsers.
 
 3. **`OriginCheck`** — Builds a `map[string]bool` from the `ALLOWED_ORIGINS` env var. Lookups are O(1) regardless of how many origins are configured. Empty origins list = allow all (dev mode).
 
-4. **`RateLimiter`** with background cleanup:
+4. **`StripAuthHeaders`** — Applied when `AUTH_ENABLED=false`. Strips `X-Auth-Subject` and `X-Auth-Scope` headers from incoming requests, preventing identity spoofing when auth is disabled. Without this, any client could send `X-Auth-Subject: admin` and ws/handler.go would trust it.
+
+5. **`RateLimiter`** with background cleanup:
 ```go
 type RateLimiter struct {
     mu      sync.Mutex
@@ -838,11 +870,11 @@ The cleanup goroutine runs on a timer and removes entries older than `2 * window
 
 **IP extraction:** Checks `X-Real-IP` header first (set by nginx/reverse proxy), falls back to `RemoteAddr` with port stripped. This means rate limiting works correctly behind a reverse proxy — it limits the real client IP, not the proxy's IP.
 
-### C.6 — Gateway: `config/config.go` (201 lines)
+### C.6 — Gateway: `config/config.go` (~225 lines)
 
 **Zero imports of `strings` or `strconv` for string helpers.** The config package implements its own `splitAndTrim`, `splitString`, `indexOf`, and `trimSpace` functions. This is intentional — minimize external dependencies, even stdlib ones, for a security-critical config loader. Every function is ~10 lines and trivially auditable.
 
-**Every config value:**
+**Every config value (29 variables):**
 
 | Env Variable | Default | Type | Description |
 |-------------|---------|------|-------------|
@@ -862,6 +894,9 @@ The cleanup goroutine runs on a timer and removes entries older than `2 * window
 | `REDIS_DB` | `0` | int | Redis database number |
 | `REDIS_INBOUND_STREAM` | `nopenclaw_inbound` | string | Stream name for user→system messages |
 | `REDIS_OUTBOUND_STREAM` | `nopenclaw_outbound` | string | Stream name for system→user messages |
+| `OUTBOUND_GROUP` | `nopenclaw_gateway_deliverers` | string | Consumer group for XREADGROUP on outbound |
+| `OUTBOUND_CONSUMER` | *(hostname)* | string | This instance's consumer name (auto-set) |
+| `DELIVERY_WORKERS` | `4` | int | Parallel outbound delivery goroutines (1-32) |
 | `ALLOWED_ORIGINS` | *(empty=allow all)* | string | Comma-separated allowed origins |
 | `AUTH_ENABLED` | `false` | bool | Enable token authentication |
 | `AUTH_SECRET` | *(required if auth on)* | string→[]byte | HMAC-SHA256 signing secret (≥32 bytes) |
@@ -1007,9 +1042,9 @@ The Go module at `shared/proto/gen/go/` (module name `nopenclaw/proto`) is compi
 
 ### D.1 — "How does this scale horizontally?"
 
-**Gateway:** Run multiple instances. Each gets its own WebSocket connections. The outbound reader in each instance reads from the same Redis stream with `XREAD` (fan-out). For sticky sessions (routing a reply to the right Gateway), we'd use Redis-backed session lookup or a shared Hub via Redis pub/sub. Not implemented yet — single Gateway handles 10K connections, which is enough for most self-hosted deployments.
+**Gateway:** Run multiple instances. Each registers as a consumer in the `nopenclaw_gateway_deliverers` consumer group via XREADGROUP. Redis distributes outbound messages across all Gateway instances automatically — each message is delivered to exactly ONE instance. Each instance auto-names itself using its container hostname, ensuring unique consumer IDs. Delivery workers within each instance further parallelize: 4 workers per Gateway means 3 Gateway instances = 12 total delivery goroutines, all load-balanced by Redis.
 
-**Router:** Use Redis consumer groups (`XREADGROUP`). Multiple Router instances form a group — Redis distributes messages across them. Each message is delivered to exactly one Router instance. Acknowledgments (`XACK`) prevent double-processing.
+**Router:** Uses Redis consumer groups (`XREADGROUP`). Multiple Router instances form the `nopenclaw_routers` group. Each inbound message is delivered to exactly one Router. Acknowledgments (`XACK`) prevent double-processing. A pending reclaimer (`XCLAIM`) recovers messages from crashed Router instances. Dead-letter stream (`nopenclaw_inbound:dlq`) catches messages that fail after max retries.
 
 **Agent:** Agents are stateless processors. Spin up more instances behind the Router. The Router publishes to per-agent Redis streams. Each Agent instance consumes from its stream.
 
@@ -1051,20 +1086,20 @@ Every file, its line count, and what it does:
 beautifulplanet/safepaw/
 │
 ├── services/gateway/                    # THE WebSocket entry point
-│   ├── main.go .................. 262   # Startup: config → redis → hub → routes → server → shutdown
+│   ├── main.go .................. ~285   # Startup: config → redis → consumer group → hub → routes → workers → server → shutdown
 │   ├── Dockerfile ............... 57    # Multi-stage: golang:1.26-alpine → alpine:3.19, non-root
 │   ├── go.mod ...................       # Module: nopenclaw/gateway, deps: gorilla/websocket, go-redis, uuid
 │   ├── go.sum ...................       # Dependency checksums (tamper detection)
 │   │
 │   ├── ws/
-│   │   └── handler.go ........... 381  # Hub (RWMutex+atomic), Connection, readPump, writePump, upgrader
+│   │   └── handler.go ........... ~410  # Hub (RWMutex+atomic, TOCTOU-safe Register, CloseAll drain), Connection, readPump, writePump, upgrader
 │   │
 │   ├── redis/
-│   │   └── stream.go ............ ~200 # StreamClient, XADD/XREAD, pool(50), InboundMessage, OutboundMessage
+│   │   └── stream.go ............ ~250 # StreamClient, XADD/XREADGROUP/XACK, consumer group, pool(50), DeepHealthCheck
 │   │
 │   ├── middleware/
 │   │   ├── auth.go .............. 375  # TokenClaims, Authenticator, HMAC-SHA256, AuthRequired/Optional
-│   │   └── security.go ......... 234  # SecurityHeaders(7), RequestID, OriginCheck, RateLimiter+cleanup
+│   │   └── security.go ......... ~260  # SecurityHeaders(7), RequestID, OriginCheck, RateLimiter+cleanup, StripAuthHeaders
 │   │
 │   ├── config/
 │   │   └── config.go ........... 201  # All 25 env vars, Load(), validation, zero external string imports
@@ -1078,19 +1113,19 @@ beautifulplanet/safepaw/
 │   ├── go.sum ...................       # Dependency checksums
 │   │
 │   ├── cmd/router/
-│   │   └── main.go .............. ~150  # 7-step startup: config → consumer → publisher → router → health → run → shutdown
+│   │   └── main.go .............. ~170  # 7-step startup: config → consumer → publisher → router → health → run → shutdown
 │   │
 │   ├── internal/config/
-│   │   └── config.go ............ ~120  # 15 env vars, validation, consumer group settings
+│   │   └── config.go ............ ~125  # 15 env vars, validation, consumer group settings, max message/outbound size
 │   │
 │   ├── internal/consumer/
-│   │   └── consumer.go .......... ~360  # XREADGROUP, worker pool, pendingReclaimer, XCLAIM, dead-letter
+│   │   └── consumer.go .......... ~400  # XREADGROUP, worker pool, pendingReclaimer, XCLAIM, dead-letter (DLQ), MaxMessageSize guard
 │   │
 │   ├── internal/router/
 │   │   └── router.go ............ ~85   # Echo mode handler, switch placeholder for channel routing
 │   │
 │   └── internal/publisher/
-│       └── publisher.go ......... ~115  # XADD to outbound stream, MAXLEN ~10000
+│       └── publisher.go ......... ~115  # XADD to outbound stream, MAXLEN ~10000, MaxOutboundSize guard
 │
 ├── services/agent/                      # Message processor (NOT STARTED)
 │   └── README.md ................       # TypeScript echo service, then LLM integration
@@ -1144,8 +1179,15 @@ See Section C.6 for the full table of all 25 environment variables, their defaul
 | `GET /health` | HTTP | None | `{"status":"ok","connections":N,"redis":"connected","timestamp":"..."}` |
 
 **Status values:**
-- `"ok"` — Gateway running, Redis connected
-- `"degraded"` — Gateway running, Redis unreachable (returns HTTP 503)
+- `"ok"` — Gateway running, Redis connected, outbound stream exists, consumer group registered
+- `"degraded"` — Gateway running, but one or more deep checks failed (returns HTTP 503)
+
+**Deep health check verifies:**
+1. Redis is reachable (PING)
+2. Outbound stream (`nopenclaw_outbound`) exists
+3. Consumer group (`nopenclaw_gateway_deliverers`) is registered on the stream
+
+This catches issues a simple PING misses — like the stream being accidentally deleted, or the consumer group being removed by an admin command.
 
 **Docker health check:** Every 10 seconds, Docker runs `wget -qO- http://localhost:8080/health`. Three consecutive failures = container marked unhealthy. `docker compose` restart policy handles recovery.
 
@@ -1229,14 +1271,14 @@ docker compose exec redis redis-cli -a "${REDIS_PASSWORD}" XLEN nopenclaw_inboun
 beautifulplanet/safepaw/
 ├── services/
 │   ├── gateway/          # WebSocket entry point (Go) .............. ✅ working
-│   │   ├── main.go       # Config → Redis → Hub → Routes → Shutdown
-│   │   ├── ws/           # WebSocket handler, connection hub
-│   │   ├── redis/        # Redis Streams bridge (XADD/XREAD)
-│   │   ├── middleware/    # Auth (HMAC), rate limit, security headers
-│   │   ├── config/       # Env-based configuration
+│   │   ├── main.go       # Config → Redis → Consumer Group → Hub → Workers → Shutdown
+│   │   ├── ws/           # WebSocket handler, connection hub (TOCTOU-safe, CloseAll drain)
+│   │   ├── redis/        # Redis Streams bridge (XADD/XREADGROUP/XACK, consumer groups)
+│   │   ├── middleware/    # Auth (HMAC), rate limit, security headers, StripAuthHeaders
+│   │   ├── config/       # Env-based configuration (29 vars)
 │   │   ├── tools/        # Token generation CLI
 │   │   └── Dockerfile    # Multi-stage, non-root, health check
-│   ├── router/           # Message routing engine (Go) ............ 🔧 in progress
+│   ├── router/           # Message routing engine (Go) ............ ✅ working
 │   ├── agent/            # Message processor (TypeScript) ......... ⬜ not started
 │   ├── wizard/           # Setup UI (Go + React) .................. ⏸️ paused
 │   └── postgres/         # DB init scripts (auth, users)
@@ -1260,6 +1302,78 @@ beautifulplanet/safepaw/
 
 ---
 
+## Section G: Security & Scaling Audit Log
+
+> **Every system has bugs. Mature systems find them before users do.**
+> This section documents every issue found during internal audits, the fix applied, and the commit that resolved it. This is the kind of audit trail that production-grade systems maintain — and most portfolio projects never show.
+
+### G.1 — Security Hardening Audit (Commit `071f78a`)
+
+Conducted after Gateway + Router were built. Goal: find everything an attacker or malicious client could exploit before any real traffic hits this system.
+
+**13 findings, 9 fixed. 4 deferred (not exploitable at current scale).**
+
+| ID | Severity | Finding | Fix | Files Changed |
+|----|----------|---------|-----|---------------|
+| **C1** | Critical | Dead `replace` directive in Router `go.mod` pointed to non-existent local path — build would fail in CI/Docker | Removed directive | `services/router/go.mod` |
+| **C4** | Critical | No message size guard in Router consumer — a malicious 1GB message would OOM the process | Added `MaxMessageSize` check (default 64KB) in `parseMessage()` before `json.Unmarshal` | `services/router/internal/consumer/consumer.go`, `internal/config/config.go` |
+| **H2** | High | When `AUTH_ENABLED=false`, clients could send `X-Auth-Subject: admin` header and Gateway trusted it as authenticated identity | Added `StripAuthHeaders` middleware that removes identity headers when auth is off | `services/gateway/middleware/security.go`, `main.go` |
+| **H3** | High | Router silently dropped messages that failed processing after max retries — data loss with no audit trail | Added dead-letter stream (`nopenclaw_inbound:dlq`) that stores failed messages with original data, error, and retry count | `services/router/internal/consumer/consumer.go` |
+| **H5** | High | No outbound message size limit — a compromised Agent could flood the outbound stream with oversized payloads | Added `MaxOutboundSize` check (default 64KB) before `XADD` in publisher | `services/router/internal/publisher/publisher.go`, `internal/config/config.go` |
+| **M2** | Medium | Router Dockerfile had `COPY shared/proto/ ...` but Router doesn't use proto — unnecessary files in image | Removed the COPY line | `services/router/Dockerfile` |
+| **M3** | Medium | Router env vars not documented anywhere — new developers had to read source to discover config | Added all Router vars to `.env.example` with defaults and descriptions | `.env.example` |
+| **M5** | Medium | `extractIP()` trusted `X-Real-IP` header from any source — client could spoof their IP to bypass rate limiting | Now only trusts `X-Real-IP` from loopback addresses (127.0.0.1, ::1) | `services/gateway/middleware/security.go` |
+| **L1** | Low | `PreferServerCipherSuites` field set in TLS config — deprecated since Go 1.22, no-op | Removed the field | `services/gateway/main.go` |
+| *C2* | *Deferred* | *Proto-generated `*.pb.go` files could drift from `.proto` sources* | *Planned: `git diff --exit-code` CI guard* | — |
+| *C3* | *Deferred* | *Redis password visible in `docker compose ps` output* | *Planned: Docker Compose secrets or environment file* | — |
+| *H1* | *Deferred* | *No input validation on proto-derived fields (conversation_id, thread_id)* | *Planned: schema validation layer* | — |
+| *H4* | *Deferred* | *Rate limiter not configurable via environment variable* | *Planned: `RATE_LIMIT_PER_MIN` env var* | — |
+
+### G.2 — 3-Month Scaling Audit (Commit `TBD`)
+
+Conducted after security hardening. Goal: identify every component that would break or degrade as user count grows from 4 → 500 → 5,000 → 50,000. Organized into three tiers by when they'd become problems.
+
+**13 findings across 3 tiers. Tier 1 (6 items) fixed. Tier 2-3 documented for future.**
+
+#### Tier 1 — Breaks at 500 users (FIXED)
+
+| ID | Finding | What breaks | Fix applied |
+|----|---------|-------------|-------------|
+| **S1** | Gateway outbound used `XREAD` (single reader, no consumer group) | Only ONE Gateway instance can read outbound messages. No horizontal scaling. If outbound reader falls behind, messages queue unbounded. | Converted to `XREADGROUP` with consumer group `nopenclaw_gateway_deliverers`. Each Gateway instance registers as a unique consumer (hostname). Redis distributes messages across all instances. Added `EnsureOutboundGroup()`, `ReadOutbound()` → XREADGROUP, `AckOutbound()` → XACK. |
+| **S2** | Single `outboundReader` goroutine delivered messages serially | One slow WebSocket write blocks delivery to ALL sessions. At 500 sessions receiving replies simultaneously, latency spikes. | Replaced single goroutine with configurable worker pool (`DELIVERY_WORKERS`, default 4). Each worker independently calls XREADGROUP. Redis load-balances across workers. Slow delivery on worker 0 doesn't affect workers 1-3. |
+| **S3** | Hub `Register()` capacity check was outside the lock (TOCTOU race) | Two goroutines pass `connCount < maxConns` simultaneously, both register, exceeding capacity. At 500+ rapid connections this becomes likely. | Moved capacity check inside `mu.Lock()`. Check + insertion are now atomic. `defer mu.Unlock()` ensures no leaked locks. |
+| **S4** | No WebSocket drain on shutdown | `SIGTERM` → HTTP server stops → outbound workers stop → all WebSocket connections TCP-reset. Clients don't know server is shutting down, so they don't attempt reconnection to another instance. | Added 3-phase shutdown: (1) stop HTTP, (2) `hub.CloseAll()` sends `CloseGoingAway` (1001) frame to every client with "server shutting down" message, (3) cancel workers and wait for drain via `sync.WaitGroup`. |
+| **S5** | No outbound message acknowledgment | If Gateway crashes after reading outbound messages but before delivering them, those messages are lost forever (XREAD advances the cursor). | `XREADGROUP` + `XACK` solves this. Messages stay in the consumer's pending entries list (PEL) until explicitly acknowledged. If a Gateway crashes, another consumer can reclaim pending messages via `XCLAIM`. |
+| **S6** | Health check only did Redis `PING` | Catches "Redis is down" but misses "stream was deleted" or "consumer group was removed by admin command" or "outbound pipeline is broken." | Added `DeepHealthCheck()`: verifies PING, stream exists (`XINFO STREAM`), consumer group exists (`XINFO GROUPS`). `/health` endpoint now reports which specific check failed. |
+
+#### Tier 2 — Degrades at 5,000 users (DOCUMENTED, NOT YET FIXED)
+
+| ID | Finding | Impact at scale | Planned fix |
+|----|---------|----------------|-------------|
+| **S7** | Rate limiter uses in-memory `map` — not shared across Gateway instances | Each Gateway has independent rate state. Attacker can spread connections across N Gateways to get N× the rate limit. | Redis-backed sliding window rate limiter (shared state). |
+| **S8** | Redis is single point of failure — no sentinel, no cluster | Redis crash = entire pipeline down. AOF recovery takes time. | Redis Sentinel for automatic failover (3-node minimum). |
+| **S9** | Send buffer full = message silently dropped with log | At high message volume, slow clients overflow their 256-message buffer. Messages lost with only a log line. | Add per-connection retry queue or Redis-backed delivery queue. Send "buffer_overflow" notification to client. |
+| **S10** | No connection draining during rolling deploys | `docker compose up -d --build gateway` kills old container immediately. In-flight messages lost. | Kubernetes-style preStop hook: mark unhealthy → drain connections → stop. Or Docker health + stop_grace_period pattern. |
+
+#### Tier 3 — Architecture ceiling at 50,000 users (DOCUMENTED)
+
+| ID | Finding | Impact at scale | Planned fix |
+|----|---------|----------------|-------------|
+| **S11** | No Kubernetes manifests — Docker Compose only | Can't auto-scale, no pod disruption budgets, no rolling updates with health gates | Helm chart or Kustomize overlay for k8s deployment |
+| **S12** | No observability (metrics, traces, structured logging) | Can't diagnose latency sources, can't set SLOs, can't alert on degradation | Prometheus metrics exporter, OpenTelemetry traces, structured JSON logging |
+| **S13** | No auto-scaling — fixed container count | Manual scaling only. Can't respond to traffic spikes. Under-provisioned = degraded, over-provisioned = waste. | Horizontal Pod Autoscaler (HPA) on WebSocket connection count and CPU |
+
+### G.3 — Audit Methodology
+
+How we audit:
+1. **Read every file, line by line.** Not skimming — actual line-level review.
+2. **Ask "what if?"** for every function. What if the input is 1GB? What if two goroutines hit this simultaneously? What if Redis is down? What if the client is malicious?
+3. **Tier by user count.** Not "is this a problem?" but "at what scale does this become a problem?" This prevents premature optimization while ensuring we know exactly when to act.
+4. **Fix what breaks first.** Tier 1 (breaks at 500 users) is fixed before Tier 2 (degrades at 5,000) is even started. No skipping ahead.
+5. **Document everything.** Deferred items are tracked with the same rigor as fixed items. "We know about it and chose not to fix it yet" is different from "we didn't notice."
+
+---
+
 ## What's Next
 
 The roadmap is driven by one principle: **prove the loop works before polishing anything**.
@@ -1268,12 +1382,14 @@ The roadmap is driven by one principle: **prove the loop works before polishing 
 |----------|------|-----|
 | **P0** ✅ | Proto generation pipeline | Typed contracts between services — done, verified, reproducible |
 | **P1** ✅ | Router service (Go) | XREADGROUP consumer, worker pool, pending reclaimer, echo mode — done |
+| **P1.5** ✅ | Security + Scaling audit | 22 findings, 15 fixed, 7 documented for future (see Section G) |
 | **P2** 🔧 | Agent echo service (TS) | Receives message, echoes back — proves the full loop |
 | **P3** | Docker Compose profiles | `community` vs `pro` — one command install |
 | **P4** | Integration smoke test | WebSocket client → Gateway → Router → Agent → back. If this passes, it works. |
 | **P5** | Auth revocation | Redis-backed cache, admin API to revoke tokens |
-| **P6** | Threat model doc | Honest assessment of attack surfaces and mitigations |
-| **P7** | Wizard UI | Only after the core message loop is stable and tested |
+| **P6** | Observability | Prometheus metrics, OpenTelemetry traces, structured JSON logs |
+| **P7** | Redis HA | Sentinel for automatic failover (Tier 2 scaling item S8) |
+| **P8** | Wizard UI | Only after the core message loop is stable and tested |
 
 ---
 

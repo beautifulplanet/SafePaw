@@ -54,14 +54,17 @@ func NewHub(maxConns int) *Hub {
 }
 
 // Register adds a new connection. Returns false if at capacity.
+// The capacity check and insertion are both inside the lock to prevent
+// TOCTOU races where two goroutines both pass the check simultaneously.
 func (h *Hub) Register(conn *Connection) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	if int(h.connCount.Load()) >= h.maxConns {
 		return false
 	}
 
-	h.mu.Lock()
 	h.connections[conn.SessionID] = conn
-	h.mu.Unlock()
 	h.connCount.Add(1)
 
 	log.Printf("[HUB] Connection registered: session=%s (total=%d)", conn.SessionID, h.connCount.Load())
@@ -91,6 +94,30 @@ func (h *Hub) GetConnection(sessionID string) (*Connection, bool) {
 // Count returns the current connection count.
 func (h *Hub) Count() int64 {
 	return h.connCount.Load()
+}
+
+// CloseAll sends a CloseGoingAway frame to every connected client.
+// Used during graceful shutdown to tell clients "reconnect to another instance."
+// Returns the number of connections that were closed.
+func (h *Hub) CloseAll() int {
+	h.mu.RLock()
+	conns := make([]*Connection, 0, len(h.connections))
+	for _, c := range h.connections {
+		conns = append(conns, c)
+	}
+	h.mu.RUnlock()
+
+	closed := 0
+	for _, c := range conns {
+		msg := websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down")
+		deadline := time.Now().Add(2 * time.Second)
+		if err := c.ws.WriteControl(websocket.CloseMessage, msg, deadline); err != nil {
+			log.Printf("[HUB] CloseAll: failed to send close to session=%s: %v", c.SessionID, err)
+		}
+		closed++
+	}
+
+	return closed
 }
 
 // ================================================================
