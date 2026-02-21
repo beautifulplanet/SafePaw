@@ -55,6 +55,45 @@ services:
       retries: 3
 
   # ------------------------------------------------
+  # Router — Message processing (Go)
+  # ------------------------------------------------
+  # Reads from inbound stream via XREADGROUP consumer groups,
+  # processes messages, writes to outbound stream for Gateway.
+  # Internal only — no host-exposed ports.
+  router:
+    build:
+      context: .
+      dockerfile: services/router/Dockerfile
+    container_name: nopenclaw-router
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_ADDR: "redis:6379"
+      REDIS_INBOUND_STREAM: "nopenclaw_inbound"
+      REDIS_OUTBOUND_STREAM: "nopenclaw_outbound"
+      CONSUMER_GROUP: "nopenclaw_routers"
+      WORKER_COUNT: ${ROUTER_WORKER_COUNT:-4}
+      BATCH_SIZE: ${ROUTER_BATCH_SIZE:-10}
+      HEALTH_PORT: "8081"
+    # NO ports exposed — Router is internal only.
+    # Health check is accessible within the Docker network.
+    networks:
+      - nopenclaw-internal
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ------------------------------------------------
   # Redis — Message queue (Streams)
   # ------------------------------------------------
   redis:

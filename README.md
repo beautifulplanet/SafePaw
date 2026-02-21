@@ -65,9 +65,9 @@ Not everything works yet. Current status:
 | **Gateway** | ✅ Working | WebSocket server, Redis bridge, auth, TLS, rate limiter, Dockerfile |
 | **Proto Pipeline** | ✅ Working | 4 schemas, Go + TS generation, compile-verified, CI-reproducible |
 | **Docker Compose** | ✅ Working | Gateway + Redis + Postgres, health checks, security defaults |
-| **Router** | 🔧 In progress | Go module initialized, proto imports wired |
+| **Router** | ✅ Working | XREADGROUP consumer, worker pool, pending reclaimer, echo mode, Dockerfile |
 | **Agent** | ⬜ Not started | Will be a TypeScript echo service first, LLM later |
-| **Integration test** | ⬜ Not started | Blocked on Router + Agent completing the loop |
+| **Integration test** | ⬜ Not started | Blocked on Agent completing the loop |
 | **Auth revocation** | ⬜ Not started | Stateless tokens only — no revocation cache yet |
 | **Egress filtering** | ⬜ Not started | Agent containers not yet network-restricted |
 
@@ -1072,13 +1072,25 @@ beautifulplanet/safepaw/
 │   └── tools/tokengen/
 │       └── main.go ..............      # CLI: go run tools/tokengen/main.go -secret X -sub Y -scope Z
 │
-├── services/router/                     # Message routing engine (IN PROGRESS)
-│   ├── go.mod ...................       # Module: nopenclaw/router, replace: nopenclaw/proto → ../../shared/proto/gen/go
-│   ├── cmd/router/ ..............       # Entry point (not yet written)
-│   ├── internal/config/ .........       # Config (not yet written)
-│   ├── internal/consumer/ .......       # Redis XREADGROUP consumer (not yet written)
-│   ├── internal/router/ .........       # Routing logic (not yet written)
-│   └── internal/publisher/ ......       # XADD to agent inboxes (not yet written)
+├── services/router/                     # Message routing engine
+│   ├── Dockerfile ............... 35    # Multi-stage: golang:1.26-alpine → alpine:3.19, non-root
+│   ├── go.mod ...................       # Module: nopenclaw/router, deps: go-redis/v9
+│   ├── go.sum ...................       # Dependency checksums
+│   │
+│   ├── cmd/router/
+│   │   └── main.go .............. ~150  # 7-step startup: config → consumer → publisher → router → health → run → shutdown
+│   │
+│   ├── internal/config/
+│   │   └── config.go ............ ~120  # 15 env vars, validation, consumer group settings
+│   │
+│   ├── internal/consumer/
+│   │   └── consumer.go .......... ~360  # XREADGROUP, worker pool, pendingReclaimer, XCLAIM, dead-letter
+│   │
+│   ├── internal/router/
+│   │   └── router.go ............ ~85   # Echo mode handler, switch placeholder for channel routing
+│   │
+│   └── internal/publisher/
+│       └── publisher.go ......... ~115  # XADD to outbound stream, MAXLEN ~10000
 │
 ├── services/agent/                      # Message processor (NOT STARTED)
 │   └── README.md ................       # TypeScript echo service, then LLM integration
@@ -1255,8 +1267,8 @@ The roadmap is driven by one principle: **prove the loop works before polishing 
 | Priority | Task | Why |
 |----------|------|-----|
 | **P0** ✅ | Proto generation pipeline | Typed contracts between services — done, verified, reproducible |
-| **P1** 🔧 | Router service (Go) | Consumes from Redis, routes to Agent — the missing middle |
-| **P2** | Agent echo service (TS) | Receives message, echoes back — proves the full loop |
+| **P1** ✅ | Router service (Go) | XREADGROUP consumer, worker pool, pending reclaimer, echo mode — done |
+| **P2** 🔧 | Agent echo service (TS) | Receives message, echoes back — proves the full loop |
 | **P3** | Docker Compose profiles | `community` vs `pro` — one command install |
 | **P4** | Integration smoke test | WebSocket client → Gateway → Router → Agent → back. If this passes, it works. |
 | **P5** | Auth revocation | Redis-backed cache, admin API to revoke tokens |
