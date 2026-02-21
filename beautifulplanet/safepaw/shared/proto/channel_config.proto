@@ -1,0 +1,64 @@
+// =============================================================
+// Safepaw Channel Configuration Schema
+// =============================================================
+// Each messaging platform (Discord, Telegram, Slack, etc.)
+// is a "channel." This schema defines how each channel is
+// configured — which agent handles it, rate limits, features.
+//
+// Think of this as the "rules" for each friend group in
+// the treehouse. Some groups allow photos, some don't.
+// =============================================================
+
+syntax = "proto3";
+
+package safepaw.channel;
+
+option go_package = "safepaw/shared/proto/gen/go/channel";
+
+import "common.proto";
+
+// Channel status
+enum ChannelStatus {
+  CHANNEL_STATUS_UNSPECIFIED = 0;
+  ACTIVE    = 1;  // Channel is live and accepting messages
+  PAUSED    = 2;  // Temporarily stopped (maintenance)
+  DISABLED  = 3;  // Permanently off
+  ERROR     = 4;  // Channel is in an error state
+}
+
+// Rate limiting configuration
+message RateLimit {
+  int32 max_messages_per_minute = 1;  // 0 = unlimited
+  int32 max_messages_per_hour   = 2;  // 0 = unlimited
+  int32 burst_limit             = 3;  // Max burst before throttle
+}
+
+// Channel configuration
+message ChannelConfig {
+  string id          = 1;  // UUID v4
+  string channel     = 2;  // Channel name (e.g., "discord")
+  string agent_id    = 3;  // Which agent handles this channel
+  ChannelStatus status = 4;
+
+  // Connection credentials (encrypted at rest)
+  // SECURITY: These are stored encrypted in Postgres, never in plaintext
+  map<string, string> credentials = 5;
+
+  // Behavior settings
+  RateLimit rate_limit           = 6;
+  bool      allow_media          = 7;  // Can users send images/files?
+  bool      allow_threads        = 8;  // Does this channel support threading?
+  int32     max_message_length   = 9;  // Platform-specific limit (e.g., 2000 for Discord)
+  
+  // Feature flags
+  map<string, bool> features     = 10;  // Toggleable features per channel
+
+  // Metadata
+  safepaw.common.Timestamp created_at = 11;
+  safepaw.common.Timestamp updated_at = 12;
+}
+
+// List of all configured channels
+message ChannelRegistry {
+  repeated ChannelConfig channels = 1;
+}

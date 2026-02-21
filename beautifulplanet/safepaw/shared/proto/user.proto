@@ -1,0 +1,55 @@
+// =============================================================
+// Safepaw User Schema
+// =============================================================
+// Represents a unified user across all channels.
+// A single person might be on Discord AND Telegram — this
+// schema lets us link those identities together.
+// =============================================================
+
+syntax = "proto3";
+
+package safepaw.user;
+
+option go_package = "safepaw/shared/proto/gen/go/user";
+
+import "common.proto";
+
+// User's role/trust level
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  USER     = 1;  // Normal user
+  MODERATOR = 2;  // Can manage channels
+  ADMIN    = 3;  // Full access
+  SYSTEM   = 4;  // Internal bot/system identity
+}
+
+// A platform identity (one per channel)
+message PlatformIdentity {
+  string channel      = 1;  // e.g., "discord", "telegram"
+  string platform_id  = 2;  // Platform-specific user ID
+  string display_name = 3;  // How they appear on that platform
+  bool   verified     = 4;  // Has this identity been verified?
+  safepaw.common.Timestamp linked_at = 5;
+}
+
+// The unified User record
+message User {
+  string id             = 1;  // Safepaw internal UUID
+  string display_name   = 2;  // Primary display name
+  UserRole role         = 3;  // Permission level
+
+  // All linked platform identities
+  repeated PlatformIdentity identities = 4;
+
+  // User preferences (language, timezone, etc.)
+  map<string, string> preferences = 5;
+
+  // Account timestamps
+  safepaw.common.Timestamp created_at = 6;
+  safepaw.common.Timestamp updated_at = 7;
+  safepaw.common.Timestamp last_seen  = 8;
+
+  // Safety: is this user blocked/banned?
+  bool blocked = 9;
+  string block_reason = 10;
+}

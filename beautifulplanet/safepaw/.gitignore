@@ -46,6 +46,9 @@ env/
 .pytest_cache/
 coverage/
 
+# 4b. Generated Protobuf Bindings (recompile from .proto source)
+shared/proto/gen/
+
 # 5. Database & State
 *.sqlite
 *.sqlite3

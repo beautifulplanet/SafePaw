@@ -1,0 +1,25 @@
+// =============================================================
+// Safepaw Common Types
+// =============================================================
+// Shared primitives used across all service boundaries.
+// Keep this lean — only put truly universal types here.
+// =============================================================
+
+syntax = "proto3";
+
+package safepaw.common;
+
+option go_package = "safepaw/shared/proto/gen/go/common";
+
+// Timestamp in UTC (ISO 8601 compatible)
+message Timestamp {
+  int64 seconds = 1;  // Unix epoch seconds
+  int32 nanos   = 2;  // Nanosecond offset (0-999999999)
+}
+
+// Universal user identifier
+message UserId {
+  string id       = 1;  // UUID v4
+  string channel   = 2;  // Origin channel (e.g., "discord", "telegram", "slack")
+  string platform_id = 3;  // Platform-specific user ID (e.g., Discord snowflake)
+}

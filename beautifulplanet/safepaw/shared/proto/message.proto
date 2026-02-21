@@ -1,0 +1,66 @@
+// =============================================================
+// Safepaw Message Schema
+// =============================================================
+// THE core data structure. Every message flowing through Safepaw
+// — from user → gateway → router → agent and back — uses this.
+//
+// Think of this as the "envelope" that carries every note
+// between all the treehouse friends.
+// =============================================================
+
+syntax = "proto3";
+
+package safepaw.message;
+
+option go_package = "safepaw/shared/proto/gen/go/message";
+
+import "common.proto";
+
+// Direction of the message in the pipeline
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  INBOUND  = 1;  // User → Gateway → Router → Agent
+  OUTBOUND = 2;  // Agent → Router → Gateway → User
+}
+
+// Content type (what kind of "note" is this?)
+enum ContentType {
+  CONTENT_TYPE_UNSPECIFIED = 0;
+  TEXT     = 1;  // Plain text message
+  IMAGE    = 2;  // Image attachment (URL or base64)
+  FILE     = 3;  // File attachment
+  COMMAND  = 4;  // Slash command or bot command
+  SYSTEM   = 5;  // System/internal message (not user-facing)
+  REACTION = 6;  // Emoji reaction
+}
+
+// The main Message envelope
+message Message {
+  // === Identity ===
+  string id           = 1;  // UUID v4 — unique per message
+  string session_id   = 2;  // Links to gateway.sessions
+  string conversation_id = 3;  // Links to agent.conversations
+
+  // === Routing ===
+  safepaw.common.UserId sender    = 4;  // Who sent this
+  string channel       = 5;  // Channel name (e.g., "discord", "telegram")
+  Direction direction  = 6;  // Inbound or outbound
+
+  // === Payload ===
+  ContentType content_type = 7;
+  string content           = 8;  // The actual message text/data
+  map<string, string> metadata = 9;  // Extensible key-value pairs
+
+  // === Timestamps ===
+  safepaw.common.Timestamp created_at  = 10;
+  safepaw.common.Timestamp processed_at = 11;
+
+  // === Threading ===
+  string reply_to_id   = 12;  // Optional: ID of message being replied to
+  string thread_id     = 13;  // Optional: Thread grouping ID
+}
+
+// Batch of messages (for bulk operations)
+message MessageBatch {
+  repeated Message messages = 1;
+}
