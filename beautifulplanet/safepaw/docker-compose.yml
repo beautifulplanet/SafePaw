@@ -6,14 +6,12 @@
 # 2. Copy .env.example → .env before first run
 # 3. Network is internal-only (no internet, no host exposure)
 # 4. Containers run as non-root where possible
-# 5. TODO: Pin images by SHA256 digest when Docker is running:
-#    docker pull redis:7-alpine && docker inspect --format='{{index .RepoDigests 0}}' redis:7-alpine
-#    Then replace "redis:7-alpine" with "redis@sha256:<digest>"
+# 5. Images pinned by SHA256 digest (supply-chain integrity)
 # =============================================================
 
 services:
   redis:
-    image: redis:7-alpine  # TODO: Pin to SHA256 digest (see notes above)
+    image: redis:7-alpine@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
     container_name: safepaw-redis
     command: redis-server --requirepass "${REDIS_PASSWORD}" --appendonly yes --rename-command FLUSHALL "" --rename-command FLUSHDB "" --rename-command DEBUG ""
     networks:
@@ -35,7 +33,7 @@ services:
       retries: 3
 
   postgres:
-    image: postgres:16-alpine  # TODO: Pin to SHA256 digest (see notes above)
+    image: postgres:16-alpine@sha256:97ff59a4e30e08d1c11bdcd9455e7832368c0572b576c9092cde2df4ae5552a3
     container_name: safepaw-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -46,6 +44,7 @@ services:
     # PORTS INTENTIONALLY NOT EXPOSED TO HOST — services connect via Docker network
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./services/postgres/init:/docker-entrypoint-initdb.d:ro
     restart: unless-stopped
     deploy:
       resources:
