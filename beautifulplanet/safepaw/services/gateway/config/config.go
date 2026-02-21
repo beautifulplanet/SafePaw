@@ -43,6 +43,11 @@ type Config struct {
 	InboundStream  string // Gateway writes here (user → system)
 	OutboundStream string // Gateway reads here (system → user)
 
+	// Outbound consumer group — enables multiple Gateway instances
+	OutboundGroup    string // Consumer group for XREADGROUP on outbound
+	OutboundConsumer string // This instance's name within the group
+	DeliveryWorkers  int    // Number of parallel outbound delivery goroutines
+
 	// Security
 	AllowedOrigins []string
 
@@ -92,6 +97,11 @@ func Load() (*Config, error) {
 		InboundStream:  envStr("REDIS_INBOUND_STREAM", "nopenclaw_inbound"),
 		OutboundStream: envStr("REDIS_OUTBOUND_STREAM", "nopenclaw_outbound"),
 
+		// Outbound consumer group — enables horizontal scaling of Gateway
+		OutboundGroup:    envStr("OUTBOUND_GROUP", "nopenclaw_gateway_deliverers"),
+		OutboundConsumer: envStr("OUTBOUND_CONSUMER", ""), // filled below
+		DeliveryWorkers:  envInt("DELIVERY_WORKERS", 4),
+
 		// Security — empty = reject all in production (dev allows localhost)
 		AllowedOrigins: []string{}, // Set via ALLOWED_ORIGINS env var
 
@@ -114,6 +124,23 @@ func Load() (*Config, error) {
 	}
 	if authSecret != "" {
 		cfg.AuthSecret = []byte(authSecret)
+	}
+
+	// Default outbound consumer name to hostname (unique per container)
+	if cfg.OutboundConsumer == "" {
+		hostname, _ := os.Hostname()
+		if hostname == "" {
+			hostname = fmt.Sprintf("gw-%d", os.Getpid())
+		}
+		cfg.OutboundConsumer = hostname
+	}
+
+	// Validate delivery workers
+	if cfg.DeliveryWorkers < 1 {
+		cfg.DeliveryWorkers = 1
+	}
+	if cfg.DeliveryWorkers > 32 {
+		cfg.DeliveryWorkers = 32
 	}
 
 	// Validate TLS config if enabled

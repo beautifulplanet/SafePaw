@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -46,8 +47,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("[FATAL] Configuration error: %v", err)
 	}
-	log.Printf("[CONFIG] Port=%d MaxConns=%d Redis=%s Streams=[%s, %s]",
-		cfg.Port, cfg.WSMaxConnections, cfg.RedisAddr, cfg.InboundStream, cfg.OutboundStream)
+	log.Printf("[CONFIG] Port=%d MaxConns=%d Redis=%s Streams=[%s, %s] Workers=%d Group=%s Consumer=%s",
+		cfg.Port, cfg.WSMaxConnections, cfg.RedisAddr, cfg.InboundStream, cfg.OutboundStream,
+		cfg.DeliveryWorkers, cfg.OutboundGroup, cfg.OutboundConsumer)
 
 	// --------------------------------------------------------
 	// Step 2: Connect to Redis
@@ -58,11 +60,23 @@ func main() {
 		cfg.RedisDB,
 		cfg.InboundStream,
 		cfg.OutboundStream,
+		cfg.OutboundGroup,
+		cfg.OutboundConsumer,
 	)
 	if err != nil {
 		log.Fatalf("[FATAL] Redis connection failed: %v", err)
 	}
 	defer stream.Close()
+
+	// --------------------------------------------------------
+	// Step 2b: Ensure outbound consumer group exists
+	// --------------------------------------------------------
+	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := stream.EnsureOutboundGroup(initCtx); err != nil {
+		initCancel()
+		log.Fatalf("[FATAL] Cannot create outbound consumer group: %v", err)
+	}
+	initCancel()
 
 	// --------------------------------------------------------
 	// Step 3: Set up connection hub + rate limiter
@@ -87,9 +101,10 @@ func main() {
 			"timestamp":   time.Now().UTC().Format(time.RFC3339),
 		}
 
-		if err := stream.HealthCheck(ctx); err != nil {
+		// Deep health check: verifies stream + consumer group, not just PING
+		if err := stream.DeepHealthCheck(ctx); err != nil {
 			status["status"] = "degraded"
-			status["redis"] = "unreachable"
+			status["redis"] = err.Error()
 			w.WriteHeader(http.StatusServiceUnavailable)
 		} else {
 			status["redis"] = "connected"
@@ -130,12 +145,23 @@ func main() {
 	handler = middleware.SecurityHeaders(handler)
 
 	// --------------------------------------------------------
-	// Step 5: Start outbound reader (deliver replies to clients)
+	// Step 5: Start outbound delivery workers (deliver replies to clients)
+	// Each worker independently calls XREADGROUP — Redis distributes
+	// messages across all workers in the consumer group, so each message
+	// is delivered to exactly ONE worker.
 	// --------------------------------------------------------
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go outboundReader(ctx, hub, stream)
+	var workerWg sync.WaitGroup
+	for i := 0; i < cfg.DeliveryWorkers; i++ {
+		workerWg.Add(1)
+		go func(workerID int) {
+			defer workerWg.Done()
+			outboundWorker(ctx, workerID, hub, stream)
+		}(i)
+	}
+	log.Printf("[OUTBOUND] Started %d delivery workers", cfg.DeliveryWorkers)
 
 	// --------------------------------------------------------
 	// Step 6: Create and start HTTP server
@@ -198,7 +224,7 @@ func main() {
 	sig := <-quit
 	log.Printf("[SHUTDOWN] Received signal: %v", sig)
 
-	// Give active connections 10 seconds to finish
+	// Phase 1: Stop accepting new HTTP connections
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
@@ -206,41 +232,58 @@ func main() {
 		log.Printf("[SHUTDOWN] Server shutdown error: %v", err)
 	}
 
-	cancel() // Stop outbound reader
+	// Phase 2: Send WebSocket close frames to all connected clients.
+	// This tells clients "server is going away, reconnect to another instance."
+	closed := hub.CloseAll()
+	log.Printf("[SHUTDOWN] Sent CloseGoingAway to %d WebSocket connections", closed)
+
+	// Phase 3: Stop outbound workers and wait for them to drain
+	cancel()
+	workerWg.Wait()
+	log.Println("[SHUTDOWN] All delivery workers stopped")
+
 	log.Println("=== NOPEnclaw Gateway stopped ===")
 }
 
-// outboundReader continuously reads from the outbound Redis stream
-// and delivers messages to connected WebSocket clients.
-func outboundReader(ctx context.Context, hub *ws.Hub, stream *redisStream.StreamClient) {
-	lastID := "$" // Only read NEW messages (skip history)
-	log.Println("[OUTBOUND] Reader started, waiting for messages...")
+// outboundWorker is one of N goroutines that read from the outbound
+// Redis stream using XREADGROUP. Redis distributes messages across
+// all workers in the consumer group, so each message is processed
+// by exactly one worker.
+//
+// After delivering each batch to WebSocket clients, the worker ACKs
+// the messages so they're removed from the pending entries list.
+func outboundWorker(ctx context.Context, workerID int, hub *ws.Hub, stream *redisStream.StreamClient) {
+	log.Printf("[OUTBOUND] Worker %d started", workerID)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("[OUTBOUND] Reader stopped")
+			log.Printf("[OUTBOUND] Worker %d stopped", workerID)
 			return
 		default:
 		}
 
-		messages, newLastID, err := stream.ReadOutbound(ctx, lastID, 100)
+		messages, err := stream.ReadOutbound(ctx, 100)
 		if err != nil {
 			if ctx.Err() != nil {
 				return // Context cancelled, shutting down
 			}
-			log.Printf("[OUTBOUND] Read error: %v (retrying in 1s)", err)
+			log.Printf("[OUTBOUND] Worker %d: read error: %v (retrying in 1s)", workerID, err)
 			time.Sleep(1 * time.Second)
 			continue
 		}
 
-		lastID = newLastID
+		// Collect stream IDs to ACK after delivery
+		var acked []string
 
 		for _, msg := range messages {
 			conn, ok := hub.GetConnection(msg.SessionID)
 			if !ok {
-				log.Printf("[OUTBOUND] No connection for session=%s, message=%s dropped",
-					msg.SessionID, msg.MessageID)
+				log.Printf("[OUTBOUND] Worker %d: no connection for session=%s, message=%s dropped",
+					workerID, msg.SessionID, msg.MessageID)
+				// ACK even if no connection — the message was processed, just undeliverable.
+				// It would be wrong to leave it pending forever.
+				acked = append(acked, msg.StreamID)
 				continue
 			}
 
@@ -251,13 +294,23 @@ func outboundReader(ctx context.Context, hub *ws.Hub, stream *redisStream.Stream
 				"timestamp":  msg.Timestamp,
 			})
 			if err != nil {
-				log.Printf("[OUTBOUND] Marshal error: %v", err)
+				log.Printf("[OUTBOUND] Worker %d: marshal error: %v", workerID, err)
+				acked = append(acked, msg.StreamID)
 				continue
 			}
 
 			if !conn.Send(data) {
-				log.Printf("[OUTBOUND] Buffer full for session=%s, message=%s dropped",
-					msg.SessionID, msg.MessageID)
+				log.Printf("[OUTBOUND] Worker %d: buffer full for session=%s, message=%s dropped",
+					workerID, msg.SessionID, msg.MessageID)
+			}
+
+			acked = append(acked, msg.StreamID)
+		}
+
+		// Batch ACK all processed messages
+		if len(acked) > 0 {
+			if err := stream.AckOutbound(ctx, acked...); err != nil {
+				log.Printf("[OUTBOUND] Worker %d: ACK error: %v (messages will be re-delivered)", workerID, err)
 			}
 		}
 	}
