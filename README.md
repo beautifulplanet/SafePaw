@@ -32,7 +32,7 @@ User ──► Gateway (WebSocket) ──► Redis Streams ──► Router ─�
 
 Every hop is a separate process. Every boundary speaks protobuf. Every service runs in its own container with the minimum privileges it needs.
 
-### Why It's Interesting (for Interviewers)
+### Skills Demonstrated
 
 | Skill | Evidence |
 |-------|----------|
@@ -58,7 +58,7 @@ Every hop is a separate process. Every boundary speaks protobuf. Every service r
 
 ### Honest Status
 
-Not everything works yet. Here's the truth:
+Not everything works yet. Current status:
 
 | Component | Status | What exists |
 |-----------|--------|-------------|
@@ -130,7 +130,7 @@ Not everything works yet. Here's the truth:
 | **HMAC-SHA256 stateless tokens** | No session store to scale. Tokens are verifiable by any Gateway instance without DB lookup |
 | **Image digests, not tags** | `redis:7-alpine` can be mutated. `redis:7-alpine@sha256:02f2cc...` cannot. Supply chain integrity. |
 | **Go `embed` for Wizard UI** | Single binary deployment — no nginx, no static file server, no CORS between API and UI |
-| **Multi-stage Docker builds** | Final image has no compiler, no source code, no build tools. Attacker finds nothing useful. |
+| **Multi-stage Docker builds** | Final image has no compiler, no source code, no build tools. No development artifacts remain in the runtime image. |
 
 ### Alternatives Considered (and Why We Didn't Use Them)
 
@@ -143,14 +143,14 @@ Every architecture is a set of tradeoffs. Here's what else we evaluated:
 | **Strength** | Language-per-service (Go gateway, TS agents), independent deploys, blast-radius isolation | Simpler to start, one deploy, no network serialization | Best of both: module boundaries without network hops |
 | **Weakness** | Network overhead, proto schema coordination, harder to debug distributed traces | One bad dependency crashes everything, language lock-in | Still single-deploy — can't scale agent separately from gateway |
 | **Why we chose it** | Agent plugins need the Node/TS ecosystem. Gateway needs Go's concurrency model. Forcing both into one language means one of them suffers. The proto boundary *is* the modularity contract. |
-| **When monolith wins** | If you're a solo dev who only needs one language. If your message volume fits in a single process. We might be that — but we're building for the case where we're not. |
+| **When monolith wins** | If the entire system can use one language and message volume fits in a single process. The microservices boundary exists here because the language split is a hard requirement, not a preference. |
 
 #### Why Redis Streams instead of Kafka, RabbitMQ, or NATS?
 
 | Broker | Strength | Weakness | Why not for us |
 |--------|----------|----------|----------------|
 | **Redis Streams** (chose this) | Already in stack for caching, consumer groups, lightweight, `XREADGROUP` with blocking | No built-in partitioning, single-node durability only (AOF) | — |
-| **Kafka** | Infinite retention, partitioned, battle-tested at trillion-message scale | ZooKeeper/KRaft overhead, 3-broker minimum, 1GB+ RAM baseline | Massive overkill for self-hosted. Our users run this on a $5 VPS. |
+| **Kafka** | Infinite retention, partitioned, battle-tested at trillion-message scale | ZooKeeper/KRaft overhead, 3-broker minimum, 1GB+ RAM baseline | Operational overhead exceeds the requirements of a self-hosted deployment. Minimum viable Kafka cluster uses more RAM than our entire stack. |
 | **RabbitMQ** | Mature, flexible routing (exchanges/queues), AMQP standard | Erlang runtime, message acknowledgment complexity, no stream replay | Routing flexibility we don't need — our routing is code, not broker config |
 | **NATS JetStream** | Lightweight Go binary, built-in clustering, good DX | Smaller ecosystem, less battle-tested persistence, fewer client libraries | Strong contender. If Redis wasn't already required for caching, NATS would win. Single-dependency preference tipped it. |
 
@@ -159,7 +159,7 @@ Every architecture is a set of tradeoffs. Here's what else we evaluated:
 | Language | Strength | Weakness | Why not for us |
 |----------|----------|----------|----------------|
 | **Go** (chose this) | goroutine-per-connection (cheap), stdlib HTTP/TLS, 15MB static binary, fast compile | No generics until recently, error handling verbose, no WASM story | — |
-| **Rust** | Zero-cost abstractions, memory safety without GC, `tokio` async is fast | Steep learning curve, slower iteration, 10× longer compile times | Interview signal: Go is readable in 5 minutes. Rust requires explaining lifetimes before the architecture. |
+| **Rust** | Zero-cost abstractions, memory safety without GC, `tokio` async is fast | Steep learning curve, slower iteration, 10× longer compile times | Go provides equivalent concurrency performance for this workload with significantly faster development velocity and lower onboarding cost for contributors. |
 | **Java/Kotlin** | Mature ecosystem, Spring/Ktor frameworks, JVM tuning tools | 200MB+ runtime, cold start, GC pauses at scale | Docker image goes from 15MB to 300MB. Self-hosted users care about resource footprint. |
 | **Node.js** | Same language as Agent, huge ecosystem, fast to prototype | Single-threaded event loop, WebSocket backpressure harder, no goroutines | Gateway needs 10K concurrent connections. Node can do it, but Go does it with less memory and no `cluster` module workarounds. |
 
@@ -168,7 +168,7 @@ Every architecture is a set of tradeoffs. Here's what else we evaluated:
 | Format | Strength | Weakness | Why not for us |
 |--------|----------|----------|----------------|
 | **Protobuf** (chose this) | Schema-enforced types, codegen for Go + TS, compact wire format | Schema evolution learning curve, `.proto` files to maintain | — |
-| **JSON** | Universal, human-readable, zero tooling needed | No type enforcement across languages, string field names on every message, larger on wire | The whole point is typed contracts between Go and TypeScript. JSON makes that a gentleman's agreement. |
+| **JSON** | Universal, human-readable, zero tooling needed | No type enforcement across languages, string field names on every message, larger on wire | Cross-language type safety is a core requirement. JSON relies on convention for field names and types; protobuf enforces them at compile time. |
 | **MessagePack** | Binary JSON — fast, compact, no schema needed | No codegen, no type enforcement, debugging requires tooling | Same problem as JSON but less readable. Speed gain doesn't matter at our message volume. |
 | **Avro** | Schema registry, great for Kafka ecosystems, schema evolution | Tied to Kafka/Confluent ecosystem, less tooling for Go | We're not using Kafka. Avro without the schema registry loses its main advantage. |
 
@@ -178,7 +178,7 @@ Every architecture is a set of tradeoffs. Here's what else we evaluated:
 |----------|----------|----------|----------------|
 | **WebSocket** (chose this) | Full-duplex, low overhead per message, universal browser support | Stateful connections (harder to load-balance), no built-in compression standard | — |
 | **gRPC-Web** | Typed RPCs, streaming, proto-native | Requires Envoy proxy for browser clients, not true bidirectional in browsers | Adds a proxy dependency. Our users shouldn't need to configure Envoy. |
-| **Server-Sent Events (SSE)** | Simple, HTTP-native, auto-reconnect | Server→client only — client→server needs separate HTTP POST | Chat is bidirectional. SSE + POST is two protocols pretending to be one. |
+| **Server-Sent Events (SSE)** | Simple, HTTP-native, auto-reconnect | Server→client only — client→server needs separate HTTP POST | Chat requires bidirectional communication. SSE + POST splits what should be one connection into two separate protocols with independent failure modes. |
 | **HTTP long-polling** | Works everywhere, no special protocols | Latency penalty on every poll cycle, wasted connections, higher server load | Acceptable as a fallback. Not acceptable as the primary transport for real-time chat. |
 
 ### Security Posture
@@ -195,7 +195,7 @@ Layer 6: Auth Middleware      → HMAC-SHA256 with constant-time comparison, con
 Layer 7: Pre-Commit Hook     → Blocks secrets, API keys, and credentials from entering git
 ```
 
-**What's NOT secured yet** (honesty > theater):
+**What's NOT secured yet:**
 - Agent containers don't have egress filtering (planned: iptables rules allowing only LLM API endpoints)
 - Auth tokens can't be revoked (planned: Redis-backed revocation cache synced from Postgres)
 - No intrusion detection or audit logging
@@ -1261,7 +1261,7 @@ The roadmap is driven by one principle: **prove the loop works before polishing 
 | **P4** | Integration smoke test | WebSocket client → Gateway → Router → Agent → back. If this passes, it works. |
 | **P5** | Auth revocation | Redis-backed cache, admin API to revoke tokens |
 | **P6** | Threat model doc | Honest assessment of attack surfaces and mitigations |
-| **P7** | Wizard UI | Only after the loop is "boringly reliable" |
+| **P7** | Wizard UI | Only after the core message loop is stable and tested |
 
 ---
 
@@ -1272,4 +1272,4 @@ Private — not yet open source.
 ---
 
 *Built with Go, TypeScript, Protocol Buffers, Redis Streams, and Docker.
-4 proto schemas. 2 languages sharing typed contracts. Security defaults, not security theater.*
+4 proto schemas. 2 languages sharing typed contracts. Security by default at every layer.*
