@@ -1,5 +1,5 @@
 // =============================================================
-// Safepaw Common Types
+// NOPEnclaw Common Types
 // =============================================================
 // Shared primitives used across all service boundaries.
 // Keep this lean — only put truly universal types here.
@@ -7,9 +7,9 @@
 
 syntax = "proto3";
 
-package safepaw.common;
+package nopenclaw.common;
 
-option go_package = "safepaw/shared/proto/gen/go/common";
+option go_package = "nopenclaw/shared/proto/gen/go/common";
 
 // Timestamp in UTC (ISO 8601 compatible)
 message Timestamp {

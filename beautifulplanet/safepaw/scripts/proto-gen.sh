@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# Safepaw Protobuf Compilation Script
+# NOPEnclaw Protobuf Compilation Script
 # =============================================================
 # Compiles .proto files into Go and TypeScript bindings.
 #
@@ -22,7 +22,7 @@ PROTO_DIR="$PROJECT_ROOT/shared/proto"
 GEN_GO_DIR="$PROTO_DIR/gen/go"
 GEN_TS_DIR="$PROTO_DIR/gen/ts"
 
-echo "🔧 Safepaw Proto Compiler"
+echo "🔧 NOPEnclaw Proto Compiler"
 echo "========================="
 
 # Check prerequisites

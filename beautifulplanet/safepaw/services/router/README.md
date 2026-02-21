@@ -1,9 +1,9 @@
-# Safepaw Router (Go)
+# NOPEnclaw Router (Go)
 
 The message routing engine that reads from Redis and dispatches to the correct Agent.
 
 ## Responsibilities
-- Consume messages from `safepaw_inbound` Redis Stream
+- Consume messages from `nopenclaw_inbound` Redis Stream
 - Determine the target channel/agent based on message metadata
 - Route messages to the appropriate Agent service
 - Handle dead-letter routing for undeliverable messages

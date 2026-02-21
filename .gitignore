@@ -1,7 +1,7 @@
 # NOPEnclaw Root .gitignore
 # ===========================
 # This file protects the TOP-LEVEL repo from accidentally committing
-# reference code, OS junk, or anything outside the safepaw project.
+# reference code, OS junk, or anything outside the NOPEnclaw project.
 
 # 1. Third-party reference repos (READ-ONLY, never commit)
 openclaw-reference/

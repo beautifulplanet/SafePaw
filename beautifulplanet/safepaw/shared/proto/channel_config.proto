@@ -1,5 +1,5 @@
 // =============================================================
-// Safepaw Channel Configuration Schema
+// NOPEnclaw Channel Configuration Schema
 // =============================================================
 // Each messaging platform (Discord, Telegram, Slack, etc.)
 // is a "channel." This schema defines how each channel is
@@ -11,9 +11,9 @@
 
 syntax = "proto3";
 
-package safepaw.channel;
+package nopenclaw.channel;
 
-option go_package = "safepaw/shared/proto/gen/go/channel";
+option go_package = "nopenclaw/shared/proto/gen/go/channel";
 
 import "common.proto";
 
@@ -54,8 +54,8 @@ message ChannelConfig {
   map<string, bool> features     = 10;  // Toggleable features per channel
 
   // Metadata
-  safepaw.common.Timestamp created_at = 11;
-  safepaw.common.Timestamp updated_at = 12;
+  nopenclaw.common.Timestamp created_at = 11;
+  nopenclaw.common.Timestamp updated_at = 12;
 }
 
 // List of all configured channels
