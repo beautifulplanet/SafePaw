@@ -13,15 +13,32 @@ The **single source of truth** for all data structures flowing between services.
 
 ## Compilation
 
-Run from the project root:
+### Local (Windows)
+```powershell
+.\scripts\proto-gen.ps1
+```
 
+### Local (Linux/macOS)
 ```bash
 ./scripts/proto-gen.sh
 ```
 
-This generates:
-- **Go** bindings → `shared/proto/gen/go/`
-- **TypeScript** bindings → `shared/proto/gen/ts/`
+### Docker (CI — no local tools needed)
+```bash
+docker build -f shared/proto/Dockerfile.protoc --output shared/proto/gen .
+```
+
+### Prerequisites (local only)
+```bash
+# protoc v29+ — https://github.com/protocolbuffers/protobuf/releases
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+npm install -g ts-proto
+```
+
+## Generated Output
+
+- **Go** bindings → `shared/proto/gen/go/` (module: `nopenclaw/proto`)
+- **TypeScript** bindings → `shared/proto/gen/ts/` (package: `@nopenclaw/proto`)
 
 ## Rules
 
@@ -35,4 +52,6 @@ This generates:
 - [x] `message.proto` defined
 - [x] `user.proto` defined
 - [x] `channel_config.proto` defined
-- [ ] Compilation script working
+- [x] Compilation script working (Go + TypeScript)
+- [x] Go bindings compile cleanly
+- [x] Docker-based CI generation

@@ -10,7 +10,7 @@ syntax = "proto3";
 
 package nopenclaw.user;
 
-option go_package = "nopenclaw/shared/proto/gen/go/user";
+option go_package = "nopenclaw/proto/user";
 
 import "common.proto";
 

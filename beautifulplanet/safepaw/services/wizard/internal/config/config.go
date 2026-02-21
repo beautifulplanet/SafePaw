@@ -1,0 +1,91 @@
+// =============================================================
+// NOPEnclaw Setup Wizard — Configuration
+// =============================================================
+// All settings come from env vars. On first launch, if no
+// WIZARD_ADMIN_PASSWORD is set, we generate a random one and
+// print it to stdout (once). This ensures the wizard is never
+// accidentally open to the network.
+// =============================================================
+
+package config
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"strconv"
+)
+
+// Config holds all wizard configuration.
+type Config struct {
+	// Server
+	Port int
+
+	// Security
+	AdminPassword  string // Required — auto-generated if not set
+	AllowedOrigins []string
+
+	// Docker
+	DockerHost string // Usually unix:///var/run/docker.sock or npipe:////./pipe/docker_engine
+
+	// Paths
+	ComposeFilePath string // Path to the project's docker-compose.yml
+	EnvFilePath     string // Path to the .env file
+}
+
+// Load reads configuration from environment variables.
+func Load() (*Config, error) {
+	cfg := &Config{
+		Port:            getEnvInt("WIZARD_PORT", 9090),
+		AllowedOrigins:  []string{"http://localhost:9090"},
+		DockerHost:      getEnv("DOCKER_HOST", defaultDockerHost()),
+		ComposeFilePath: getEnv("COMPOSE_FILE_PATH", "/app/docker-compose.yml"),
+		EnvFilePath:     getEnv("ENV_FILE_PATH", "/app/.env"),
+	}
+
+	// Admin password: use provided or generate a secure random one
+	cfg.AdminPassword = os.Getenv("WIZARD_ADMIN_PASSWORD")
+	if cfg.AdminPassword == "" {
+		generated, err := generateSecurePassword(24)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate admin password: %w", err)
+		}
+		cfg.AdminPassword = generated
+	}
+
+	return cfg, nil
+}
+
+// generateSecurePassword creates a cryptographically random hex string.
+func generateSecurePassword(byteLength int) (string, error) {
+	b := make([]byte, byteLength)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+// defaultDockerHost returns the platform-appropriate Docker socket path.
+func defaultDockerHost() string {
+	if _, err := os.Stat(`\\.\pipe\docker_engine`); err == nil {
+		return "npipe:////./pipe/docker_engine"
+	}
+	return "unix:///var/run/docker.sock"
+}

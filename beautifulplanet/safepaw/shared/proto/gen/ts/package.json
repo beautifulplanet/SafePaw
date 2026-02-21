@@ -1,0 +1,17 @@
+{
+  "name": "@nopenclaw/proto",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generated protobuf types for NOPEnclaw",
+  "main": "message.ts",
+  "types": "message.ts",
+  "exports": {
+    "./common": "./common.ts",
+    "./message": "./message.ts",
+    "./user": "./user.ts",
+    "./channel": "./channel_config.ts"
+  },
+  "files": [
+    "*.ts"
+  ]
+}

@@ -53,8 +53,11 @@ coverage/
 *.so
 *.dylib
 
-# 4b. Generated Protobuf Bindings (recompile from .proto source)
-shared/proto/gen/
+# 4b. Generated Protobuf Bindings
+# We CHECK IN generated code so:
+#   - git clone gives you a buildable project immediately
+#   - CI can verify gen is in sync: proto-gen.sh && git diff --exit-code
+# To regenerate: ./scripts/proto-gen.sh (or .ps1 on Windows)
 
 # 5. Database & State
 *.sqlite

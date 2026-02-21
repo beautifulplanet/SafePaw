@@ -9,7 +9,7 @@ syntax = "proto3";
 
 package nopenclaw.common;
 
-option go_package = "nopenclaw/shared/proto/gen/go/common";
+option go_package = "nopenclaw/proto/common";
 
 // Timestamp in UTC (ISO 8601 compatible)
 message Timestamp {

@@ -1,0 +1,43 @@
+FROM golang:1.26-alpine AS base
+
+# Install protoc
+RUN apk add --no-cache protobuf protobuf-dev nodejs npm
+
+# Install Go protoc plugin
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+
+# Install TypeScript protoc plugin
+RUN npm install -g ts-proto
+
+WORKDIR /workspace
+
+# Copy only proto files
+COPY shared/proto/*.proto /workspace/shared/proto/
+
+# Create output dirs
+RUN mkdir -p /workspace/shared/proto/gen/go /workspace/shared/proto/gen/ts
+
+# Generate Go
+RUN protoc \
+    --proto_path=/workspace/shared/proto \
+    --go_out=/workspace/shared/proto/gen/go \
+    --go_opt=module=nopenclaw/proto \
+    /workspace/shared/proto/*.proto
+
+# Generate TypeScript
+RUN protoc \
+    --proto_path=/workspace/shared/proto \
+    --plugin=protoc-gen-ts_proto=$(which protoc-gen-ts_proto) \
+    --ts_proto_out=/workspace/shared/proto/gen/ts \
+    --ts_proto_opt=esModuleInterop=true \
+    --ts_proto_opt=outputEncodeMethods=false \
+    --ts_proto_opt=outputJsonMethods=true \
+    /workspace/shared/proto/*.proto
+
+# Init Go module and verify compilation
+WORKDIR /workspace/shared/proto/gen/go
+RUN go mod init nopenclaw/proto && go mod tidy && go build ./...
+
+# Output stage — just the generated files
+FROM scratch AS output
+COPY --from=base /workspace/shared/proto/gen/ /gen/

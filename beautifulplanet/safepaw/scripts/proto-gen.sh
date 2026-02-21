@@ -1,17 +1,16 @@
 #!/bin/bash
 # =============================================================
-# NOPEnclaw Protobuf Compilation Script
+# NOPEnclaw Protobuf Compilation Script (Linux/macOS)
 # =============================================================
 # Compiles .proto files into Go and TypeScript bindings.
 #
+# Usage:
+#   ./scripts/proto-gen.sh
+#
 # Prerequisites:
 #   - protoc (Protocol Buffer compiler)
-#   - protoc-gen-go (Go plugin)
-#   - protoc-gen-ts (TypeScript plugin via ts-proto or protobuf-ts)
-#
-# Install (inside devcontainer):
-#   go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-#   npm install -g ts-proto
+#   - protoc-gen-go: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+#   - ts-proto:      npm install -g ts-proto
 # =============================================================
 
 set -euo pipefail
@@ -22,33 +21,40 @@ PROTO_DIR="$PROJECT_ROOT/shared/proto"
 GEN_GO_DIR="$PROTO_DIR/gen/go"
 GEN_TS_DIR="$PROTO_DIR/gen/ts"
 
-echo "🔧 NOPEnclaw Proto Compiler"
+echo "NOPEnclaw Proto Compiler"
 echo "========================="
 
 # Check prerequisites
-if ! command -v protoc &> /dev/null; then
-    echo "❌ protoc not found. Install: https://grpc.io/docs/protoc-installation/"
+missing=()
+command -v protoc &>/dev/null || missing+=("protoc")
+command -v protoc-gen-go &>/dev/null || missing+=("protoc-gen-go")
+command -v protoc-gen-ts_proto &>/dev/null || missing+=("protoc-gen-ts_proto")
+
+if [ ${#missing[@]} -gt 0 ]; then
+    echo "ERROR: Missing prerequisites: ${missing[*]}"
     exit 1
 fi
 
 # Create output directories
 mkdir -p "$GEN_GO_DIR" "$GEN_TS_DIR"
 
-# Clean previous generated files
-rm -rf "${GEN_GO_DIR:?}/"* "${GEN_TS_DIR:?}/"*
+# Clean previous generated files (keep go.mod/go.sum/package.json)
+find "$GEN_GO_DIR" -name "*.pb.go" -delete 2>/dev/null || true
+find "$GEN_TS_DIR" -name "*.ts" -delete 2>/dev/null || true
 
-echo "📦 Compiling .proto files..."
+PROTO_FILES=("$PROTO_DIR"/*.proto)
+echo "Found ${#PROTO_FILES[@]} .proto files"
 
 # Compile Go bindings
-echo "  → Go bindings..."
+echo "  -> Go bindings..."
 protoc \
     --proto_path="$PROTO_DIR" \
     --go_out="$GEN_GO_DIR" \
-    --go_opt=paths=source_relative \
-    "$PROTO_DIR"/*.proto
+    --go_opt=module=nopenclaw/proto \
+    "${PROTO_FILES[@]}"
 
 # Compile TypeScript bindings (using ts-proto for better TS ergonomics)
-echo "  → TypeScript bindings..."
+echo "  -> TypeScript bindings..."
 protoc \
     --proto_path="$PROTO_DIR" \
     --plugin=protoc-gen-ts_proto="$(which protoc-gen-ts_proto)" \
@@ -56,12 +62,22 @@ protoc \
     --ts_proto_opt=esModuleInterop=true \
     --ts_proto_opt=outputEncodeMethods=false \
     --ts_proto_opt=outputJsonMethods=true \
-    "$PROTO_DIR"/*.proto
+    "${PROTO_FILES[@]}"
 
+# Verify Go compiles
+echo "  -> Verifying Go compilation..."
+pushd "$GEN_GO_DIR" >/dev/null
+if [ ! -f go.mod ]; then
+    go mod init nopenclaw/proto
+    go mod tidy
+fi
+go build ./...
+popd >/dev/null
+
+# Summary
+GO_COUNT=$(find "$GEN_GO_DIR" -name "*.pb.go" | wc -l)
+TS_COUNT=$(find "$GEN_TS_DIR" -name "*.ts" | wc -l)
 echo ""
-echo "✅ Proto compilation complete!"
-echo "   Go:         $GEN_GO_DIR/"
-echo "   TypeScript: $GEN_TS_DIR/"
-echo ""
-echo "📋 Generated files:"
-find "$GEN_GO_DIR" "$GEN_TS_DIR" -type f 2>/dev/null | sed 's|'"$PROJECT_ROOT"'/||'
+echo "Proto compilation complete!"
+echo "  Go:         $GO_COUNT files in shared/proto/gen/go/"
+echo "  TypeScript: $TS_COUNT files in shared/proto/gen/ts/"

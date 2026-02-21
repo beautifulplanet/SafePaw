@@ -13,7 +13,7 @@ syntax = "proto3";
 
 package nopenclaw.channel;
 
-option go_package = "nopenclaw/shared/proto/gen/go/channel";
+option go_package = "nopenclaw/proto/channel";
 
 import "common.proto";
 
