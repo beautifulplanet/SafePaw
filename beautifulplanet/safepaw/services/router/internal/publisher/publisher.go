@@ -34,6 +34,7 @@ type Publisher struct {
 	client         *goredis.Client
 	outboundStream string
 	maxLen         int64
+	maxOutbound    int // Max serialized message size in bytes (0 = no limit)
 }
 
 // NewPublisher creates a publisher that shares the given Redis client.
@@ -47,7 +48,7 @@ func NewPublisher(client *goredis.Client, outboundStream string) *Publisher {
 
 // NewPublisherWithConnection creates a Publisher with its own Redis connection.
 // Use this when the publisher needs an independent connection pool.
-func NewPublisherWithConnection(addr, password string, db int, outboundStream string) (*Publisher, error) {
+func NewPublisherWithConnection(addr, password string, db int, outboundStream string, maxOutbound int) (*Publisher, error) {
 	client := goredis.NewClient(&goredis.Options{
 		Addr:         addr,
 		Password:     password,
@@ -75,6 +76,7 @@ func NewPublisherWithConnection(addr, password string, db int, outboundStream st
 		client:         client,
 		outboundStream: outboundStream,
 		maxLen:         10000,
+		maxOutbound:    maxOutbound,
 	}, nil
 }
 
@@ -84,6 +86,13 @@ func (p *Publisher) Publish(ctx context.Context, msg *OutboundMessage) (string, 
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal outbound message: %w", err)
+	}
+
+	// Reject oversized messages before writing to Redis.
+	// Without this, a runaway agent response could write 50MB to the stream
+	// and the Gateway would try to send it over a WebSocket.
+	if p.maxOutbound > 0 && len(data) > p.maxOutbound {
+		return "", fmt.Errorf("outbound message too large: %d bytes (max %d)", len(data), p.maxOutbound)
 	}
 
 	result, err := p.client.XAdd(ctx, &goredis.XAddArgs{

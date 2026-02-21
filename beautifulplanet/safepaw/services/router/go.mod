@@ -2,8 +2,6 @@ module nopenclaw/router
 
 go 1.25.0
 
-replace nopenclaw/proto => ../../shared/proto/gen/go
-
 require github.com/redis/go-redis/v9 v9.18.0
 
 require (

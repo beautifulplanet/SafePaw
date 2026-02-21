@@ -215,19 +215,48 @@ func RequestID(next http.Handler) http.Handler {
 }
 
 // ================================================================
+// Layer 5: Strip Auth Headers (when auth is disabled)
+// ================================================================
+
+// StripAuthHeaders removes X-Auth-Subject and X-Auth-Scope from incoming
+// requests. Without this, when AUTH_ENABLED=false, any client can send
+// these headers and ws/handler.go will treat them as authenticated identity.
+func StripAuthHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Del("X-Auth-Subject")
+		r.Header.Del("X-Auth-Scope")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// ================================================================
 // Helpers
 // ================================================================
 
 // extractIP gets the real client IP, handling proxies.
+// Only trusts X-Real-IP from loopback addresses (reverse proxy on same host).
+// Without this check, any client can spoof X-Real-IP to bypass rate limiting.
 func extractIP(r *http.Request) string {
-	// Check X-Real-IP first (set by nginx/reverse proxy)
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	// Fall back to RemoteAddr (strip port)
+	// Only trust proxy headers from loopback (nginx/caddy on same host)
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
 	}
+
+	if isLoopback(host) {
+		if ip := r.Header.Get("X-Real-IP"); ip != "" {
+			return ip
+		}
+	}
+
 	return host
+}
+
+// isLoopback checks if an IP is a loopback address (127.x.x.x or ::1).
+func isLoopback(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback()
 }

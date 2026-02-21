@@ -10,10 +10,7 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /build
 
-# Copy shared proto module first (needed by replace directive)
-COPY shared/proto/gen/go/ /shared/proto/gen/go/
-
-# Copy dependency files (layer caching)
+# Copy dependency files first (layer caching)
 COPY services/router/go.mod services/router/go.sum* ./
 RUN go mod download 2>/dev/null; true
 

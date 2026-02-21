@@ -30,11 +30,13 @@ type Config struct {
 	ConsumerName  string // This instance's name within the group
 
 	// Processing
-	BatchSize    int64         // Max messages per XREADGROUP call
-	BlockTime    time.Duration // How long to block waiting for messages
-	AckTimeout   time.Duration // Max time to process before message is considered stuck
-	MaxRetries   int           // Max times a message can be retried after failure
-	WorkerCount  int           // Number of parallel message processing workers
+	BatchSize       int64         // Max messages per XREADGROUP call
+	BlockTime       time.Duration // How long to block waiting for messages
+	AckTimeout      time.Duration // Max time to process before message is considered stuck
+	MaxRetries      int           // Max times a message can be retried after failure
+	WorkerCount     int           // Number of parallel message processing workers
+	MaxMessageSize  int           // Max byte size of a single message payload (prevents OOM)
+	MaxOutboundSize int           // Max byte size of outbound message (prevents oversized writes)
 
 	// Health
 	HealthPort int // HTTP port for health check endpoint
@@ -76,7 +78,9 @@ func Load() (*Config, error) {
 		BlockTime:   time.Duration(envInt("BLOCK_TIME_MS", 5000)) * time.Millisecond,
 		AckTimeout:  time.Duration(envInt("ACK_TIMEOUT_SEC", 30)) * time.Second,
 		MaxRetries:  envInt("MAX_RETRIES", 3),
-		WorkerCount: envInt("WORKER_COUNT", 4),
+		WorkerCount:     envInt("WORKER_COUNT", 4),
+		MaxMessageSize:  envInt("MAX_MESSAGE_SIZE", 65536),  // 64KB — matches Gateway's WSMaxMessageSize
+		MaxOutboundSize: envInt("MAX_OUTBOUND_SIZE", 65536), // 64KB — prevents oversized Redis writes
 
 		// Health
 		HealthPort: envInt("HEALTH_PORT", 8081),

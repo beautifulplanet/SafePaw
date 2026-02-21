@@ -69,6 +69,7 @@ func main() {
 		cfg.RedisPassword,
 		cfg.RedisDB,
 		cfg.OutboundStream,
+		cfg.MaxOutboundSize,
 	)
 	if err != nil {
 		log.Fatalf("[FATAL] Publisher creation failed: %v", err)

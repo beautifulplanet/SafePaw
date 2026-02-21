@@ -167,7 +167,7 @@ func (c *Consumer) readLoop(ctx context.Context) {
 
 		for _, stream := range results {
 			for _, xmsg := range stream.Messages {
-				msg, err := parseMessage(xmsg)
+				msg, err := parseMessage(xmsg, c.cfg.MaxMessageSize)
 				if err != nil {
 					log.Printf("[CONSUMER] Malformed message %s: %v (acking to skip)", xmsg.ID, err)
 					// ACK malformed messages so they don't clog the pending list
@@ -279,8 +279,10 @@ func (c *Consumer) reclaimPending(ctx context.Context) {
 		if p.RetryCount >= int64(c.cfg.MaxRetries) {
 			log.Printf("[RECLAIMER] Message %s exceeded max retries (%d/%d) — dead-lettering",
 				p.ID, p.RetryCount, c.cfg.MaxRetries)
-			// ACK to remove from pending, log for manual investigation
-			// In production, this would go to a dead-letter stream
+			// Write to dead-letter stream for manual investigation / replay.
+			// Without this, failed messages silently disappear.
+			c.deadLetter(ctx, p.ID, p.RetryCount)
+			// ACK to remove from pending list (it now lives in the DLQ)
 			c.ack(ctx, p.ID)
 			continue
 		}
@@ -300,7 +302,7 @@ func (c *Consumer) reclaimPending(ctx context.Context) {
 		}
 
 		for _, xmsg := range claimed {
-			msg, err := parseMessage(xmsg)
+			msg, err := parseMessage(xmsg, c.cfg.MaxMessageSize)
 			if err != nil {
 				log.Printf("[RECLAIMER] Malformed reclaimed message %s: %v (acking)", xmsg.ID, err)
 				c.ack(ctx, xmsg.ID)
@@ -326,6 +328,40 @@ func (c *Consumer) ack(ctx context.Context, streamID string) {
 	}
 }
 
+// deadLetter writes a failed message to the dead-letter stream.
+// This preserves the original message for debugging and manual replay.
+// The DLQ stream name is the inbound stream + ":dlq" suffix.
+func (c *Consumer) deadLetter(ctx context.Context, streamID string, retryCount int64) {
+	dlqStream := c.cfg.InboundStream + ":dlq"
+
+	// Read the original message data so we can copy it to the DLQ
+	msgs, err := c.client.XRange(ctx, c.cfg.InboundStream, streamID, streamID).Result()
+	if err != nil || len(msgs) == 0 {
+		log.Printf("[DLQ] Could not read original message %s for dead-lettering: %v", streamID, err)
+		return
+	}
+
+	original := msgs[0]
+	err = c.client.XAdd(ctx, &goredis.XAddArgs{
+		Stream: dlqStream,
+		MaxLen: 1000,  // Cap DLQ — if 1000 messages are failing, something is very wrong
+		Approx: true,
+		Values: map[string]interface{}{
+			"data":            original.Values["data"],
+			"original_id":     streamID,
+			"retry_count":     retryCount,
+			"consumer":        c.cfg.ConsumerName,
+			"dead_lettered_at": time.Now().Unix(),
+		},
+	}).Err()
+
+	if err != nil {
+		log.Printf("[DLQ] Failed to write message %s to %s: %v", streamID, dlqStream, err)
+	} else {
+		log.Printf("[DLQ] Message %s written to %s (retries=%d)", streamID, dlqStream, retryCount)
+	}
+}
+
 // HealthCheck verifies Redis is reachable.
 func (c *Consumer) HealthCheck(ctx context.Context) error {
 	return c.client.Ping(ctx).Err()
@@ -337,10 +373,17 @@ func (c *Consumer) Close() error {
 }
 
 // parseMessage converts a Redis stream message into our Message type.
-func parseMessage(xmsg goredis.XMessage) (*Message, error) {
+// maxSize limits the payload to prevent OOM from oversized messages.
+func parseMessage(xmsg goredis.XMessage, maxSize int) (*Message, error) {
 	dataStr, ok := xmsg.Values["data"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'data' field")
+	}
+
+	// Guard against oversized payloads (e.g. compromised publisher, Redis corruption).
+	// Without this, a 100MB message would allocate 100MB+ during unmarshal.
+	if maxSize > 0 && len(dataStr) > maxSize {
+		return nil, fmt.Errorf("message payload too large: %d bytes (max %d)", len(dataStr), maxSize)
 	}
 
 	var msg Message

@@ -118,6 +118,10 @@ func main() {
 		handler = middleware.AuthRequired(auth, "ws", handler)
 	} else {
 		log.Println("[AUTH] Authentication DISABLED (set AUTH_ENABLED=true for production)")
+		// Strip auth identity headers that clients could spoof when auth is off.
+		// Without this, any client can send X-Auth-Subject: admin and ws/handler.go
+		// will trust it as an authenticated identity.
+		handler = middleware.StripAuthHeaders(handler)
 	}
 
 	handler = middleware.RateLimit(rateLimiter, handler)
@@ -152,8 +156,7 @@ func main() {
 			// ---- TLS Mode ----
 			// Configure TLS with modern, secure settings
 			server.TLSConfig = &tls.Config{
-				MinVersion:               tls.VersionTLS12,
-				PreferServerCipherSuites: true,
+			MinVersion: tls.VersionTLS12,
 				CurvePreferences: []tls.CurveID{
 					tls.X25519, // Fastest, most secure
 					tls.CurveP256,
