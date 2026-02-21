@@ -99,12 +99,14 @@ func (h *Hub) Count() int64 {
 
 // Connection wraps a single WebSocket connection.
 type Connection struct {
-	SessionID string
-	ws        *websocket.Conn
-	send      chan []byte // Outbound message buffer
-	hub       *Hub
-	stream    *redisStream.StreamClient
-	cfg       *config.Config
+	SessionID   string
+	AuthSubject string // Authenticated user/service ID (empty if auth disabled)
+	AuthScope   string // Token scope ("ws", "admin", etc.)
+	ws          *websocket.Conn
+	send        chan []byte // Outbound message buffer
+	hub         *Hub
+	stream      *redisStream.StreamClient
+	cfg         *config.Config
 }
 
 // ================================================================
@@ -144,15 +146,21 @@ func Handler(hub *Hub, stream *redisStream.StreamClient, cfg *config.Config) htt
 			return
 		}
 
+		// Extract authenticated identity (set by auth middleware if enabled)
+		authSubject := r.Header.Get("X-Auth-Subject")
+		authScope := r.Header.Get("X-Auth-Scope")
+
 		// Create session
 		sessionID := uuid.New().String()
 		conn := &Connection{
-			SessionID: sessionID,
-			ws:        ws,
-			send:      make(chan []byte, 256), // Buffer up to 256 outbound messages
-			hub:       hub,
-			stream:    stream,
-			cfg:       cfg,
+			SessionID:   sessionID,
+			AuthSubject: authSubject,
+			AuthScope:   authScope,
+			ws:          ws,
+			send:        make(chan []byte, 256), // Buffer up to 256 outbound messages
+			hub:         hub,
+			stream:      stream,
+			cfg:         cfg,
 		}
 
 		// Register connection
@@ -164,15 +172,20 @@ func Handler(hub *Hub, stream *redisStream.StreamClient, cfg *config.Config) htt
 			return
 		}
 
-		// Send session ID to the client so they can identify themselves
+		// Send session ID (and auth info if available) to the client
 		welcome := map[string]string{
 			"type":       "session_init",
 			"session_id": sessionID,
 		}
+		if authSubject != "" {
+			welcome["auth_subject"] = authSubject
+			welcome["auth_scope"] = authScope
+		}
 		welcomeJSON, _ := json.Marshal(welcome)
 		ws.WriteMessage(websocket.TextMessage, welcomeJSON)
 
-		log.Printf("[WS] Client connected: session=%s remote=%s", sessionID, r.RemoteAddr)
+		log.Printf("[WS] Client connected: session=%s auth=%s scope=%s remote=%s",
+			sessionID, authSubject, authScope, r.RemoteAddr)
 
 		// Start read and write pumps as separate goroutines
 		go conn.writePump()
@@ -235,11 +248,17 @@ func (c *Connection) readPump() {
 		}
 
 		// Build the inbound message for Redis
+		// Use authenticated identity if available, fall back to client-provided
+		senderID := incoming.SenderID
+		if c.AuthSubject != "" {
+			senderID = c.AuthSubject // Authenticated identity takes priority
+		}
+
 		inbound := &redisStream.InboundMessage{
 			MessageID:      uuid.New().String(),
 			SessionID:      c.SessionID,
 			Channel:        incoming.Channel,
-			SenderID:       incoming.SenderID,
+			SenderID:       senderID,
 			SenderPlatform: incoming.SenderPlatform,
 			ContentType:    contentType,
 			Content:        incoming.Content,

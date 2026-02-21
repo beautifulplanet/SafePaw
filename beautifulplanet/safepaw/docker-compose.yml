@@ -25,6 +25,14 @@ services:
       GATEWAY_PORT: "8080"
       REDIS_INBOUND_STREAM: "nopenclaw_inbound"
       REDIS_OUTBOUND_STREAM: "nopenclaw_outbound"
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_DEFAULT_TTL_HOURS: ${AUTH_DEFAULT_TTL_HOURS:-24}
+      AUTH_MAX_TTL_HOURS: ${AUTH_MAX_TTL_HOURS:-168}
+      TLS_ENABLED: ${TLS_ENABLED:-false}
+      TLS_CERT_FILE: ${TLS_CERT_FILE:-/certs/tls.crt}
+      TLS_KEY_FILE: ${TLS_KEY_FILE:-/certs/tls.key}
+      TLS_PORT: ${TLS_PORT:-8443}
     ports:
       # Gateway is the ONLY service exposed to the host
       # This is intentional — it's the front door

@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -103,8 +104,22 @@ func main() {
 	mux.Handle("/ws", wsHandler)
 
 	// Apply middleware (outermost first):
-	// Request → SecurityHeaders → RequestID → OriginCheck → RateLimit → Handler
+	// Request → SecurityHeaders → RequestID → OriginCheck → RateLimit → [Auth] → Handler
 	var handler http.Handler = mux
+
+	// Auth middleware (only if enabled — disabled in dev by default)
+	if cfg.AuthEnabled {
+		auth, err := middleware.NewAuthenticator(cfg.AuthSecret, cfg.AuthDefaultTTL, cfg.AuthMaxTTL)
+		if err != nil {
+			log.Fatalf("[FATAL] Auth setup failed: %v", err)
+		}
+		log.Printf("[AUTH] Authentication ENABLED (default TTL=%v, max TTL=%v)",
+			cfg.AuthDefaultTTL, cfg.AuthMaxTTL)
+		handler = middleware.AuthRequired(auth, "ws", handler)
+	} else {
+		log.Println("[AUTH] Authentication DISABLED (set AUTH_ENABLED=true for production)")
+	}
+
 	handler = middleware.RateLimit(rateLimiter, handler)
 	handler = middleware.OriginCheck(cfg.AllowedOrigins, handler)
 	handler = middleware.RequestID(handler)
@@ -133,9 +148,42 @@ func main() {
 
 	// Start server in background
 	go func() {
-		log.Printf("[SERVER] Listening on :%d", cfg.Port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("[FATAL] Server error: %v", err)
+		if cfg.TLSEnabled {
+			// ---- TLS Mode ----
+			// Configure TLS with modern, secure settings
+			server.TLSConfig = &tls.Config{
+				MinVersion:               tls.VersionTLS12,
+				PreferServerCipherSuites: true,
+				CurvePreferences: []tls.CurveID{
+					tls.X25519, // Fastest, most secure
+					tls.CurveP256,
+				},
+				CipherSuites: []uint16{
+					// TLS 1.3 cipher suites are automatic (can't configure them)
+					// These are TLS 1.2 fallbacks (strong only):
+					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+					tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+					tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+					tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+					tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+					tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				},
+			}
+
+			// Override port for TLS
+			server.Addr = fmt.Sprintf(":%d", cfg.TLSPort)
+			log.Printf("[SERVER] Listening on :%d (TLS ENABLED — cert=%s)",
+				cfg.TLSPort, cfg.TLSCertFile)
+
+			if err := server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("[FATAL] TLS server error: %v", err)
+			}
+		} else {
+			// ---- Plain HTTP Mode (dev only) ----
+			log.Printf("[SERVER] Listening on :%d (TLS disabled — dev mode)", cfg.Port)
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("[FATAL] Server error: %v", err)
+			}
 		}
 	}()
 

@@ -45,6 +45,18 @@ type Config struct {
 
 	// Security
 	AllowedOrigins []string
+
+	// Authentication
+	AuthSecret     []byte        // HMAC-SHA256 signing secret (min 32 bytes)
+	AuthEnabled    bool          // If false, all connections are anonymous (dev only)
+	AuthDefaultTTL time.Duration // Default token lifetime
+	AuthMaxTTL     time.Duration // Maximum token lifetime
+
+	// TLS
+	TLSEnabled  bool   // If true, gateway serves HTTPS/WSS
+	TLSCertFile string // Path to TLS certificate file (PEM)
+	TLSKeyFile  string // Path to TLS private key file (PEM)
+	TLSPort     int    // HTTPS port (default: 8443)
 }
 
 // Load reads config from environment variables with safe defaults.
@@ -82,6 +94,33 @@ func Load() (*Config, error) {
 
 		// Security — empty = reject all in production (dev allows localhost)
 		AllowedOrigins: []string{}, // Set via ALLOWED_ORIGINS env var
+
+		// Auth — env-driven, disabled by default for safe local dev
+		AuthEnabled:    envStr("AUTH_ENABLED", "false") == "true",
+		AuthDefaultTTL: time.Duration(envInt("AUTH_DEFAULT_TTL_HOURS", 24)) * time.Hour,
+		AuthMaxTTL:     time.Duration(envInt("AUTH_MAX_TTL_HOURS", 168)) * time.Hour, // 7 days
+
+		// TLS — disabled by default (dev uses plain HTTP)
+		TLSEnabled:  envStr("TLS_ENABLED", "false") == "true",
+		TLSCertFile: envStr("TLS_CERT_FILE", "/certs/tls.crt"),
+		TLSKeyFile:  envStr("TLS_KEY_FILE", "/certs/tls.key"),
+		TLSPort:     envInt("TLS_PORT", 8443),
+	}
+
+	// Load auth secret (required if auth is enabled)
+	authSecret := os.Getenv("AUTH_SECRET")
+	if cfg.AuthEnabled && authSecret == "" {
+		return nil, fmt.Errorf("AUTH_SECRET is required when AUTH_ENABLED=true (generate with: openssl rand -base64 48)")
+	}
+	if authSecret != "" {
+		cfg.AuthSecret = []byte(authSecret)
+	}
+
+	// Validate TLS config if enabled
+	if cfg.TLSEnabled {
+		if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
+			return nil, fmt.Errorf("TLS_CERT_FILE and TLS_KEY_FILE are required when TLS_ENABLED=true")
+		}
 	}
 
 	// Parse allowed origins if provided
