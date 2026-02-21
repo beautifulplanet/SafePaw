@@ -1,0 +1,21 @@
+# NOPEnclaw Root .gitignore
+# ===========================
+# This file protects the TOP-LEVEL repo from accidentally committing
+# reference code, OS junk, or anything outside the safepaw project.
+
+# 1. Third-party reference repos (READ-ONLY, never commit)
+openclaw-reference/
+
+# 2. OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 3. IDE workspace files at root level
+*.code-workspace
+.vscode/
+
+# 4. Temp/junk
+*.log
+*.tmp
+*.bak

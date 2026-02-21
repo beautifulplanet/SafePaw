@@ -1,0 +1,68 @@
+# =============================================================
+# Safepaw Docker Compose — Local Development
+# =============================================================
+# SECURITY NOTES:
+# 1. All passwords come from .env file (NEVER hardcode secrets)
+# 2. Copy .env.example → .env before first run
+# 3. Network is internal-only (no internet, no host exposure)
+# 4. Containers run as non-root where possible
+# 5. TODO: Pin images by SHA256 digest when Docker is running:
+#    docker pull redis:7-alpine && docker inspect --format='{{index .RepoDigests 0}}' redis:7-alpine
+#    Then replace "redis:7-alpine" with "redis@sha256:<digest>"
+# =============================================================
+
+services:
+  redis:
+    image: redis:7-alpine  # TODO: Pin to SHA256 digest (see notes above)
+    container_name: safepaw-redis
+    command: redis-server --requirepass "${REDIS_PASSWORD}" --appendonly yes --rename-command FLUSHALL "" --rename-command FLUSHDB "" --rename-command DEBUG ""
+    networks:
+      - safepaw-internal
+    # PORTS INTENTIONALLY NOT EXPOSED TO HOST — services connect via Docker network
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    # Resource limits prevent runaway containers from eating your 16GB RAM
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine  # TODO: Pin to SHA256 digest (see notes above)
+    container_name: safepaw-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    networks:
+      - safepaw-internal
+    # PORTS INTENTIONALLY NOT EXPOSED TO HOST — services connect via Docker network
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  safepaw-internal:
+    driver: bridge
+    internal: true  # Prevents containers from reaching the internet and vice versa
+
+volumes:
+  redis-data:
+  postgres-data:
