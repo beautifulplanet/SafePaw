@@ -4,12 +4,51 @@
 # SECURITY NOTES:
 # 1. All passwords come from .env file (NEVER hardcode secrets)
 # 2. Copy .env.example → .env before first run
-# 3. Network is internal-only (no internet, no host exposure)
+# 3. Internal network for service-to-service communication
 # 4. Containers run as non-root where possible
 # 5. Images pinned by SHA256 digest (supply-chain integrity)
+# 6. Gateway is the ONLY service with a host-exposed port
 # =============================================================
 
 services:
+  # ------------------------------------------------
+  # Gateway — WebSocket entry point (Go)
+  # ------------------------------------------------
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile
+    container_name: nopenclaw-gateway
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_ADDR: "redis:6379"
+      GATEWAY_PORT: "8080"
+      REDIS_INBOUND_STREAM: "nopenclaw_inbound"
+      REDIS_OUTBOUND_STREAM: "nopenclaw_outbound"
+    ports:
+      # Gateway is the ONLY service exposed to the host
+      # This is intentional — it's the front door
+      - "127.0.0.1:8080:8080"  # Bind to localhost ONLY (not 0.0.0.0)
+    networks:
+      - nopenclaw-internal
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ------------------------------------------------
+  # Redis — Message queue (Streams)
+  # ------------------------------------------------
   redis:
     image: redis:7-alpine@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
     container_name: nopenclaw-redis
@@ -60,7 +99,9 @@ services:
 networks:
   nopenclaw-internal:
     driver: bridge
-    internal: true  # Prevents containers from reaching the internet and vice versa
+    # internal: true removed — gateway needs to accept inbound connections
+    # Redis and Postgres have no ports exposed, so they're still unreachable
+    # from outside. The gateway is the ONLY exposed service (127.0.0.1:8080).
 
 volumes:
   redis-data:

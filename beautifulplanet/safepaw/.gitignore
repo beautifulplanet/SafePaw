@@ -46,6 +46,13 @@ env/
 .pytest_cache/
 coverage/
 
+# 4a. Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
 # 4b. Generated Protobuf Bindings (recompile from .proto source)
 shared/proto/gen/
 
