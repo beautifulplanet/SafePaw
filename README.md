@@ -131,6 +131,55 @@ Not everything works yet. Here's the truth:
 | **Go `embed` for Wizard UI** | Single binary deployment — no nginx, no static file server, no CORS between API and UI |
 | **Multi-stage Docker builds** | Final image has no compiler, no source code, no build tools. Attacker finds nothing useful. |
 
+### Alternatives Considered (and Why We Didn't Use Them)
+
+Every architecture is a set of tradeoffs. Here's what else we evaluated:
+
+#### Why microservices instead of a monolith?
+
+| | Microservices (chose this) | Monolith | Modular monolith |
+|---|---|---|---|
+| **Strength** | Language-per-service (Go gateway, TS agents), independent deploys, blast-radius isolation | Simpler to start, one deploy, no network serialization | Best of both: module boundaries without network hops |
+| **Weakness** | Network overhead, proto schema coordination, harder to debug distributed traces | One bad dependency crashes everything, language lock-in | Still single-deploy — can't scale agent separately from gateway |
+| **Why we chose it** | Agent plugins need the Node/TS ecosystem. Gateway needs Go's concurrency model. Forcing both into one language means one of them suffers. The proto boundary *is* the modularity contract. |
+| **When monolith wins** | If you're a solo dev who only needs one language. If your message volume fits in a single process. We might be that — but we're building for the case where we're not. |
+
+#### Why Redis Streams instead of Kafka, RabbitMQ, or NATS?
+
+| Broker | Strength | Weakness | Why not for us |
+|--------|----------|----------|----------------|
+| **Redis Streams** (chose this) | Already in stack for caching, consumer groups, lightweight, `XREADGROUP` with blocking | No built-in partitioning, single-node durability only (AOF) | — |
+| **Kafka** | Infinite retention, partitioned, battle-tested at trillion-message scale | ZooKeeper/KRaft overhead, 3-broker minimum, 1GB+ RAM baseline | Massive overkill for self-hosted. Our users run this on a $5 VPS. |
+| **RabbitMQ** | Mature, flexible routing (exchanges/queues), AMQP standard | Erlang runtime, message acknowledgment complexity, no stream replay | Routing flexibility we don't need — our routing is code, not broker config |
+| **NATS JetStream** | Lightweight Go binary, built-in clustering, good DX | Smaller ecosystem, less battle-tested persistence, fewer client libraries | Strong contender. If Redis wasn't already required for caching, NATS would win. Single-dependency preference tipped it. |
+
+#### Why Go for Gateway instead of Rust, Java, or Node.js?
+
+| Language | Strength | Weakness | Why not for us |
+|----------|----------|----------|----------------|
+| **Go** (chose this) | goroutine-per-connection (cheap), stdlib HTTP/TLS, 15MB static binary, fast compile | No generics until recently, error handling verbose, no WASM story | — |
+| **Rust** | Zero-cost abstractions, memory safety without GC, `tokio` async is fast | Steep learning curve, slower iteration, 10× longer compile times | Interview signal: Go is readable in 5 minutes. Rust requires explaining lifetimes before the architecture. |
+| **Java/Kotlin** | Mature ecosystem, Spring/Ktor frameworks, JVM tuning tools | 200MB+ runtime, cold start, GC pauses at scale | Docker image goes from 15MB to 300MB. Self-hosted users care about resource footprint. |
+| **Node.js** | Same language as Agent, huge ecosystem, fast to prototype | Single-threaded event loop, WebSocket backpressure harder, no goroutines | Gateway needs 10K concurrent connections. Node can do it, but Go does it with less memory and no `cluster` module workarounds. |
+
+#### Why Protobuf instead of JSON, MessagePack, or Avro?
+
+| Format | Strength | Weakness | Why not for us |
+|--------|----------|----------|----------------|
+| **Protobuf** (chose this) | Schema-enforced types, codegen for Go + TS, compact wire format | Schema evolution learning curve, `.proto` files to maintain | — |
+| **JSON** | Universal, human-readable, zero tooling needed | No type enforcement across languages, string field names on every message, larger on wire | The whole point is typed contracts between Go and TypeScript. JSON makes that a gentleman's agreement. |
+| **MessagePack** | Binary JSON — fast, compact, no schema needed | No codegen, no type enforcement, debugging requires tooling | Same problem as JSON but less readable. Speed gain doesn't matter at our message volume. |
+| **Avro** | Schema registry, great for Kafka ecosystems, schema evolution | Tied to Kafka/Confluent ecosystem, less tooling for Go | We're not using Kafka. Avro without the schema registry loses its main advantage. |
+
+#### Why WebSocket instead of gRPC-Web, SSE, or HTTP long-polling?
+
+| Protocol | Strength | Weakness | Why not for us |
+|----------|----------|----------|----------------|
+| **WebSocket** (chose this) | Full-duplex, low overhead per message, universal browser support | Stateful connections (harder to load-balance), no built-in compression standard | — |
+| **gRPC-Web** | Typed RPCs, streaming, proto-native | Requires Envoy proxy for browser clients, not true bidirectional in browsers | Adds a proxy dependency. Our users shouldn't need to configure Envoy. |
+| **Server-Sent Events (SSE)** | Simple, HTTP-native, auto-reconnect | Server→client only — client→server needs separate HTTP POST | Chat is bidirectional. SSE + POST is two protocols pretending to be one. |
+| **HTTP long-polling** | Works everywhere, no special protocols | Latency penalty on every poll cycle, wasted connections, higher server load | Acceptable as a fallback. Not acceptable as the primary transport for real-time chat. |
+
 ### Security Posture
 
 Seven layers, each defending against a specific threat:
