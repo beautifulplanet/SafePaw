@@ -22,8 +22,9 @@ type Config struct {
 	RedisDB       int
 
 	// Redis Streams — names must match Gateway's config
-	InboundStream  string // Router reads from here (user → system)
-	OutboundStream string // Router writes here (system → user)
+	InboundStream    string // Router reads from here (user → system)
+	OutboundStream   string // Router writes here (system → user)
+	AgentInboxStream string // Agent reads from here (Router → Agent). Empty = echo mode.
 
 	// Consumer group settings
 	ConsumerGroup string // Consumer group name for XREADGROUP
@@ -66,8 +67,9 @@ func Load() (*Config, error) {
 		RedisDB:       envInt("REDIS_DB", 0),
 
 		// Streams — must match Gateway's stream names exactly
-		InboundStream:  envStr("REDIS_INBOUND_STREAM", "nopenclaw_inbound"),
-		OutboundStream: envStr("REDIS_OUTBOUND_STREAM", "nopenclaw_outbound"),
+		InboundStream:    envStr("REDIS_INBOUND_STREAM", "nopenclaw_inbound"),
+		OutboundStream:   envStr("REDIS_OUTBOUND_STREAM", "nopenclaw_outbound"),
+		AgentInboxStream: envStr("AGENT_INBOX_STREAM", ""), // Empty = echo mode (no Agent)
 
 		// Consumer group — enables horizontal scaling and exactly-once delivery
 		ConsumerGroup: envStr("CONSUMER_GROUP", "nopenclaw_routers"),

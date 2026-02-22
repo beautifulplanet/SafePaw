@@ -72,6 +72,7 @@ services:
       REDIS_ADDR: "redis:6379"
       REDIS_INBOUND_STREAM: "nopenclaw_inbound"
       REDIS_OUTBOUND_STREAM: "nopenclaw_outbound"
+      AGENT_INBOX_STREAM: "nopenclaw_agent_inbox"
       CONSUMER_GROUP: "nopenclaw_routers"
       WORKER_COUNT: ${ROUTER_WORKER_COUNT:-4}
       BATCH_SIZE: ${ROUTER_BATCH_SIZE:-10}
@@ -91,6 +92,46 @@ services:
           cpus: '0.5'
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ------------------------------------------------
+  # Agent — AI message processor (TypeScript/Node.js)
+  # ------------------------------------------------
+  # Reads from agent inbox stream (Router → Agent),
+  # processes messages, writes to outbound stream (Agent → Gateway).
+  # Current mode: echo. Future: LLM integration.
+  # Internal only — no host-exposed ports.
+  agent:
+    build:
+      context: ./services/agent
+      dockerfile: Dockerfile
+    container_name: nopenclaw-agent
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_ADDR: "redis:6379"
+      AGENT_INBOX_STREAM: "nopenclaw_agent_inbox"
+      OUTBOUND_STREAM: "nopenclaw_outbound"
+      CONSUMER_GROUP: "nopenclaw_agents"
+      WORKER_COUNT: ${AGENT_WORKER_COUNT:-4}
+      BATCH_SIZE: ${AGENT_BATCH_SIZE:-10}
+      HEALTH_PORT: "8082"
+    # NO ports exposed — Agent is internal only.
+    # Health check is accessible within the Docker network.
+    networks:
+      - nopenclaw-internal
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/health"]
       interval: 10s
       timeout: 5s
       retries: 3
