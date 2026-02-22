@@ -158,6 +158,7 @@ func (c *Consumer) readLoop(ctx context.Context) {
 				return // Shutting down
 			}
 			if err == goredis.Nil {
+				log.Printf("[CONSUMER] XREADGROUP block timeout (%v) — no new messages, polling again", c.cfg.BlockTime)
 				continue // Timeout, no messages — normal
 			}
 			log.Printf("[CONSUMER] XREADGROUP error: %v (retrying in 1s)", err)
@@ -166,6 +167,7 @@ func (c *Consumer) readLoop(ctx context.Context) {
 		}
 
 		for _, stream := range results {
+			log.Printf("[CONSUMER] Received batch of %d messages from %s", len(stream.Messages), stream.Stream)
 			for _, xmsg := range stream.Messages {
 				msg, err := parseMessage(xmsg, c.cfg.MaxMessageSize)
 				if err != nil {
@@ -197,6 +199,8 @@ func (c *Consumer) worker(ctx context.Context, id int, handler Handler) {
 			return
 		}
 
+		start := time.Now()
+
 		// Process with timeout
 		processCtx, cancel := context.WithTimeout(ctx, c.cfg.AckTimeout)
 		err := handler(processCtx, msg)
@@ -210,6 +214,8 @@ func (c *Consumer) worker(ctx context.Context, id int, handler Handler) {
 		}
 
 		// Success — acknowledge the message
+		log.Printf("[WORKER-%d] ✔ Processing succeeded for msg=%s (delivery #%d, elapsed=%v)",
+			id, msg.MessageID, msg.DeliveryCount, time.Since(start).Round(time.Microsecond))
 		c.ack(ctx, msg.StreamID)
 	}
 
@@ -325,6 +331,8 @@ func (c *Consumer) ack(ctx context.Context, streamID string) {
 	err := c.client.XAck(ctx, c.cfg.InboundStream, c.cfg.ConsumerGroup, streamID).Err()
 	if err != nil {
 		log.Printf("[CONSUMER] XACK failed for %s: %v", streamID, err)
+	} else {
+		log.Printf("[CONSUMER] XACK confirmed for stream_id=%s", streamID)
 	}
 }
 

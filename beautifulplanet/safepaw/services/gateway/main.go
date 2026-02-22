@@ -222,27 +222,34 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
+	shutdownStart := time.Now()
 	log.Printf("[SHUTDOWN] Received signal: %v", sig)
 
 	// Phase 1: Stop accepting new HTTP connections
+	log.Println("[SHUTDOWN] Phase 1: Stopping HTTP server...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("[SHUTDOWN] Server shutdown error: %v", err)
 	}
+	log.Printf("[SHUTDOWN] Phase 1 complete (%v)", time.Since(shutdownStart).Round(time.Millisecond))
 
 	// Phase 2: Send WebSocket close frames to all connected clients.
-	// This tells clients "server is going away, reconnect to another instance."
+	log.Println("[SHUTDOWN] Phase 2: Closing WebSocket connections...")
 	closed := hub.CloseAll()
-	log.Printf("[SHUTDOWN] Sent CloseGoingAway to %d WebSocket connections", closed)
+	log.Printf("[SHUTDOWN] Phase 2 complete — sent CloseGoingAway to %d connections (%v)",
+		closed, time.Since(shutdownStart).Round(time.Millisecond))
 
 	// Phase 3: Stop outbound workers and wait for them to drain
+	log.Println("[SHUTDOWN] Phase 3: Draining outbound workers...")
 	cancel()
 	workerWg.Wait()
-	log.Println("[SHUTDOWN] All delivery workers stopped")
+	log.Printf("[SHUTDOWN] Phase 3 complete — all delivery workers stopped (%v)",
+		time.Since(shutdownStart).Round(time.Millisecond))
 
-	log.Println("=== NOPEnclaw Gateway stopped ===")
+	log.Printf("=== NOPEnclaw Gateway stopped (total shutdown: %v) ===",
+		time.Since(shutdownStart).Round(time.Millisecond))
 }
 
 // outboundWorker is one of N goroutines that read from the outbound
@@ -273,17 +280,22 @@ func outboundWorker(ctx context.Context, workerID int, hub *ws.Hub, stream *redi
 			continue
 		}
 
+		if len(messages) > 0 {
+			log.Printf("[OUTBOUND] Worker %d: received batch of %d messages", workerID, len(messages))
+		}
+
 		// Collect stream IDs to ACK after delivery
 		var acked []string
+		delivered := 0
+		dropped := 0
 
 		for _, msg := range messages {
 			conn, ok := hub.GetConnection(msg.SessionID)
 			if !ok {
 				log.Printf("[OUTBOUND] Worker %d: no connection for session=%s, message=%s dropped",
 					workerID, msg.SessionID, msg.MessageID)
-				// ACK even if no connection — the message was processed, just undeliverable.
-				// It would be wrong to leave it pending forever.
 				acked = append(acked, msg.StreamID)
+				dropped++
 				continue
 			}
 
@@ -296,12 +308,18 @@ func outboundWorker(ctx context.Context, workerID int, hub *ws.Hub, stream *redi
 			if err != nil {
 				log.Printf("[OUTBOUND] Worker %d: marshal error: %v", workerID, err)
 				acked = append(acked, msg.StreamID)
+				dropped++
 				continue
 			}
 
 			if !conn.Send(data) {
 				log.Printf("[OUTBOUND] Worker %d: buffer full for session=%s, message=%s dropped",
 					workerID, msg.SessionID, msg.MessageID)
+				dropped++
+			} else {
+				log.Printf("[OUTBOUND] Worker %d: delivered msg=%s to session=%s (%d bytes)",
+					workerID, msg.MessageID, msg.SessionID, len(data))
+				delivered++
 			}
 
 			acked = append(acked, msg.StreamID)
@@ -310,7 +328,11 @@ func outboundWorker(ctx context.Context, workerID int, hub *ws.Hub, stream *redi
 		// Batch ACK all processed messages
 		if len(acked) > 0 {
 			if err := stream.AckOutbound(ctx, acked...); err != nil {
-				log.Printf("[OUTBOUND] Worker %d: ACK error: %v (messages will be re-delivered)", workerID, err)
+				log.Printf("[OUTBOUND] Worker %d: ACK error for %d msgs: %v (messages will be re-delivered)",
+					workerID, len(acked), err)
+			} else {
+				log.Printf("[OUTBOUND] Worker %d: ACK'd %d messages (delivered=%d, dropped=%d)",
+					workerID, len(acked), delivered, dropped)
 			}
 		}
 	}

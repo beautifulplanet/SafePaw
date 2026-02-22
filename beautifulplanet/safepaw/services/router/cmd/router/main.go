@@ -51,6 +51,11 @@ func main() {
 	}
 	log.Printf("[CONFIG] Redis=%s Group=%s Consumer=%s Workers=%d Batch=%d",
 		cfg.RedisAddr, cfg.ConsumerGroup, cfg.ConsumerName, cfg.WorkerCount, cfg.BatchSize)
+	log.Printf("[CONFIG] Inbound=%s Outbound=%s AgentInbox=%s",
+		cfg.InboundStream, cfg.OutboundStream, cfg.AgentInboxStream)
+	log.Printf("[CONFIG] BlockTime=%v AckTimeout=%v MaxRetries=%d MaxMessageSize=%d MaxOutboundSize=%d",
+		cfg.BlockTime, cfg.AckTimeout, cfg.MaxRetries, cfg.MaxMessageSize, cfg.MaxOutboundSize)
+	log.Printf("[CONFIG] Health=:%d", cfg.HealthPort)
 
 	// --------------------------------------------------------
 	// Step 2: Create consumer (connects to Redis, creates group)
@@ -177,23 +182,29 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
 	log.Printf("[SHUTDOWN] Received signal: %v", sig)
+	shutdownStart := time.Now()
 
-	// Cancel consumer context — stops read loop and workers
+	// Phase 1: Cancel consumer context — stops read loop and workers
+	log.Println("[SHUTDOWN] Phase 1: Cancelling consumer context...")
 	cancel()
 
 	// Wait for consumer goroutine to fully stop before closing connections.
-	// This ensures all in-flight XACKs complete before the Redis client closes.
-	log.Println("[SHUTDOWN] Waiting for consumer to drain...")
+	log.Println("[SHUTDOWN] Phase 2: Waiting for consumer to drain...")
 	<-consumerDone
-	log.Println("[SHUTDOWN] Consumer stopped")
+	log.Printf("[SHUTDOWN] Phase 2 complete — consumer stopped (%v)",
+		time.Since(shutdownStart).Round(time.Millisecond))
 
 	// Shutdown health server
+	log.Println("[SHUTDOWN] Phase 3: Closing health server...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := healthServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("[SHUTDOWN] Health server shutdown error: %v", err)
 	}
+	log.Printf("[SHUTDOWN] Phase 3 complete (%v)",
+		time.Since(shutdownStart).Round(time.Millisecond))
 
-	log.Println("=== NOPEnclaw Router stopped ===")
+	log.Printf("=== NOPEnclaw Router stopped (total shutdown: %v) ===",
+		time.Since(shutdownStart).Round(time.Millisecond))
 }

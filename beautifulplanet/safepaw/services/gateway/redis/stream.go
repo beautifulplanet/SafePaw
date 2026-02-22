@@ -73,7 +73,7 @@ func NewStreamClient(addr, password string, db int, inboundStream, outboundStrea
 		MinIdleConns: 5,                // Keep warm connections ready
 		MaxRetries:   3,                // Retry transient failures
 		DialTimeout:  5 * time.Second,  // Don't hang on connect
-		ReadTimeout:  3 * time.Second,  // Don't hang on read
+		ReadTimeout:  8 * time.Second,  // Must exceed XREADGROUP BLOCK (5s) + headroom
 		WriteTimeout: 3 * time.Second,  // Don't hang on write
 		PoolTimeout:  4 * time.Second,  // Don't hang waiting for pool slot
 
@@ -180,20 +180,32 @@ func (sc *StreamClient) ReadOutbound(ctx context.Context, count int64) ([]Outbou
 		for _, xmsg := range stream.Messages {
 			dataStr, ok := xmsg.Values["data"].(string)
 			if !ok {
-				log.Printf("[REDIS] Warning: malformed message in %s, ID=%s", sc.outboundStream, xmsg.ID)
+				log.Printf("[REDIS] Warning: malformed message in %s, ID=%s (missing 'data' field)", sc.outboundStream, xmsg.ID)
 				// ACK malformed messages so they don't stay pending forever
+				sc.AckOutbound(ctx, xmsg.ID)
+				continue
+			}
+
+			// Guard against oversized outbound messages that could OOM
+			// the Gateway when marshaled for WebSocket delivery.
+			const maxOutboundBytes = 65536 // 64KB — matches WSMaxMessageSize
+			if len(dataStr) > maxOutboundBytes {
+				log.Printf("[REDIS] Warning: oversized outbound message %s (%d bytes, max %d) — ACKing to discard",
+					xmsg.ID, len(dataStr), maxOutboundBytes)
 				sc.AckOutbound(ctx, xmsg.ID)
 				continue
 			}
 
 			var msg OutboundMessage
 			if err := json.Unmarshal([]byte(dataStr), &msg); err != nil {
-				log.Printf("[REDIS] Warning: failed to unmarshal message %s: %v", xmsg.ID, err)
+				log.Printf("[REDIS] Warning: failed to unmarshal message %s: %v (ACKing to skip)", xmsg.ID, err)
 				sc.AckOutbound(ctx, xmsg.ID)
 				continue
 			}
 
 			msg.StreamID = xmsg.ID
+			log.Printf("[REDIS] Read outbound message: id=%s session=%s msgID=%s (%d bytes)",
+				xmsg.ID, msg.SessionID, msg.MessageID, len(dataStr))
 			messages = append(messages, msg)
 		}
 	}

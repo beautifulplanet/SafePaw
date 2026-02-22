@@ -60,6 +60,21 @@ func NewWithAgent(outboundPub *publisher.Publisher, agentPub *publisher.Publishe
 func (r *Router) Handle(ctx context.Context, msg *consumer.Message) error {
 	start := time.Now()
 
+	log.Printf("[ROUTER] ─── Processing message ───\n"+
+		"  msg_id     = %s\n"+
+		"  session_id = %s\n"+
+		"  channel    = %s\n"+
+		"  sender_id  = %s\n"+
+		"  platform   = %s\n"+
+		"  type       = %s\n"+
+		"  content    = %.200s\n"+
+		"  delivery   = #%d\n"+
+		"  timestamp  = %s",
+		msg.MessageID, msg.SessionID, msg.Channel,
+		msg.SenderID, msg.SenderPlatform, msg.ContentType,
+		msg.Content, msg.DeliveryCount,
+		time.Unix(msg.Timestamp, 0).UTC().Format(time.RFC3339))
+
 	// ---- Agent mode: forward full message to Agent inbox ----
 	if r.agentPub != nil {
 		return r.forwardToAgent(ctx, msg, start)

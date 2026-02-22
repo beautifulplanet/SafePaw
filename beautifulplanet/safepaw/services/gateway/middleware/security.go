@@ -34,6 +34,8 @@ import (
 // These headers tell browsers to enforce strict security policies.
 func SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[SECURITY] SecurityHeaders applied for %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
 		// Prevent clickjacking — never allow this page in an iframe
 		w.Header().Set("X-Frame-Options", "DENY")
 
@@ -154,15 +156,18 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	if !exists || now.Sub(rec.lastSeen) > rl.window {
 		// First request or window expired — reset
 		rl.records[ip] = &ipRecord{count: 1, lastSeen: now}
+		log.Printf("[RATELIMIT] New window for ip=%s (1/%d)", ip, rl.limit)
 		return true
 	}
 
 	if rec.count >= rl.limit {
+		log.Printf("[RATELIMIT] DENIED ip=%s (%d/%d reached)", ip, rec.count, rl.limit)
 		return false
 	}
 
 	rec.count++
 	rec.lastSeen = now
+	log.Printf("[RATELIMIT] Allowed ip=%s (%d/%d)", ip, rec.count, rl.limit)
 	return true
 }
 

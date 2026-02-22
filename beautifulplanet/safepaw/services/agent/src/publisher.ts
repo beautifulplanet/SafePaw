@@ -80,13 +80,18 @@ export class Publisher {
   async publish(msg: OutboundMessage): Promise<string> {
     const data = JSON.stringify(msg);
 
+    console.log(
+      `[PUBLISHER] Publishing outbound: msg_id=${msg.message_id} ` +
+        `session=${msg.session_id} size=${data.length} bytes`
+    );
+
     // Reject oversized messages before writing to Redis.
     // Without this, a runaway response could fill the stream with
     // multi-MB entries that the Gateway tries to send over WebSocket.
     if (this.maxOutboundSize > 0 && data.length > this.maxOutboundSize) {
-      throw new Error(
-        `Outbound message too large: ${data.length} bytes (max ${this.maxOutboundSize})`
-      );
+      const err = `Outbound message too large: ${data.length} bytes (max ${this.maxOutboundSize})`;
+      console.error(`[PUBLISHER] REJECTED: ${err}`);
+      throw new Error(err);
     }
 
     const streamId = await this.client.xadd(
@@ -100,8 +105,14 @@ export class Publisher {
     );
 
     if (!streamId) {
-      throw new Error(`XADD to ${this.outboundStream} returned null`);
+      const err = `XADD to ${this.outboundStream} returned null`;
+      console.error(`[PUBLISHER] FAILED: ${err}`);
+      throw new Error(err);
     }
+
+    console.log(
+      `[PUBLISHER] ✔ Published: msg_id=${msg.message_id} stream_id=${streamId}`
+    );
 
     return streamId;
   }

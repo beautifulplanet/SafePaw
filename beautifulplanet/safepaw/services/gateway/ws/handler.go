@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,6 +31,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"nopenclaw/gateway/config"
+	"nopenclaw/gateway/middleware"
 	redisStream "nopenclaw/gateway/redis"
 )
 
@@ -134,6 +136,14 @@ type Connection struct {
 	hub         *Hub
 	stream      *redisStream.StreamClient
 	cfg         *config.Config
+
+	// Per-connection message rate limiter.
+	// Tracks messages sent within a sliding window.
+	// Without this, a single client can flood Redis with unlimited messages
+	// once the WebSocket is established (HTTP rate limiter only covers upgrades).
+	msgCount    atomic.Int64
+	msgWindowAt time.Time // Start of current rate window
+	msgMu       sync.Mutex
 }
 
 // ================================================================
@@ -250,8 +260,23 @@ func (c *Connection) readPump() {
 				websocket.CloseNormalClosure,
 			) {
 				log.Printf("[WS] Unexpected close: session=%s err=%v", c.SessionID, err)
+			} else {
+				log.Printf("[WS] Connection closed normally: session=%s", c.SessionID)
 			}
 			break
+		}
+
+		log.Printf("[WS] Received %d bytes from session=%s", len(message), c.SessionID)
+
+		// ---- Per-connection message rate limit ----
+		// Limits messages per minute per WebSocket connection.
+		// This is the main defense against a single client flooding Redis.
+		// Configurable via WS_MSG_RATE_LIMIT (default: 60 msgs/min).
+		if !c.checkMessageRate() {
+			log.Printf("[WS] Message rate exceeded for session=%s (limit=%d/min)",
+				c.SessionID, c.cfg.WSMsgRateLimit)
+			c.sendError("rate_limited", "Too many messages. Slow down.")
+			continue
 		}
 
 		// Parse the incoming message
@@ -268,15 +293,50 @@ func (c *Connection) readPump() {
 			continue
 		}
 
-		// Sanitize content type
-		contentType := incoming.ContentType
-		if contentType == "" {
-			contentType = "TEXT"
+		// ---- AI Defense Layer: Input Sanitization ----
+		// Sanitize BEFORE anything enters the Redis pipeline.
+		// This is the Gate — the first of two defense layers.
+		// The Agent is the Brain — the second layer.
+
+		// 1. Validate + sanitize content type (block content_type:"system" attacks)
+		contentType := middleware.ValidateContentType(incoming.ContentType)
+
+		// 2. Validate channel (block path traversal: "../admin")
+		channel, channelOK := middleware.ValidateChannel(incoming.Channel)
+		if !channelOK {
+			c.sendError("invalid_channel", "Channel name contains invalid characters")
+			continue
+		}
+
+		// 3. Validate sender fields (prevent log injection)
+		senderID := middleware.ValidateSenderID(incoming.SenderID)
+		senderPlatform := middleware.ValidateSenderPlatform(incoming.SenderPlatform)
+
+		// 4. Sanitize content (strip dangerous HTML/JS for XSS prevention)
+		sanitizedContent := middleware.SanitizeContent(incoming.Content)
+
+		// 5. Sanitize metadata (limit keys, strip control chars, block reserved prefixes)
+		sanitizedMeta := middleware.SanitizeMetadata(incoming.Metadata)
+
+		// 6. Assess prompt injection risk (heuristic scanner)
+		risk, triggers := middleware.AssessPromptInjectionRisk(sanitizedContent)
+		if risk >= middleware.RiskHigh {
+			log.Printf("[WS] HIGH prompt injection risk from session=%s: triggers=%v",
+				c.SessionID, triggers)
+		}
+
+		// Embed risk assessment in metadata so the Agent can use it
+		// for defense-in-depth decisions (reinforce system prompt, reject, etc.)
+		if risk > middleware.RiskNone {
+			if sanitizedMeta == nil {
+				sanitizedMeta = make(map[string]string)
+			}
+			sanitizedMeta["_injection_risk"] = risk.String()
+			sanitizedMeta["_injection_triggers"] = strings.Join(triggers, ",")
 		}
 
 		// Build the inbound message for Redis
-		// Use authenticated identity if available, fall back to client-provided
-		senderID := incoming.SenderID
+		// Use authenticated identity if available, fall back to validated sender
 		if c.AuthSubject != "" {
 			senderID = c.AuthSubject // Authenticated identity takes priority
 		}
@@ -284,12 +344,12 @@ func (c *Connection) readPump() {
 		inbound := &redisStream.InboundMessage{
 			MessageID:      uuid.New().String(),
 			SessionID:      c.SessionID,
-			Channel:        incoming.Channel,
+			Channel:        channel,
 			SenderID:       senderID,
-			SenderPlatform: incoming.SenderPlatform,
+			SenderPlatform: senderPlatform,
 			ContentType:    contentType,
-			Content:        incoming.Content,
-			Metadata:       incoming.Metadata,
+			Content:        sanitizedContent,
+			Metadata:       sanitizedMeta,
 			Timestamp:      time.Now().Unix(),
 		}
 
@@ -400,8 +460,36 @@ func (c *Connection) sendAck(messageID, streamID string) {
 func (c *Connection) Send(data []byte) bool {
 	select {
 	case c.send <- data:
+		log.Printf("[WS] Queued %d bytes for session=%s (buffer=%d/256)",
+			len(data), c.SessionID, len(c.send))
 		return true
 	default:
+		log.Printf("[WS] Send buffer FULL for session=%s — dropping %d bytes",
+			c.SessionID, len(data))
 		return false
 	}
+}
+
+// checkMessageRate enforces per-connection message rate limiting.
+// Returns true if the message is allowed, false if rate exceeded.
+// Uses a simple sliding window: resets count every minute.
+func (c *Connection) checkMessageRate() bool {
+	limit := c.cfg.WSMsgRateLimit
+	if limit <= 0 {
+		return true // Rate limiting disabled
+	}
+
+	c.msgMu.Lock()
+	defer c.msgMu.Unlock()
+
+	now := time.Now()
+	if now.Sub(c.msgWindowAt) > 1*time.Minute {
+		// Window expired — reset
+		c.msgWindowAt = now
+		c.msgCount.Store(1)
+		return true
+	}
+
+	count := c.msgCount.Add(1)
+	return count <= int64(limit)
 }

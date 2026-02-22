@@ -43,9 +43,13 @@ export interface Config {
   workerCount: number; // Max concurrent handler calls per batch
   batchSize: number; // Max messages per XREADGROUP call
   blockTimeMs: number; // How long to block waiting for messages
-  maxRetries: number; // Max retries before dead-lettering (future)
+  maxRetries: number; // Max retries before dead-lettering
   maxMessageSize: number; // Max inbound message size in bytes
   maxOutboundSize: number; // Max outbound message size in bytes
+
+  // Thought Process
+  thoughtProcessEnabled: boolean; // Save agentic reasoning traces
+  thoughtProcessStream: string;   // Redis stream for thought traces
 
   // Health
   healthPort: number; // HTTP port for health check endpoint
@@ -111,6 +115,16 @@ export function loadConfig(): Config {
     maxRetries: envInt("MAX_RETRIES", 3),
     maxMessageSize: envInt("MAX_MESSAGE_SIZE", 65536), // 64KB
     maxOutboundSize: envInt("MAX_OUTBOUND_SIZE", 65536), // 64KB
+
+    // Thought Process — optional agentic reasoning traces
+    // When enabled, the handler saves its internal reasoning to a
+    // separate Redis stream for later analysis / auditing.
+    thoughtProcessEnabled:
+      envStr("THOUGHT_PROCESS_ENABLED", "false") === "true",
+    thoughtProcessStream: envStr(
+      "THOUGHT_PROCESS_STREAM",
+      "nopenclaw_thought_traces"
+    ),
 
     // Health
     healthPort: envInt("HEALTH_PORT", 8082),

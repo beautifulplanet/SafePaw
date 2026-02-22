@@ -33,6 +33,7 @@ type Config struct {
 	WSPingInterval    time.Duration
 	WSWriteWait       time.Duration
 	WSMaxConnections  int
+	WSMsgRateLimit    int // Max messages per minute per WebSocket connection (0=unlimited)
 
 	// Redis
 	RedisAddr     string
@@ -87,6 +88,7 @@ func Load() (*Config, error) {
 		WSPingInterval:    time.Duration(envInt("WS_PING_INTERVAL_SEC", 54)) * time.Second, // Must be < PongWait
 		WSWriteWait:       time.Duration(envInt("WS_WRITE_WAIT_SEC", 10)) * time.Second,
 		WSMaxConnections:  envInt("WS_MAX_CONNECTIONS", 10000),
+		WSMsgRateLimit:    envInt("WS_MSG_RATE_LIMIT", 60), // 60 msgs/min per connection
 
 		// Redis — connect via Docker network name (not localhost)
 		RedisAddr:     envStr("REDIS_ADDR", "redis:6379"),

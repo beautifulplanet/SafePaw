@@ -100,10 +100,11 @@ func (p *Publisher) PublishRaw(ctx context.Context, data []byte) (string, error)
 
 // publishData is the shared XADD implementation for both Publish and PublishRaw.
 func (p *Publisher) publishData(ctx context.Context, data []byte) (string, error) {
+	log.Printf("[PUBLISHER] Publishing %d bytes to %s", len(data), p.outboundStream)
+
 	// Reject oversized messages before writing to Redis.
-	// Without this, a runaway agent response could write 50MB to the stream
-	// and the Gateway would try to send it over a WebSocket.
 	if p.maxOutbound > 0 && len(data) > p.maxOutbound {
+		log.Printf("[PUBLISHER] REJECTED: outbound message too large: %d bytes (max %d)", len(data), p.maxOutbound)
 		return "", fmt.Errorf("outbound message too large: %d bytes (max %d)", len(data), p.maxOutbound)
 	}
 
@@ -117,9 +118,11 @@ func (p *Publisher) publishData(ctx context.Context, data []byte) (string, error
 	}).Result()
 
 	if err != nil {
+		log.Printf("[PUBLISHER] XADD to %s failed: %v", p.outboundStream, err)
 		return "", fmt.Errorf("XADD to %s failed: %w", p.outboundStream, err)
 	}
 
+	log.Printf("[PUBLISHER] ✔ Published to %s: stream_id=%s (%d bytes)", p.outboundStream, result, len(data))
 	return result, nil
 }
 

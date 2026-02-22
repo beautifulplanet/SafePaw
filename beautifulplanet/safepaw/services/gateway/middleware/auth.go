@@ -276,12 +276,9 @@ func AuthRequired(auth *Authenticator, requiredScope string, next http.Handler) 
 			return
 		}
 
-		// Pass identity to downstream handlers via headers
-		// (In production, use request context. This is MVP.)
-		w.Header().Set("X-Auth-Subject", claims.Sub)
-		w.Header().Set("X-Auth-Scope", claims.Scope)
-
-		// Also set on the request for downstream access
+		// Pass identity to downstream handlers via REQUEST headers only.
+		// We deliberately do NOT set response headers (W header) to avoid
+		// leaking internal identity info (X-Auth-Subject) to the client.
 		r.Header.Set("X-Auth-Subject", claims.Sub)
 		r.Header.Set("X-Auth-Scope", claims.Scope)
 
@@ -305,9 +302,7 @@ func AuthOptional(auth *Authenticator, next http.Handler) http.Handler {
 				log.Printf("[AUTH] Invalid token ignored (optional auth): %v (remote=%s)",
 					err, extractIP(r))
 			} else {
-				// Valid token — set identity headers
-				w.Header().Set("X-Auth-Subject", claims.Sub)
-				w.Header().Set("X-Auth-Scope", claims.Scope)
+				// Valid token — set identity on request headers only (not response)
 				r.Header.Set("X-Auth-Subject", claims.Sub)
 				r.Header.Set("X-Auth-Scope", claims.Scope)
 			}

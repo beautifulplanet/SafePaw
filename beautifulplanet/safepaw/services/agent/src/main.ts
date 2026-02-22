@@ -54,7 +54,21 @@ async function main(): Promise<void> {
   // --------------------------------------------------------
   // Step 4: Create handler (echo mode for now)
   // --------------------------------------------------------
-  const handler = new EchoHandler(publisher);
+  const handler = new EchoHandler(publisher, cfg);
+  await handler.connect();
+
+  console.log(
+    `[STARTUP] Configuration summary:\n` +
+      `  Redis         = ${cfg.redisAddr} (db=${cfg.redisDB})\n` +
+      `  Inbound       = ${cfg.agentInboxStream}\n` +
+      `  Outbound      = ${cfg.outboundStream}\n` +
+      `  Consumer      = ${cfg.consumerGroup}/${cfg.consumerName}\n` +
+      `  Workers       = ${cfg.workerCount}\n` +
+      `  Batch         = ${cfg.batchSize}\n` +
+      `  MaxOutbound   = ${cfg.maxOutboundSize} bytes\n` +
+      `  ThoughtProcess= ${cfg.thoughtProcessEnabled ? 'ENABLED → ' + cfg.thoughtProcessStream : 'DISABLED'}\n` +
+      `  Health        = :${cfg.healthPort}/health`
+  );
 
   // --------------------------------------------------------
   // Step 5: Start health check endpoint
@@ -108,29 +122,38 @@ async function main(): Promise<void> {
   // Phase 2: Wait for in-flight processing to finish
   // Phase 3: Close connections and exit
   const shutdown = async (signal: string): Promise<void> => {
+    const shutdownStart = Date.now();
     console.log(`\n[SHUTDOWN] ${signal} received — starting graceful shutdown`);
 
-    // Signal the consumer read loop to stop
+    // Phase 1: Stop accepting work
+    console.log("[SHUTDOWN] Phase 1: Stopping consumer read loop...");
     ac.abort();
     consumer.stop();
+    console.log(`[SHUTDOWN] Phase 1 complete (${Date.now() - shutdownStart}ms)`);
 
-    // Close health server (stop accepting new health checks)
+    // Phase 2: Close health server
+    console.log("[SHUTDOWN] Phase 2: Closing health server...");
     await new Promise<void>((resolve) => {
       healthServer.close(() => {
         console.log("[SHUTDOWN] Health server closed");
         resolve();
       });
     });
+    console.log(`[SHUTDOWN] Phase 2 complete (${Date.now() - shutdownStart}ms)`);
 
-    // Wait a moment for in-flight batch to finish
-    // (the consumer.run() Promise.allSettled handles this)
+    // Phase 3: Wait for in-flight batch to finish
+    console.log("[SHUTDOWN] Phase 3: Draining in-flight messages (500ms grace)...");
     await new Promise((r) => setTimeout(r, 500));
+    console.log(`[SHUTDOWN] Phase 3 complete (${Date.now() - shutdownStart}ms)`);
 
-    // Close Redis connections
+    // Phase 4: Close Redis connections
+    console.log("[SHUTDOWN] Phase 4: Closing Redis connections...");
+    await handler.close();
     await consumer.close();
     await publisher.close();
+    console.log(`[SHUTDOWN] Phase 4 complete (${Date.now() - shutdownStart}ms)`);
 
-    console.log("=== NOPEnclaw Agent stopped ===");
+    console.log(`=== NOPEnclaw Agent stopped (total shutdown: ${Date.now() - shutdownStart}ms) ===`);
     process.exit(0);
   };
 
