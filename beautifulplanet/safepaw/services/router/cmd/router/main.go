@@ -77,9 +77,38 @@ func main() {
 	defer pub.Close()
 
 	// --------------------------------------------------------
+	// Step 3b: Create agent inbox publisher (if configured)
+	// --------------------------------------------------------
+	// When AGENT_INBOX_STREAM is set, the Router forwards messages
+	// to the Agent instead of echoing them directly. This enables
+	// the full pipeline: Gateway → Router → Agent → Gateway
+	var agentPub *publisher.Publisher
+	if cfg.AgentInboxStream != "" {
+		agentPub, err = publisher.NewPublisherWithConnection(
+			cfg.RedisAddr,
+			cfg.RedisPassword,
+			cfg.RedisDB,
+			cfg.AgentInboxStream,
+			cfg.MaxOutboundSize,
+		)
+		if err != nil {
+			log.Fatalf("[FATAL] Agent inbox publisher creation failed: %v", err)
+		}
+		defer agentPub.Close()
+		log.Printf("[CONFIG] Agent mode: forwarding to %s", cfg.AgentInboxStream)
+	} else {
+		log.Println("[CONFIG] Echo mode: no AGENT_INBOX_STREAM configured")
+	}
+
+	// --------------------------------------------------------
 	// Step 4: Create router (message processing logic)
 	// --------------------------------------------------------
-	rtr := router.New(pub)
+	var rtr *router.Router
+	if agentPub != nil {
+		rtr = router.NewWithAgent(pub, agentPub)
+	} else {
+		rtr = router.New(pub)
+	}
 
 	// --------------------------------------------------------
 	// Step 5: Start health check endpoint

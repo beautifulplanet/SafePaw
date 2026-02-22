@@ -88,6 +88,18 @@ func (p *Publisher) Publish(ctx context.Context, msg *OutboundMessage) (string, 
 		return "", fmt.Errorf("failed to marshal outbound message: %w", err)
 	}
 
+	return p.publishData(ctx, data)
+}
+
+// PublishRaw writes pre-marshaled JSON bytes to the stream.
+// Used by the Router to forward full inbound messages to the Agent inbox
+// without re-defining the type in the publisher package.
+func (p *Publisher) PublishRaw(ctx context.Context, data []byte) (string, error) {
+	return p.publishData(ctx, data)
+}
+
+// publishData is the shared XADD implementation for both Publish and PublishRaw.
+func (p *Publisher) publishData(ctx context.Context, data []byte) (string, error) {
 	// Reject oversized messages before writing to Redis.
 	// Without this, a runaway agent response could write 50MB to the stream
 	// and the Gateway would try to send it over a WebSocket.
