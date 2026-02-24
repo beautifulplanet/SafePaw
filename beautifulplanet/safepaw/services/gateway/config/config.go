@@ -1,17 +1,16 @@
 // =============================================================
-// NOPEnclaw Gateway — Configuration
+// SafePaw Gateway — Configuration
 // =============================================================
+// Secure reverse proxy in front of OpenClaw.
 // All config comes from environment variables.
 // NOTHING is hardcoded. This is OPSEC rule #1.
-//
-// Think of this like the control panel — you set the dials
-// with .env, and this file reads them.
 // =============================================================
 
 package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -25,87 +24,60 @@ type Config struct {
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
 
-	// WebSocket
-	WSReadBufferSize  int
-	WSWriteBufferSize int
-	WSMaxMessageSize  int64
-	WSPongWait        time.Duration
-	WSPingInterval    time.Duration
-	WSWriteWait       time.Duration
-	WSMaxConnections  int
-	WSMsgRateLimit    int // Max messages per minute per WebSocket connection (0=unlimited)
-
-	// Redis
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
-
-	// Redis Streams
-	InboundStream  string // Gateway writes here (user → system)
-	OutboundStream string // Gateway reads here (system → user)
-
-	// Outbound consumer group — enables multiple Gateway instances
-	OutboundGroup    string // Consumer group for XREADGROUP on outbound
-	OutboundConsumer string // This instance's name within the group
-	DeliveryWorkers  int    // Number of parallel outbound delivery goroutines
+	// Reverse proxy target (OpenClaw backend)
+	ProxyTarget *url.URL
 
 	// Security
 	AllowedOrigins []string
 
+	// Rate limiting
+	RateLimit       int           // Max requests per window per IP
+	RateLimitWindow time.Duration // Time window for rate limiting
+
 	// Authentication
 	AuthSecret     []byte        // HMAC-SHA256 signing secret (min 32 bytes)
-	AuthEnabled    bool          // If false, all connections are anonymous (dev only)
+	AuthEnabled    bool          // If false, all requests pass through (dev only)
 	AuthDefaultTTL time.Duration // Default token lifetime
 	AuthMaxTTL     time.Duration // Maximum token lifetime
 
 	// TLS
-	TLSEnabled  bool   // If true, gateway serves HTTPS/WSS
+	TLSEnabled  bool   // If true, gateway serves HTTPS
 	TLSCertFile string // Path to TLS certificate file (PEM)
 	TLSKeyFile  string // Path to TLS private key file (PEM)
 	TLSPort     int    // HTTPS port (default: 8443)
+
+	// Body scanning
+	MaxBodySize int64 // Max request body size for scanning (default: 1MB)
 }
 
 // Load reads config from environment variables with safe defaults.
-// Returns an error if any REQUIRED variable is missing (passwords, etc.)
 func Load() (*Config, error) {
-	redisPassword := os.Getenv("REDIS_PASSWORD")
-	if redisPassword == "" {
-		return nil, fmt.Errorf("REDIS_PASSWORD environment variable is required (never hardcode it)")
+	// Parse proxy target (required)
+	proxyTargetStr := envStr("PROXY_TARGET", "http://openclaw:18789")
+	proxyTarget, err := url.Parse(proxyTargetStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid PROXY_TARGET %q: %w", proxyTargetStr, err)
+	}
+	if proxyTarget.Scheme == "" || proxyTarget.Host == "" {
+		return nil, fmt.Errorf("PROXY_TARGET must include scheme and host (got %q)", proxyTargetStr)
 	}
 
 	cfg := &Config{
-		// Server — conservative defaults for 16GB dev machine
+		// Server
 		Port:         envInt("GATEWAY_PORT", 8080),
-		ReadTimeout:  time.Duration(envInt("GATEWAY_READ_TIMEOUT_SEC", 10)) * time.Second,
-		WriteTimeout: time.Duration(envInt("GATEWAY_WRITE_TIMEOUT_SEC", 10)) * time.Second,
+		ReadTimeout:  time.Duration(envInt("GATEWAY_READ_TIMEOUT_SEC", 30)) * time.Second,
+		WriteTimeout: time.Duration(envInt("GATEWAY_WRITE_TIMEOUT_SEC", 30)) * time.Second,
 		IdleTimeout:  time.Duration(envInt("GATEWAY_IDLE_TIMEOUT_SEC", 120)) * time.Second,
 
-		// WebSocket — tuned for security + performance balance
-		WSReadBufferSize:  envInt("WS_READ_BUFFER_SIZE", 1024),
-		WSWriteBufferSize: envInt("WS_WRITE_BUFFER_SIZE", 1024),
-		WSMaxMessageSize:  int64(envInt("WS_MAX_MESSAGE_SIZE", 65536)), // 64KB max per message
-		WSPongWait:        time.Duration(envInt("WS_PONG_WAIT_SEC", 60)) * time.Second,
-		WSPingInterval:    time.Duration(envInt("WS_PING_INTERVAL_SEC", 54)) * time.Second, // Must be < PongWait
-		WSWriteWait:       time.Duration(envInt("WS_WRITE_WAIT_SEC", 10)) * time.Second,
-		WSMaxConnections:  envInt("WS_MAX_CONNECTIONS", 10000),
-		WSMsgRateLimit:    envInt("WS_MSG_RATE_LIMIT", 60), // 60 msgs/min per connection
+		// Reverse proxy target
+		ProxyTarget: proxyTarget,
 
-		// Redis — connect via Docker network name (not localhost)
-		RedisAddr:     envStr("REDIS_ADDR", "redis:6379"),
-		RedisPassword: redisPassword,
-		RedisDB:       envInt("REDIS_DB", 0),
-
-		// Streams — nopenclaw namespace
-		InboundStream:  envStr("REDIS_INBOUND_STREAM", "nopenclaw_inbound"),
-		OutboundStream: envStr("REDIS_OUTBOUND_STREAM", "nopenclaw_outbound"),
-
-		// Outbound consumer group — enables horizontal scaling of Gateway
-		OutboundGroup:    envStr("OUTBOUND_GROUP", "nopenclaw_gateway_deliverers"),
-		OutboundConsumer: envStr("OUTBOUND_CONSUMER", ""), // filled below
-		DeliveryWorkers:  envInt("DELIVERY_WORKERS", 4),
+		// Rate limiting
+		RateLimit:       envInt("RATE_LIMIT", 60),                                                            // 60 req/min per IP
+		RateLimitWindow: time.Duration(envInt("RATE_LIMIT_WINDOW_SEC", 60)) * time.Second,
 
 		// Security — empty = reject all in production (dev allows localhost)
-		AllowedOrigins: []string{}, // Set via ALLOWED_ORIGINS env var
+		AllowedOrigins: []string{},
 
 		// Auth — env-driven, disabled by default for safe local dev
 		AuthEnabled:    envStr("AUTH_ENABLED", "false") == "true",
@@ -117,6 +89,9 @@ func Load() (*Config, error) {
 		TLSCertFile: envStr("TLS_CERT_FILE", "/certs/tls.crt"),
 		TLSKeyFile:  envStr("TLS_KEY_FILE", "/certs/tls.key"),
 		TLSPort:     envInt("TLS_PORT", 8443),
+
+		// Body scanning
+		MaxBodySize: int64(envInt("MAX_BODY_SIZE", 1048576)), // 1MB
 	}
 
 	// Load auth secret (required if auth is enabled)
@@ -126,23 +101,6 @@ func Load() (*Config, error) {
 	}
 	if authSecret != "" {
 		cfg.AuthSecret = []byte(authSecret)
-	}
-
-	// Default outbound consumer name to hostname (unique per container)
-	if cfg.OutboundConsumer == "" {
-		hostname, _ := os.Hostname()
-		if hostname == "" {
-			hostname = fmt.Sprintf("gw-%d", os.Getpid())
-		}
-		cfg.OutboundConsumer = hostname
-	}
-
-	// Validate delivery workers
-	if cfg.DeliveryWorkers < 1 {
-		cfg.DeliveryWorkers = 1
-	}
-	if cfg.DeliveryWorkers > 32 {
-		cfg.DeliveryWorkers = 32
 	}
 
 	// Validate TLS config if enabled
@@ -155,7 +113,6 @@ func Load() (*Config, error) {
 	// Parse allowed origins if provided
 	originsStr := os.Getenv("ALLOWED_ORIGINS")
 	if originsStr != "" {
-		// Simple comma-separated parsing
 		origins := splitAndTrim(originsStr, ",")
 		cfg.AllowedOrigins = origins
 	}

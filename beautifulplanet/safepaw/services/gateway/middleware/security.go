@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Gateway — Security Middleware
+// SafePaw Gateway - Security Middleware
 // =============================================================
 // Defense-in-depth HTTP middleware applied BEFORE any WebSocket
 // upgrade happens. Multiple layers of protection:

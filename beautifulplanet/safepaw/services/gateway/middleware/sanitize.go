@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Gateway — Input Sanitization & AI Defense Layer
+// SafePaw Gateway - Input Sanitization & AI Defense Layer
 // =============================================================
 // This is the first line of defense against AI-specific attacks.
 // Applied BEFORE messages enter the Redis pipeline.

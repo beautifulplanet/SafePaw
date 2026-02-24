@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Setup Wizard — Entry Point
+// SafePaw Setup Wizard - Entry Point
 // =============================================================
 // Single binary that serves:
 //   1. REST API for configuration and health checks
@@ -37,7 +37,7 @@ func main() {
 		log.Fatalf("[FATAL] Configuration error: %v", err)
 	}
 
-	log.Printf("[INFO] NOPEnclaw Setup Wizard starting on :%d", cfg.Port)
+	log.Printf("[INFO] SafePaw Setup Wizard starting on :%d", cfg.Port)
 
 	// ── Step 2: Initialize API handler ──
 	handler, err := api.NewHandler(cfg)

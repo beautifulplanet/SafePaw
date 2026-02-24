@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Setup Wizard — API Handler & Router
+// SafePaw Setup Wizard - API Handler & Router
 // =============================================================
 // REST API for the wizard UI. All endpoints return JSON.
 // The handler also serves the embedded React UI for any
@@ -81,7 +81,7 @@ var startTime = time.Now()
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, healthResponse{
 		Status:  "ok",
-		Service: "nopenclaw-wizard",
+		Service: "safepaw-wizard",
 		Version: "0.1.0",
 		Uptime:  time.Since(startTime).Round(time.Second).String(),
 	})

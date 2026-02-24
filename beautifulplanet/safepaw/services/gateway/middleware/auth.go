@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Gateway — Authentication Middleware
+// SafePaw Gateway - Authentication Middleware
 // =============================================================
 // Token-based authentication for WebSocket connections.
 //

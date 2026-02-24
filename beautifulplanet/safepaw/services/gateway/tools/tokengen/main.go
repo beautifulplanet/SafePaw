@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Gateway — Auth Token CLI Tool
+// SafePaw Gateway - Auth Token CLI Tool
 // =============================================================
 // Generates signed auth tokens for testing and bootstrapping.
 //
@@ -23,7 +23,7 @@ import (
 	"os"
 	"time"
 
-	"nopenclaw/gateway/middleware"
+	"safepaw/gateway/middleware"
 )
 
 func main() {
@@ -81,7 +81,7 @@ func main() {
 
 	// Output
 	fmt.Fprintf(os.Stderr, "╔══════════════════════════════════════════╗\n")
-	fmt.Fprintf(os.Stderr, "║  NOPEnclaw Auth Token Generated          ║\n")
+	fmt.Fprintf(os.Stderr, "║  SafePaw Auth Token Generated            ║\n")
 	fmt.Fprintf(os.Stderr, "╠══════════════════════════════════════════╣\n")
 	fmt.Fprintf(os.Stderr, "║  Subject: %-30s ║\n", claims.Sub)
 	fmt.Fprintf(os.Stderr, "║  Scope:   %-30s ║\n", claims.Scope)

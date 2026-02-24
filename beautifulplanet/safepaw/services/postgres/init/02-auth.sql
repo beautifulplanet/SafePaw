@@ -1,5 +1,5 @@
 -- =============================================================
--- NOPEnclaw Auth Schema — Token & User Management
+-- SafePaw Auth Schema - Token & User Management
 -- =============================================================
 -- This creates the database tables needed for authentication.
 -- Runs after 01-init.sql on first container start.
@@ -12,7 +12,7 @@
 -- =============================================================
 
 -- --------------------------------------------------------
--- Auth Users — identities that can connect to NOPEnclaw
+-- Auth Users - identities that can connect to SafePaw
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS gateway.auth_users (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -97,5 +97,5 @@ ON CONFLICT (username) DO NOTHING;
 -- Log successful init
 DO $$
 BEGIN
-    RAISE NOTICE '✅ NOPEnclaw auth schema initialized';
+    RAISE NOTICE 'SafePaw auth schema initialized';
 END $$;

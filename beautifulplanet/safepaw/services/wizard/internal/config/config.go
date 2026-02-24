@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Setup Wizard — Configuration
+// SafePaw Setup Wizard - Configuration
 // =============================================================
 // All settings come from env vars. On first launch, if no
 // WIZARD_ADMIN_PASSWORD is set, we generate a random one and
@@ -37,8 +37,8 @@ type Config struct {
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
 	cfg := &Config{
-		Port:            getEnvInt("WIZARD_PORT", 9090),
-		AllowedOrigins:  []string{"http://localhost:9090"},
+		Port:            getEnvInt("WIZARD_PORT", 3000),
+		AllowedOrigins:  []string{"http://localhost:3000"},
 		DockerHost:      getEnv("DOCKER_HOST", defaultDockerHost()),
 		ComposeFilePath: getEnv("COMPOSE_FILE_PATH", "/app/docker-compose.yml"),
 		EnvFilePath:     getEnv("ENV_FILE_PATH", "/app/.env"),

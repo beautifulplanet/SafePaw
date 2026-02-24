@@ -1,5 +1,5 @@
 -- =============================================================
--- NOPEnclaw PostgreSQL Initialization
+-- SafePaw PostgreSQL Initialization
 -- =============================================================
 -- This runs ONCE on first container start (empty data volume).
 -- Postgres auto-creates the DB from POSTGRES_DB env var,
@@ -60,5 +60,5 @@ REVOKE ALL ON SCHEMA public FROM PUBLIC;
 -- Log successful init
 DO $$
 BEGIN
-    RAISE NOTICE '✅ NOPEnclaw database initialized successfully';
+    RAISE NOTICE 'SafePaw database initialized successfully';
 END $$;

@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Setup Wizard — Security Middleware
+// SafePaw Setup Wizard - Security Middleware
 // =============================================================
 // Defense-in-depth for the wizard UI:
 //   - CSP headers prevent XSS
