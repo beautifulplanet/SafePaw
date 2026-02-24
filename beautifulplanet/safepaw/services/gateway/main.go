@@ -18,23 +18,23 @@
 package main
 
 import (
-"bytes"
-"context"
-"crypto/tls"
-"encoding/json"
-"fmt"
-"io"
-"log"
-"net/http"
-"net/http/httputil"
-"os"
-"os/signal"
-"strings"
-"syscall"
-"time"
+	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/http/httputil"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
 
-"safepaw/gateway/config"
-"safepaw/gateway/middleware"
+	"safepaw/gateway/config"
+	"safepaw/gateway/middleware"
 )
 
 func main() {
