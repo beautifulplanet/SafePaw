@@ -21,7 +21,6 @@
 package api
 
 import (
-	"embed"
 	"encoding/json"
 	"io/fs"
 	"log"
@@ -29,11 +28,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beautifulplanet/safepaw/services/wizard/internal/config"
+	"safepaw/wizard/internal/config"
+	"safepaw/wizard/ui"
 )
-
-//go:embed all:../../ui/dist
-var uiFS embed.FS
 
 // Handler holds all API dependencies.
 type Handler struct {
@@ -246,8 +243,8 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 // For any path that doesn't match a real file, serve index.html
 // (React Router handles client-side routing).
 func (h *Handler) spaHandler() http.Handler {
-	// The embed path includes "ui/dist" prefix, strip it
-	stripped, err := fs.Sub(uiFS, "ui/dist")
+	// The embed FS has "dist" prefix from the ui package, strip it
+	stripped, err := fs.Sub(ui.DistFS, "dist")
 	if err != nil {
 		log.Fatalf("[FATAL] Failed to access embedded UI: %v", err)
 	}

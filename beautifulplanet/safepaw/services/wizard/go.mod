@@ -1,3 +1,3 @@
-module github.com/beautifulplanet/safepaw/services/wizard
+module safepaw/wizard
 
 go 1.25.0

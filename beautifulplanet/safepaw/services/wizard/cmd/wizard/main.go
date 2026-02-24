@@ -25,9 +25,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/beautifulplanet/safepaw/services/wizard/internal/api"
-	"github.com/beautifulplanet/safepaw/services/wizard/internal/config"
-	"github.com/beautifulplanet/safepaw/services/wizard/internal/middleware"
+	"safepaw/wizard/internal/api"
+	"safepaw/wizard/internal/config"
+	"safepaw/wizard/internal/middleware"
 )
 
 func main() {
