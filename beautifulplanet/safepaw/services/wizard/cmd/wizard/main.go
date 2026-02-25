@@ -27,6 +27,7 @@ import (
 
 	"safepaw/wizard/internal/api"
 	"safepaw/wizard/internal/config"
+	"safepaw/wizard/internal/docker"
 	"safepaw/wizard/internal/middleware"
 )
 
@@ -39,13 +40,16 @@ func main() {
 
 	log.Printf("[INFO] SafePaw Setup Wizard starting on :%d", cfg.Port)
 
-	// ── Step 2: Initialize API handler ──
-	handler, err := api.NewHandler(cfg)
+	// ── Step 2: Initialize Docker client ──
+	dc := docker.New(cfg.DockerHost, "safepaw")
+
+	// ── Step 3: Initialize API handler ──
+	handler, err := api.NewHandler(cfg, dc)
 	if err != nil {
 		log.Fatalf("[FATAL] Failed to initialize API: %v", err)
 	}
 
-	// ── Step 3: Build middleware chain ──
+	// ── Step 4: Build middleware chain ──
 	// Order matters: outermost runs first
 	//   SecurityHeaders → CORS → AdminAuth → RateLimit → Router
 	chain := middleware.SecurityHeaders(
@@ -58,7 +62,7 @@ func main() {
 		),
 	)
 
-	// ── Step 4: Configure HTTP server ──
+	// ── Step 5: Configure HTTP server ──
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      chain,
@@ -67,7 +71,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// ── Step 5: Start server in goroutine ──
+	// ── Step 6: Start server in goroutine ──
 	errCh := make(chan error, 1)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -80,7 +84,7 @@ func main() {
 		log.Printf("[INFO] Admin password: %s (save this — shown once)", cfg.AdminPassword)
 	}
 
-	// ── Step 6: Graceful shutdown ──
+	// ── Step 7: Graceful shutdown ──
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 

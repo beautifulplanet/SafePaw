@@ -29,21 +29,26 @@ import (
 	"time"
 
 	"safepaw/wizard/internal/config"
+	"safepaw/wizard/internal/docker"
 	"safepaw/wizard/ui"
 )
 
 // Handler holds all API dependencies.
 type Handler struct {
-	cfg *config.Config
+	cfg    *config.Config
+	docker *docker.Client
 }
 
 // NewHandler creates a new API handler.
-func NewHandler(cfg *config.Config) (*Handler, error) {
-	return &Handler{cfg: cfg}, nil
+func NewHandler(cfg *config.Config, dc *docker.Client) (*Handler, error) {
+	return &Handler{cfg: cfg, docker: dc}, nil
 }
 
 // Close cleans up resources.
 func (h *Handler) Close() {
+	if h.docker != nil {
+		h.docker.Close()
+	}
 	log.Println("[INFO] API handler closed")
 }
 
