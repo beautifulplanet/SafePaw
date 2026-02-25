@@ -21,10 +21,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -147,10 +151,13 @@ type prerequisitesResponse struct {
 }
 
 func (h *Handler) handlePrerequisites(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
 	checks := []prerequisiteCheck{
-		checkDocker(),
-		checkDockerCompose(),
-		checkPorts(),
+		h.checkDocker(ctx),
+		h.checkDockerCompose(ctx),
+		checkPorts(8080, 3000),
 		checkDiskSpace(),
 	}
 
@@ -168,77 +175,171 @@ func (h *Handler) handlePrerequisites(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// checkDocker verifies Docker is available and running.
-func checkDocker() prerequisiteCheck {
-	// TODO: Implement actual Docker API check
+// checkDocker verifies Docker is available and running via the API.
+func (h *Handler) checkDocker(ctx context.Context) prerequisiteCheck {
+	if err := h.docker.Ping(ctx); err != nil {
+		return prerequisiteCheck{
+			Name:     "Docker",
+			Status:   "fail",
+			Message:  fmt.Sprintf("Docker daemon unreachable: %v", err),
+			HelpURL:  "https://docs.docker.com/get-docker/",
+			Required: true,
+		}
+	}
 	return prerequisiteCheck{
 		Name:     "Docker",
 		Status:   "pass",
-		Message:  "Docker is installed and running",
+		Message:  "Docker daemon is running and accessible",
 		HelpURL:  "https://docs.docker.com/get-docker/",
 		Required: true,
 	}
 }
 
 // checkDockerCompose verifies Docker Compose V2 is available.
-func checkDockerCompose() prerequisiteCheck {
-	// TODO: Implement actual docker compose version check
+func (h *Handler) checkDockerCompose(ctx context.Context) prerequisiteCheck {
+	out, err := exec.CommandContext(ctx, "docker", "compose", "version", "--short").Output()
+	if err != nil {
+		return prerequisiteCheck{
+			Name:     "Docker Compose",
+			Status:   "fail",
+			Message:  "Docker Compose V2 not found (need 'docker compose' CLI plugin)",
+			HelpURL:  "https://docs.docker.com/compose/install/",
+			Required: true,
+		}
+	}
+	version := strings.TrimSpace(string(out))
 	return prerequisiteCheck{
 		Name:     "Docker Compose",
 		Status:   "pass",
-		Message:  "Docker Compose V2 is available",
+		Message:  fmt.Sprintf("Docker Compose %s", version),
 		HelpURL:  "https://docs.docker.com/compose/install/",
 		Required: true,
 	}
 }
 
-// checkPorts verifies required ports are available.
-func checkPorts() prerequisiteCheck {
-	// TODO: Implement actual port scanning
+// checkPorts probes whether the required ports are available.
+func checkPorts(ports ...int) prerequisiteCheck {
+	var busy []string
+	for _, port := range ports {
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			busy = append(busy, fmt.Sprintf("%d", port))
+		} else {
+			ln.Close()
+		}
+	}
+
+	if len(busy) > 0 {
+		return prerequisiteCheck{
+			Name:     "Port Availability",
+			Status:   "fail",
+			Message:  fmt.Sprintf("Ports already in use: %s", strings.Join(busy, ", ")),
+			Required: true,
+		}
+	}
 	return prerequisiteCheck{
 		Name:     "Port Availability",
 		Status:   "pass",
-		Message:  "Ports 8080, 9090 are available",
+		Message:  fmt.Sprintf("Ports %s are available", joinInts(ports)),
 		Required: true,
 	}
 }
 
-// checkDiskSpace verifies sufficient disk space.
+// checkDiskSpace checks for at least 2GB free on the working directory's volume.
 func checkDiskSpace() prerequisiteCheck {
-	// TODO: Implement actual disk space check
+	// Note: precise disk space check requires platform-specific syscalls.
+	// For the container environment (Linux), we use 'df'.
+	out, err := exec.Command("df", "-BG", "--output=avail", "/").Output()
+	if err != nil {
+		return prerequisiteCheck{
+			Name:     "Disk Space",
+			Status:   "warn",
+			Message:  "Unable to check disk space (non-critical)",
+			Required: false,
+		}
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) < 2 {
+		return prerequisiteCheck{
+			Name:     "Disk Space",
+			Status:   "warn",
+			Message:  "Unable to parse disk space output",
+			Required: false,
+		}
+	}
+
+	// Parse "42G" → 42
+	avail := strings.TrimSpace(lines[1])
+	avail = strings.TrimSuffix(avail, "G")
+	var gb int
+	if _, err := fmt.Sscanf(avail, "%d", &gb); err == nil && gb >= 2 {
+		return prerequisiteCheck{
+			Name:     "Disk Space",
+			Status:   "pass",
+			Message:  fmt.Sprintf("%dGB free space available", gb),
+			Required: false,
+		}
+	}
+
 	return prerequisiteCheck{
 		Name:     "Disk Space",
-		Status:   "pass",
-		Message:  "At least 2GB free space available",
+		Status:   "warn",
+		Message:  fmt.Sprintf("Low disk space: %sGB (recommend 2GB+)", avail),
 		Required: false,
 	}
 }
 
-// ─── Status ──────────────────────────────────────────────────
-
-type serviceStatus struct {
-	Name   string `json:"name"`
-	Status string `json:"status"` // "running", "stopped", "error", "unknown"
-	Health string `json:"health"` // "healthy", "unhealthy", "starting", "none"
-	Uptime string `json:"uptime,omitempty"`
+// joinInts formats a slice of ints as a comma-separated string.
+func joinInts(nums []int) string {
+	parts := make([]string, len(nums))
+	for i, n := range nums {
+		parts[i] = fmt.Sprintf("%d", n)
+	}
+	return strings.Join(parts, ", ")
 }
 
+// ─── Status ──────────────────────────────────────────────────
+
 type statusResponse struct {
-	Services []serviceStatus `json:"services"`
-	Overall  string          `json:"overall"` // "healthy", "degraded", "down"
+	Services []docker.ServiceInfo `json:"services"`
+	Overall  string               `json:"overall"` // "healthy", "degraded", "down"
 }
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement actual Docker container health checks
-	services := []serviceStatus{
-		{Name: "gateway", Status: "unknown", Health: "none"},
-		{Name: "redis", Status: "unknown", Health: "none"},
-		{Name: "postgres", Status: "unknown", Health: "none"},
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	services, err := h.docker.Services(ctx)
+	if err != nil {
+		log.Printf("[WARN] Failed to query Docker services: %v", err)
+		writeJSON(w, http.StatusOK, statusResponse{
+			Services: []docker.ServiceInfo{},
+			Overall:  "unknown",
+		})
+		return
+	}
+
+	// Determine overall health
+	overall := "healthy"
+	running := 0
+	for _, svc := range services {
+		if svc.State == "running" {
+			running++
+			if svc.Health == "unhealthy" {
+				overall = "degraded"
+			}
+		}
+	}
+	if running == 0 && len(services) > 0 {
+		overall = "down"
+	} else if running < len(services) {
+		overall = "degraded"
 	}
 
 	writeJSON(w, http.StatusOK, statusResponse{
 		Services: services,
-		Overall:  "unknown",
+		Overall:  overall,
 	})
 }
 
