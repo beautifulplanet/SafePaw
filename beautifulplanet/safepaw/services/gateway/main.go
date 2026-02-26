@@ -131,7 +131,16 @@ json.NewEncoder(w).Encode(status)
 })
 
 // Everything else -> reverse proxy to OpenClaw
-mux.Handle("/", bodyScanner(cfg.MaxBodySize, proxy))
+// WebSocket upgrades get the dedicated WS tunnel handler;
+// regular HTTP gets body scanning then reverse proxy.
+wsHandler := wsProxy(cfg.ProxyTarget)
+mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+if isWebSocketUpgrade(r) {
+wsHandler.ServeHTTP(w, r)
+return
+}
+bodyScanner(cfg.MaxBodySize, proxy).ServeHTTP(w, r)
+}))
 
 // Apply middleware (outermost first):
 // Request -> SecurityHeaders -> RequestID -> OriginCheck -> RateLimit -> [Auth] -> BodyScanner -> Proxy
