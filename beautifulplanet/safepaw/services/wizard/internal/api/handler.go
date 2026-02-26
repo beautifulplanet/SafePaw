@@ -34,6 +34,7 @@ import (
 
 	"safepaw/wizard/internal/config"
 	"safepaw/wizard/internal/docker"
+	"safepaw/wizard/internal/session"
 	"safepaw/wizard/ui"
 )
 
@@ -118,20 +119,29 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate signed session token (24h TTL)
+	const ttl = 24 * time.Hour
+	token, err := session.Create(h.cfg.AdminPassword, ttl)
+	if err != nil {
+		log.Printf("[ERROR] Failed to create session token: %v", err)
+		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})
+		return
+	}
+
 	// Set HttpOnly cookie (browser sessions) AND return token (API clients)
 	http.SetCookie(w, &http.Cookie{
-		Name:     "admin_token",
-		Value:    h.cfg.AdminPassword,
+		Name:     "session",
+		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 		Secure:   false, // localhost doesn't use HTTPS
-		MaxAge:   86400, // 24 hours
+		MaxAge:   int(ttl.Seconds()),
 	})
 
 	writeJSON(w, http.StatusOK, loginResponse{
-		Token:     h.cfg.AdminPassword,
-		ExpiresIn: 86400,
+		Token:     token,
+		ExpiresIn: int(ttl.Seconds()),
 	})
 }
 

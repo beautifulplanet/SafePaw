@@ -11,12 +11,13 @@
 package middleware
 
 import (
-	"crypto/subtle"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"safepaw/wizard/internal/session"
 )
 
 // SecurityHeaders adds defense-in-depth HTTP headers.
@@ -30,10 +31,10 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; "+
 				"script-src 'self'; "+
-				"style-src 'self' 'unsafe-inline'; "+
+				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "+
 				"img-src 'self' data:; "+
 				"connect-src 'self' ws://localhost:* wss://localhost:*; "+
-				"font-src 'self'; "+
+				"font-src 'self' https://fonts.gstatic.com; "+
 				"frame-ancestors 'none'")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		next.ServeHTTP(w, r)
@@ -67,8 +68,9 @@ func CORS(allowedOrigins []string, next http.Handler) http.Handler {
 	})
 }
 
-// AdminAuth protects API endpoints with a password.
-// Accepts Bearer token in Authorization header or "admin_token" cookie.
+// AdminAuth protects API endpoints with signed session tokens.
+// Accepts Bearer token in Authorization header or "session" cookie.
+// Tokens are HMAC-SHA256 signed — the admin password is the signing key.
 // Static assets (UI files) are served without auth so the login page loads.
 func AdminAuth(password string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,15 +86,15 @@ func AdminAuth(password string, next http.Handler) http.Handler {
 		// Check Authorization: Bearer <token>
 		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 			token := strings.TrimPrefix(auth, "Bearer ")
-			if constantTimeEqual(token, password) {
+			if _, err := session.Validate(token, password); err == nil {
 				next.ServeHTTP(w, r)
 				return
 			}
 		}
 
 		// Check cookie fallback (for browser-based access)
-		if cookie, err := r.Cookie("admin_token"); err == nil {
-			if constantTimeEqual(cookie.Value, password) {
+		if cookie, err := r.Cookie("session"); err == nil {
+			if _, err := session.Validate(cookie.Value, password); err == nil {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -113,12 +115,6 @@ func isPublicPath(path string) bool {
 		return true
 	}
 	return false
-}
-
-// constantTimeEqual compares two strings in constant time.
-// Prevents timing attacks on the admin password.
-func constantTimeEqual(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 // ─── Rate Limiter ────────────────────────────────────────────
