@@ -36,6 +36,7 @@ pnpm-debug.log*
 # 4. Dependencies & Build Artifacts
 node_modules/
 dist/
+!services/wizard/ui/dist/
 build/
 target/
 __pycache__/
