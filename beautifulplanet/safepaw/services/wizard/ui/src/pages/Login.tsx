@@ -88,12 +88,14 @@ export function Login({ onSuccess }: LoginProps) {
           </button>
         </form>
 
-        {/* Info box */}
+        {/* Security guidance */}
         <div className="mt-6 rounded-lg border border-gray-800 bg-gray-900/30 p-4 text-sm text-gray-500">
-          <p className="font-medium text-gray-400 mb-1">🔒 Security Note</p>
-          <p>
-            The wizard only accepts connections from localhost.
-            Your session is protected by CSP, CORS, and rate limiting.
+          <p className="font-medium text-gray-400 mb-1">🔒 Security</p>
+          <p className="mb-2">
+            The wizard only accepts connections from localhost. Your session is protected by CSP, CORS, and rate limiting.
+          </p>
+          <p className="text-gray-500 text-xs">
+            For production: set a strong <code className="px-1 rounded bg-gray-800">WIZARD_ADMIN_PASSWORD</code> in <code className="px-1 rounded bg-gray-800">.env</code>, enable gateway <code className="px-1 rounded bg-gray-800">AUTH_ENABLED</code> and <code className="px-1 rounded bg-gray-800">TLS_ENABLED</code> with valid certs.
           </p>
         </div>
       </div>

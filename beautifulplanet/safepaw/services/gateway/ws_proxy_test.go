@@ -14,9 +14,11 @@ func TestIsWebSocketUpgrade(t *testing.T) {
 	}{
 		{"valid WS", "Upgrade", "websocket", true},
 		{"case insensitive", "upgrade", "WebSocket", true},
+		{"multi-value connection", "keep-alive, Upgrade", "websocket", true},
+		{"multi-value mixed case", "Keep-Alive, upgrade", "WebSocket", true},
 		{"no upgrade header", "", "websocket", false},
 		{"no websocket header", "Upgrade", "", false},
-		{"keep-alive", "keep-alive", "", false},
+		{"keep-alive only", "keep-alive", "", false},
 		{"empty", "", "", false},
 	}
 

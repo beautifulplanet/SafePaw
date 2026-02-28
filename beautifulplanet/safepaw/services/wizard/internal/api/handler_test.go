@@ -154,3 +154,37 @@ func TestSPAFallback(t *testing.T) {
 		t.Errorf("SPA fallback: status = %d, want 200", rec.Code)
 	}
 }
+
+func TestServiceRestartUnknownService(t *testing.T) {
+	h := newTestHandler(t)
+	router := h.Router()
+
+	req := httptest.NewRequest("POST", "/api/v1/services/unknownservice/restart", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want 400 for unknown service", rec.Code)
+	}
+	var errResp errorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&errResp); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if errResp.Error == "" {
+		t.Error("Expected error message for unknown service")
+	}
+}
+
+func TestServiceRestartNoDocker(t *testing.T) {
+	h := newTestHandler(t) // nil docker
+	router := h.Router()
+
+	req := httptest.NewRequest("POST", "/api/v1/services/wizard/restart", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	// With nil docker we return 503
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("Status = %d, want 503 when Docker client unavailable", rec.Code)
+	}
+}

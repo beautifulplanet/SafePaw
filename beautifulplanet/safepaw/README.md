@@ -1,4 +1,4 @@
-﻿# SafePaw
+# SafePaw
 
 **Secure, one-click deployer for [OpenClaw](https://github.com/nicepkg/openclaw).**
 
@@ -88,6 +88,17 @@ docker compose up -d
 # Gateway:      http://localhost:8080
 ```
 
+**First-run:** The wizard prints an auto-generated admin password once to stdout. To retrieve it: `docker compose logs wizard` or `docker logs safepaw-wizard`. Set `WIZARD_ADMIN_PASSWORD` in `.env` to use a fixed password.
+
+---
+
+## Security
+
+SafePaw is designed with defense in depth: rate limiting, origin validation, HMAC auth, prompt-injection scanning, and TLS. OpenClaw has **no host-exposed ports**—all traffic goes through the gateway.
+
+- **Incident response, logging reference, and hardening:** See [SECURITY.md](SECURITY.md).
+- **Production:** Set `AUTH_ENABLED=true`, provide `AUTH_SECRET`, and enable `TLS_ENABLED` with valid certificates. Use a strong `WIZARD_ADMIN_PASSWORD` in `.env`.
+
 ---
 
 ## Skills Demonstrated
@@ -154,6 +165,7 @@ safepaw/
 +-- docker-compose.yml      # Orchestration (5 services)
 +-- .env.example             # Configuration template
 +-- README.md
++-- SECURITY.md              # Incident response, logging, hardening (see Security section)
 +-- services/
 |   +-- gateway/             # Go reverse proxy
 |   |   +-- main.go          # Proxy + body scanner
@@ -200,13 +212,16 @@ go run tools/tokengen/main.go -sub "admin" -scope "proxy" -ttl 24h
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Gateway reverse proxy | Working | Proxies HTTP to OpenClaw |
-| Security middleware | Working | Headers, rate limit, origin, auth |
-| AI body scanner | Working | 14 prompt injection patterns |
-| TLS termination | Working | TLS 1.2+, strong ciphers |
-| Wizard setup UI | Scaffold | API routes defined, React placeholder |
-| Docker Compose | Working | 5-service orchestration |
-| Integration tests | Not started | Needs end-to-end verification |
+| Gateway reverse proxy | **Complete** | HTTP + WebSocket proxying |
+| Security middleware | **Complete** | Headers, origin, rate limit, auth, body scanner; request ID in logs |
+| AI body scanner | **Complete** | 14 prompt injection patterns, 4 risk levels |
+| TLS termination | **Complete** | TLS 1.2+, strong ciphers |
+| Wizard setup UI | **Complete** | Login, prerequisites, dashboard with live polling, service restart |
+| Session tokens | **Complete** | HMAC-SHA256, HttpOnly cookies, 24h TTL |
+| Docker Compose | **Complete** | 5-service orchestration, health checks |
+| SECURITY.md | **Complete** | Incident response, logging reference, defense-in-depth, Phase 2 roadmap |
+| Unit tests | **Complete** | Wizard (session, middleware, api), gateway (WS upgrade) |
+| Integration tests | Not started | End-to-end Docker flow optional |
 
 ---
 

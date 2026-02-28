@@ -89,14 +89,14 @@ func OriginCheck(allowedOrigins []string, next http.Handler) http.Handler {
 				return
 			}
 			// Has Origin but no allowlist configured — block
-			log.Printf("[SECURITY] Blocked request with Origin=%q (no allowed origins configured)", origin)
+			log.Printf("[SECURITY] Blocked request with Origin=%q (no allowed origins configured) request_id=%s", origin, r.Header.Get("X-Request-ID"))
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 
 		// Check against allowlist
 		if origin != "" && !allowed[origin] {
-			log.Printf("[SECURITY] Blocked request from unauthorized Origin=%q", origin)
+			log.Printf("[SECURITY] Blocked request from unauthorized Origin=%q request_id=%s", origin, r.Header.Get("X-Request-ID"))
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -193,7 +193,7 @@ func RateLimit(rl *RateLimiter, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := extractIP(r)
 		if !rl.Allow(ip) {
-			log.Printf("[SECURITY] Rate limited IP=%s", ip)
+			log.Printf("[SECURITY] Rate limited IP=%s request_id=%s", ip, r.Header.Get("X-Request-ID"))
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
 		}
@@ -214,7 +214,7 @@ func RequestID(next http.Handler) http.Handler {
 			reqID = uuid.New().String()
 		}
 		w.Header().Set("X-Request-ID", reqID)
-		// Store in request context would be even better, but this is MVP
+		r.Header.Set("X-Request-ID", reqID) // So downstream can log it for incident response
 		next.ServeHTTP(w, r)
 	})
 }

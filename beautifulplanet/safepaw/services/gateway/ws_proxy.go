@@ -31,9 +31,22 @@ const (
 )
 
 // isWebSocketUpgrade checks if a request is a WebSocket upgrade.
+// The Connection header may contain multiple comma-separated values
+// (e.g. "keep-alive, Upgrade"), so we check if "upgrade" appears
+// anywhere in the header rather than requiring an exact match.
 func isWebSocketUpgrade(r *http.Request) bool {
-	return strings.EqualFold(r.Header.Get("Connection"), "upgrade") &&
+	return headerContains(r.Header.Get("Connection"), "upgrade") &&
 		strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+}
+
+// headerContains checks if a comma-separated header value includes a token (case-insensitive).
+func headerContains(header, token string) bool {
+	for _, v := range strings.Split(header, ",") {
+		if strings.EqualFold(strings.TrimSpace(v), token) {
+			return true
+		}
+	}
+	return false
 }
 
 // wsProxy creates a handler that proxies WebSocket connections to the backend.
