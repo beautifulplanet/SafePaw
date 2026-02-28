@@ -47,7 +47,7 @@ services:
     networks:
       - safepaw-internal
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Read-only Docker socket for health checks
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Read-only Docker socket (health checks, service list)
       - ./.env:/app/.env:rw
     depends_on:
       redis:

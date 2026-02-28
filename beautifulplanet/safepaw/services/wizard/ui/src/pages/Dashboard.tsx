@@ -6,6 +6,7 @@ const POLL_INTERVAL = 5000 // ms
 export function Dashboard() {
   const [data, setData] = useState<StatusResponse | null>(null)
   const [error, setError] = useState('')
+  const [restarting, setRestarting] = useState<string | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
   const fetchStatus = useCallback(async () => {
@@ -17,6 +18,19 @@ export function Dashboard() {
       setError('Failed to fetch service status')
     }
   }, [])
+
+  const handleRestart = useCallback(async (name: string) => {
+    if (restarting) return
+    setRestarting(name)
+    try {
+      await api.restartService(name)
+      await fetchStatus()
+    } catch {
+      setError(`Failed to restart ${name}`)
+    } finally {
+      setRestarting(null)
+    }
+  }, [restarting, fetchStatus])
 
   useEffect(() => {
     void fetchStatus()
@@ -63,26 +77,31 @@ export function Dashboard() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {data.services.map((svc) => (
-            <ServiceCard key={svc.name || svc.id} service={svc} />
+            <ServiceCard
+              key={svc.name || svc.id}
+              service={svc}
+              onRestart={handleRestart}
+              restarting={restarting}
+            />
           ))}
         </div>
       )}
 
-      {/* Architecture info */}
+      {/* Architecture & security */}
       <div className="mt-10 card">
-        <h3 className="font-semibold mb-3">Architecture</h3>
+        <h3 className="font-semibold mb-3">Architecture & security</h3>
         <div className="grid sm:grid-cols-3 gap-4 text-sm">
           <div className="space-y-1">
             <p className="text-gray-500">Gateway</p>
-            <p className="text-gray-300">Go reverse proxy with rate limiting, auth, and AI input sanitization</p>
+            <p className="text-gray-300">Reverse proxy: rate limiting, HMAC auth, prompt-injection scanning, TLS. All traffic to OpenClaw goes through here.</p>
           </div>
           <div className="space-y-1">
             <p className="text-gray-500">OpenClaw</p>
-            <p className="text-gray-300">Node.js AI assistant (internal, not exposed to host)</p>
+            <p className="text-gray-300">AI assistant (internal only). No host ports — not exposed if the gateway is down.</p>
           </div>
           <div className="space-y-1">
-            <p className="text-gray-500">Data Layer</p>
-            <p className="text-gray-300">Redis (state cache) + Postgres (auth, sessions)</p>
+            <p className="text-gray-500">Hardening</p>
+            <p className="text-gray-300">Enable <code className="px-1 rounded bg-gray-800">AUTH_ENABLED</code> and <code className="px-1 rounded bg-gray-800">TLS_ENABLED</code> in .env for production.</p>
           </div>
         </div>
       </div>
@@ -90,16 +109,33 @@ export function Dashboard() {
   )
 }
 
-function ServiceCard({ service }: { service: ServiceInfo }) {
+const RESTARTABLE_SERVICES = ['wizard', 'gateway', 'openclaw', 'redis', 'postgres']
+
+function ServiceCard({ service, onRestart, restarting }: { service: ServiceInfo; onRestart: (name: string) => void; restarting: string | null }) {
   const stateColor = getStateColor(service.state)
   const healthColor = getHealthColor(service.health)
+  const name = service.name || 'unknown'
+  const canRestart = RESTARTABLE_SERVICES.includes(name)
+  const isRestarting = restarting === name
 
   return (
     <div className="card group hover:border-gray-700 transition-colors">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-lg">{service.name || 'unknown'}</h3>
-        <div className={`w-2.5 h-2.5 rounded-full ${stateColor} ${service.state === 'running' ? 'status-pulse' : ''}`} />
+        <h3 className="font-semibold text-lg">{name}</h3>
+        <div className="flex items-center gap-2">
+          {canRestart && (
+            <button
+              type="button"
+              onClick={() => onRestart(name)}
+              disabled={isRestarting}
+              className="text-xs px-2 py-1 rounded border border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRestarting ? 'Restarting…' : 'Restart'}
+            </button>
+          )}
+          <div className={`w-2.5 h-2.5 rounded-full ${stateColor} ${service.state === 'running' ? 'status-pulse' : ''}`} />
+        </div>
       </div>
 
       {/* Details */}

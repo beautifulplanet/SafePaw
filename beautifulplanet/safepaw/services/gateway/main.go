@@ -68,11 +68,11 @@ req.URL.Path = singleJoiningSlash(cfg.ProxyTarget.Path, req.URL.Path)
 // Strip hop-by-hop headers that shouldn't be forwarded
 req.Header.Del("X-SafePaw-Risk") // Don't let clients spoof risk headers
 
-log.Printf("[PROXY] %s %s -> %s%s (remote=%s)",
-req.Method, req.URL.Path, cfg.ProxyTarget.Host, req.URL.Path, req.RemoteAddr)
+log.Printf("[PROXY] %s %s -> %s%s (remote=%s request_id=%s)",
+	req.Method, req.URL.Path, cfg.ProxyTarget.Host, req.URL.Path, req.RemoteAddr, req.Header.Get("X-Request-ID"))
 },
 ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-log.Printf("[PROXY] Backend error: %v (path=%s remote=%s)", err, r.URL.Path, r.RemoteAddr)
+log.Printf("[PROXY] Backend error: %v (path=%s remote=%s request_id=%s)", err, r.URL.Path, r.RemoteAddr, r.Header.Get("X-Request-ID"))
 w.Header().Set("Content-Type", "application/json")
 w.WriteHeader(http.StatusBadGateway)
 json.NewEncoder(w).Encode(map[string]string{
@@ -258,7 +258,7 @@ return
 bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxSize))
 r.Body.Close()
 if err != nil {
-log.Printf("[SCANNER] Body read error: %v (remote=%s)", err, r.RemoteAddr)
+log.Printf("[SCANNER] Body read error: %v (remote=%s request_id=%s)", err, r.RemoteAddr, r.Header.Get("X-Request-ID"))
 next.ServeHTTP(w, r)
 return
 }
@@ -271,8 +271,8 @@ r.ContentLength = int64(len(bodyBytes))
 bodyStr := string(bodyBytes)
 risk, triggers := middleware.AssessPromptInjectionRisk(bodyStr)
 if risk > middleware.RiskNone {
-log.Printf("[SCANNER] Prompt injection risk=%s triggers=%v path=%s remote=%s body_len=%d",
-risk, triggers, r.URL.Path, r.RemoteAddr, len(bodyBytes))
+log.Printf("[SCANNER] Prompt injection risk=%s triggers=%v path=%s remote=%s body_len=%d request_id=%s",
+	risk, triggers, r.URL.Path, r.RemoteAddr, len(bodyBytes), r.Header.Get("X-Request-ID"))
 }
 
 // Attach risk assessment as header (OpenClaw can read this)

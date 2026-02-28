@@ -113,4 +113,10 @@ export const api = {
 
   status: () =>
     request<StatusResponse>('/status'),
+
+  /** Restart a SafePaw service (wizard, gateway, openclaw, redis, postgres). */
+  restartService: (name: string) =>
+    request<{ status: string; service: string }>(`/services/${encodeURIComponent(name)}/restart`, {
+      method: 'POST',
+    }),
 }

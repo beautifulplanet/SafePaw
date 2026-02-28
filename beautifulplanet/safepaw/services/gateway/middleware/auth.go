@@ -253,8 +253,8 @@ func AuthRequired(auth *Authenticator, requiredScope string, next http.Handler) 
 		// Extract token from request
 		token := extractToken(r)
 		if token == "" {
-			log.Printf("[AUTH] Rejected: no token provided (remote=%s path=%s)",
-				extractIP(r), r.URL.Path)
+			log.Printf("[AUTH] Rejected: no token provided (remote=%s path=%s request_id=%s)",
+				extractIP(r), r.URL.Path, r.Header.Get("X-Request-ID"))
 			writeAuthError(w, "missing_token", "Authentication required. Provide token via ?token= parameter or Authorization: Bearer header.")
 			return
 		}
@@ -262,15 +262,15 @@ func AuthRequired(auth *Authenticator, requiredScope string, next http.Handler) 
 		// Validate the token
 		claims, err := auth.ValidateToken(token)
 		if err != nil {
-			log.Printf("[AUTH] Rejected: %v (remote=%s)", err, extractIP(r))
+			log.Printf("[AUTH] Rejected: %v (remote=%s request_id=%s)", err, extractIP(r), r.Header.Get("X-Request-ID"))
 			writeAuthError(w, "invalid_token", err.Error())
 			return
 		}
 
 		// Check scope
 		if requiredScope != "" && claims.Scope != requiredScope && claims.Scope != "admin" {
-			log.Printf("[AUTH] Rejected: scope=%q required=%q (sub=%s remote=%s)",
-				claims.Scope, requiredScope, claims.Sub, extractIP(r))
+			log.Printf("[AUTH] Rejected: scope=%q required=%q (sub=%s remote=%s request_id=%s)",
+				claims.Scope, requiredScope, claims.Sub, extractIP(r), r.Header.Get("X-Request-ID"))
 			writeAuthError(w, "insufficient_scope",
 				fmt.Sprintf("This endpoint requires scope=%q, token has scope=%q", requiredScope, claims.Scope))
 			return
@@ -282,8 +282,8 @@ func AuthRequired(auth *Authenticator, requiredScope string, next http.Handler) 
 		r.Header.Set("X-Auth-Subject", claims.Sub)
 		r.Header.Set("X-Auth-Scope", claims.Scope)
 
-		log.Printf("[AUTH] Authenticated: sub=%s scope=%s ttl=%v (remote=%s)",
-			claims.Sub, claims.Scope, claims.RemainingTTL().Round(time.Second), extractIP(r))
+		log.Printf("[AUTH] Authenticated: sub=%s scope=%s ttl=%v (remote=%s request_id=%s)",
+			claims.Sub, claims.Scope, claims.RemainingTTL().Round(time.Second), extractIP(r), r.Header.Get("X-Request-ID"))
 
 		next.ServeHTTP(w, r)
 	})
@@ -299,8 +299,8 @@ func AuthOptional(auth *Authenticator, next http.Handler) http.Handler {
 			claims, err := auth.ValidateToken(token)
 			if err != nil {
 				// Token present but invalid — log it but allow through as anon
-				log.Printf("[AUTH] Invalid token ignored (optional auth): %v (remote=%s)",
-					err, extractIP(r))
+				log.Printf("[AUTH] Invalid token ignored (optional auth): %v (remote=%s request_id=%s)",
+					err, extractIP(r), r.Header.Get("X-Request-ID"))
 			} else {
 				// Valid token — set identity on request headers only (not response)
 				r.Header.Set("X-Auth-Subject", claims.Sub)

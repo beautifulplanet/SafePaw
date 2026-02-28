@@ -8,14 +8,9 @@
 // Endpoints:
 //   GET  /api/v1/health          — Wizard health check
 //   POST /api/v1/auth/login      — Authenticate with admin password
-//   GET  /api/v1/status          — All service statuses
+//   GET  /api/v1/status          — All service statuses (Docker container list + overall health)
 //   GET  /api/v1/prerequisites   — Check system requirements
-//   GET  /api/v1/config          — Current configuration (masked)
-//   PUT  /api/v1/config          — Update configuration
-//   POST /api/v1/config/validate — Validate a config field
-//   GET  /api/v1/services        — Docker container statuses
-//   POST /api/v1/services/:name/restart — Restart a service
-//   GET  /ws/status              — WebSocket for live status
+//   POST /api/v1/services/{name}/restart — Restart a SafePaw service (wizard, gateway, openclaw, redis, postgres)
 // =============================================================
 
 package api
@@ -66,6 +61,7 @@ func (h *Handler) Router() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/login", h.handleLogin)
 	mux.HandleFunc("GET /api/v1/prerequisites", h.handlePrerequisites)
 	mux.HandleFunc("GET /api/v1/status", h.handleStatus)
+	mux.HandleFunc("POST /api/v1/services/{name}/restart", h.handleServiceRestart)
 
 	// ── SPA Fallback ──
 	// Serve React app for all non-API routes
@@ -106,6 +102,9 @@ type loginResponse struct {
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
+	// Limit request body to 1KB to prevent memory exhaustion attacks
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{"invalid request body"})
@@ -113,6 +112,12 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Password != h.cfg.AdminPassword {
+		// Log failed attempt with IP for intrusion detection
+		ip := r.RemoteAddr
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			ip = fwd
+		}
+		log.Printf("[WARN] Failed login attempt from %s", ip)
 		// Deliberate delay to slow brute force
 		time.Sleep(500 * time.Millisecond)
 		writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid password"})
@@ -351,6 +356,39 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Services: services,
 		Overall:  overall,
 	})
+}
+
+// Allowed service names for restart (maps to container name safepaw-{name}).
+var allowedRestartServices = map[string]bool{
+	"wizard": true, "gateway": true, "openclaw": true, "redis": true, "postgres": true,
+}
+
+func (h *Handler) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{"missing service name"})
+		return
+	}
+	if !allowedRestartServices[name] {
+		writeJSON(w, http.StatusBadRequest, errorResponse{"unknown service; allowed: wizard, gateway, openclaw, redis, postgres"})
+		return
+	}
+	if h.docker == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{"Docker client not available"})
+		return
+	}
+	containerName := "safepaw-" + name
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	if err := h.docker.RestartContainer(ctx, containerName, 10); err != nil {
+		log.Printf("[WARN] Restart %s failed: %v", containerName, err)
+		writeJSON(w, http.StatusInternalServerError, errorResponse{fmt.Sprintf("restart failed: %v", err)})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": name})
 }
 
 // ─── SPA Handler ─────────────────────────────────────────────
