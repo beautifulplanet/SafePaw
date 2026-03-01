@@ -1,0 +1,43 @@
+# =============================================================
+# SafePaw — Grafana contact points (example)
+# =============================================================
+# Copy to contact-points.yml and fill in real values. Do not commit
+# contact-points.yml (it may contain webhook URLs and keys).
+# Mount into Grafana: provisioning/alerting/contact-points.yml
+#
+# See NOTIFICATIONS.md and:
+# https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/
+# =============================================================
+
+apiVersion: 1
+
+contactPoints:
+  # Slack — replace URL and channel
+  - orgId: 1
+    name: safepaw-slack
+    receivers:
+      - uid: slack-safepaw
+        type: slack
+        settings:
+          url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+          recipient: "#alerts"
+          title: "{{ .GroupLabels.alertname }}"
+          text: "{{ .CommonAnnotations.description }}"
+
+  # Email — requires Grafana SMTP config; replace addresses
+  # - orgId: 1
+  #   name: safepaw-email
+  #   receivers:
+  #     - uid: email-safepaw
+  #       type: email
+  #       settings:
+  #         addresses: "alerts@example.com"
+
+  # PagerDuty — replace integration_key with your Events API v2 key
+  # - orgId: 1
+  #   name: safepaw-pagerduty
+  #   receivers:
+  #     - uid: pagerduty-safepaw
+  #       type: pagerduty
+  #       settings:
+  #         integration_key: "YOUR_PAGERDUTY_INTEGRATION_KEY"
