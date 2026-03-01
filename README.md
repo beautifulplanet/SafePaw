@@ -2,305 +2,357 @@
 
 **Secure, one-click deployer for [OpenClaw](https://github.com/nicepkg/openclaw).**
 
-Deploy OpenClaw behind a security-hardened reverse proxy with AI defense,
-rate limiting, TLS termination, and a guided setup wizard.
-
-> One command: `docker compose up -d`
-> OpenClaw + security perimeter + setup UI. Done.
+A security perimeter (Go gateway + Go/React wizard) that wraps the OpenClaw personal AI assistant: reverse proxy with auth, rate limiting, prompt-injection and output scanning, TLS, and a guided setup UI. One command brings up the full stack; the wizard handles configuration and health monitoring.
 
 ---
 
-## What It Does
+### Impact
 
-SafePaw wraps OpenClaw in a production-ready security layer:
+- **Deploy in one command** — `docker compose up -d` from the [safepaw](beautifulplanet/safepaw) directory; five services (wizard, gateway, openclaw, redis, postgres) with health checks and internal-only backends.
+- **All traffic through the gateway** — OpenClaw has no host-exposed ports. Auth, rate limiting, brute-force protection, and AI-defense scanning apply before any request reaches the assistant.
+- **Wizard for ops** — React UI for admin login (session tokens, optional TOTP), prerequisites, live container status, and masked .env editing. Audit log for all admin actions.
+- **258+ tests across gateway and wizard** — Go unit and integration tests, 7 fuzz targets, coverage gate (60%) in CI. Lint, gosec, govulncheck, Docker build on every push.
+- **Operational docs** — Incident runbooks (6 types), backup/restore procedures, secret rotation, STRIDE threat model (27 threats). No “portfolio” framing — written for anyone running or evaluating the system.
 
-```
-Internet --> [Gateway :8080] --> [OpenClaw :18789 (internal)]
-                 |
-            Security layers:
-            - Rate limiting (per-IP)
-            - Origin validation
-            - HMAC-SHA256 auth (optional)
-            - Prompt injection scanning (14 patterns)
-            - Security headers (HSTS, CSP, etc.)
-            - WebSocket tunnel (explicit upgrade)
-            - TLS 1.2+ termination
-
-[Wizard :3000] --> Setup UI + health dashboard (React + Go)
-                   - Admin login with signed session tokens
-                   - Live Docker container health monitoring
-                   - Prerequisite checks (Docker, Compose, ports, disk)
-```
-
-OpenClaw handles the AI assistant, channels (Discord, Telegram, Slack, etc.),
-and LLM integration. SafePaw handles the security perimeter.
+**Stack:** Go · React 19 · TypeScript · Tailwind · Docker Compose · Redis · PostgreSQL · Prometheus · Grafana
 
 ---
 
-## Architecture
+### Evidence
 
-```
-docker-compose.yml (5 services, internal network, health checks)
-|
-+-- wizard    (Go + React)  :3000  Setup UI + health dashboard
-+-- gateway   (Go)          :8080  Security reverse proxy
-+-- openclaw  (Node.js)     :18789 (internal only - never exposed)
-+-- redis                   :6379  (internal only - rate limiter state)
-+-- postgres                :5432  (internal only - config storage)
-```
-
-Only the Wizard (:3000) and Gateway (:8080) are exposed to the host,
-and only on `127.0.0.1` (not `0.0.0.0`). Everything else is internal.
-
-### Gateway (Go, zero external deps except `google/uuid`)
-Security reverse proxy using `net/http/httputil.ReverseProxy`:
-- **Prompt injection scanner** — 14-pattern heuristic body scanner with risk levels
-- **WebSocket tunnel** — explicit HTTP upgrade detection with bidirectional copy
-- **Rate limiting** — per-IP with background cleanup goroutine
-- **HMAC-SHA256 auth** — stateless tokens with scope enforcement (proxy/admin)
-- **Security headers** — HSTS, CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy
-- **Origin validation** — prevents CSRF/CSWSH attacks
-- **Request ID injection** — UUID tracing across services
-- **TLS termination** — TLS 1.2+ with curated cipher suites (X25519, ChaCha20)
-- **Streaming passthrough** — SSE/WebSocket via `FlushInterval: -1`
-- **Auth header stripping** — when auth disabled, strips spoofed identity headers
-
-### Wizard (Go + React 19 + TypeScript + Tailwind)
-Setup UI with single-binary deployment (React baked in via `go:embed`):
-- **HMAC-SHA256 session tokens** — no raw passwords in cookies; signed, time-limited tokens
-- **Live Docker monitoring** — zero-dependency Docker Engine API client over Unix socket
-- **Prerequisite checks** — Docker ping, Compose version, port availability, disk space
-- **Service dashboard** — 5-second polling, container health/state/uptime
-- **Security middleware** — CSP, CORS (localhost only), rate limiting, admin auth
-- **SPA routing** — React Router-style fallback from the Go file server
-
-### OpenClaw
-Personal AI assistant with 15+ channel integrations. SafePaw proxies
-all traffic to it through the Gateway security layer.
+| Claim | Proof |
+|-------|--------|
+| Stack runs locally | `cd beautifulplanet/safepaw && docker compose up -d` — wizard :3000, gateway :8080 |
+| Gateway health | `curl -s http://localhost:8080/health` — returns status + backend reachability |
+| Prometheus metrics | `curl -s http://localhost:8080/metrics` — counters, histograms, gauges |
+| 258+ Go tests | `cd beautifulplanet/safepaw/services/gateway && go test ./... -race`; same under `services/wizard` |
+| 7 fuzz targets | `cd beautifulplanet/safepaw && make fuzz` (gateway middleware) |
+| Vulnerability scan | `cd beautifulplanet/safepaw && make vulncheck` — govulncheck on both services |
+| Incident runbooks | [RUNBOOK.md](beautifulplanet/safepaw/RUNBOOK.md) — token compromise, injection, gateway down, brute force, rotation, disk |
+| Backup & recovery | [BACKUP-RECOVERY.md](beautifulplanet/safepaw/BACKUP-RECOVERY.md) — Postgres, Redis, volumes, .env |
+| Threat model | [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md) — STRIDE, 27 threats, mitigations |
 
 ---
 
-## Quick Start
+### Quality bar
+
+- **Defense in depth** — Request path: metrics → headers → request ID → origin check → brute-force guard → rate limit → auth (HMAC + Redis revocation) → body scanner → output scanner → proxy. Each layer documented in [SECURITY.md](beautifulplanet/safepaw/SECURITY.md).
+- **STRIDE threat model** — Documented threats and mitigations; residual risks called out (e.g. heuristic-only scanning, in-memory brute-force bans).
+- **Backup and secret rotation** — Procedures for Postgres, Redis, volumes, and .env; RUNBOOK includes ordered secret rotation and one-shot rotation block.
+- **CI pipeline** — Build, test (`-race`), lint (golangci-lint), gosec, govulncheck, coverage gate (60%), fuzz seed corpus, Docker build.
+- **Structured logging** — Gateway: JSON or text via `LOG_FORMAT`; wizard: audit log for login, config changes, restarts. SIEM-ready.
+
+---
+
+### How to read this README
+
+**If you’re evaluating the system**
+
+| What you want | Where to find it | Time |
+|---------------|------------------|------|
+| What it is and why it exists | [Impact](#impact) + [Part 1: Summary](#part-1-summary) | 1 min |
+| Proof (tests, metrics, docs) | [Evidence](#evidence) | 1 min |
+| Security and ops posture | [Part 2: Tech stack & architecture](#part-2-tech-stack--architecture), [Security posture](#security-posture) | 2 min |
+| Limitations | [Limitations](#limitations) | 30 sec |
+
+**If you’re reviewing security & operations**
+
+| What you want | Where to find it | Time |
+|---------------|------------------|------|
+| Request flow and boundaries | [Architecture](#architecture), [Request flow](#request-flow) | 1 min |
+| Threat model and mitigations | [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md), [Security posture](#security-posture) | 3 min |
+| Incident and backup procedures | [RUNBOOK.md](beautifulplanet/safepaw/RUNBOOK.md), [BACKUP-RECOVERY.md](beautifulplanet/safepaw/BACKUP-RECOVERY.md) | 2 min |
+| Config and env vars | [Configuration](#configuration) | 1 min |
+
+**If you want to run it**
+
+| What you want | Where to find it | Time |
+|---------------|------------------|------|
+| Clone and run in a few minutes | [Part 3: Quick start](#part-3-quick-start) | 2 min |
+| Full setup and dev commands | [Development](#development), [Testing](#testing) | 5 min |
+| Troubleshooting | [Troubleshooting](#troubleshooting), [Verify deployment](#verify-deployment) | 2 min |
+
+---
+
+# Part 1: Summary
+
+_What this is, what it does, why it matters._
+
+### What
+
+SafePaw combines:
+
+- **Go gateway** — Reverse proxy with HMAC auth, Redis-backed revocation, per-IP rate limiting, brute-force IP banning, 14-pattern prompt-injection body scanner, output scanner (XSS, secret leaks), security headers, origin validation, server-generated request IDs, optional TLS, Prometheus metrics, structured JSON logging.
+- **Go + React wizard** — Single-binary setup UI (React embedded via `go:embed`): admin login with HMAC session tokens and optional TOTP, prerequisite checks (Docker, Compose, ports, disk), live container dashboard, masked .env edit, service restart, audit log.
+- **Five-service Compose stack** — Wizard, gateway, OpenClaw, Redis, Postgres; only wizard and gateway exposed on the host (127.0.0.1). OpenClaw and data stores are internal only.
+
+OpenClaw handles the AI assistant, channels (Discord, Telegram, Slack, etc.), and LLM integration. SafePaw handles the perimeter.
+
+### Why it’s interesting (for reviewers)
+
+| Topic | Detail |
+|-------|--------|
+| Security layering | Defense in depth with brute-force guard fed by auth failures and rate-limit hits; Redis-backed revocation; STRIDE threat model. |
+| AI defense | Heuristic body scanner (14 patterns, versioned) + response/output scanner; risk levels and `X-SafePaw-Risk` header. |
+| Zero-dependency choices | Gateway: no JWT library (custom HMAC tokens), no Redis client lib (minimal RESP client), no Docker SDK (raw Engine API over Unix socket). |
+| Testing | 258+ tests, 7 fuzz targets, integration tests for auth/rate-limit/revocation/scope, coverage gate and govulncheck in CI. |
+| Operations | Runbooks, backup/restore, secret rotation order, Grafana alerts, structured logging. |
+| Wizard UX | Session tokens + optional TOTP, audit trail, prerequisite checks, live Docker status. |
+
+### Key numbers
+
+| Metric | Value |
+|--------|--------|
+| Go tests (gateway) | 195+ (middleware, config, integration, fuzz) |
+| Go tests (wizard) | 63+ (session, TOTP, middleware, API, config, audit) |
+| Fuzz targets | 7 (prompt injection, sanitize, channel, output scan, token, KV) |
+| CI jobs | 5 (gateway build+test, wizard build+test, lint, security, Docker) |
+| Runbook playbooks | 6 (token compromise, injection, gateway down, brute force, rotation, disk) |
+| Threat model entries | 27 (STRIDE, all mitigated with residual risks noted) |
+| Prometheus metrics | Request counts, durations, auth failures, injections, connection gauge, path normalization |
+
+---
+
+# Part 2: Tech stack & architecture
+
+### Stack
+
+| Layer | Technology | Why |
+|-------|------------|-----|
+| Gateway | Go, net/http, httputil.ReverseProxy | Single binary, minimal deps (uuid only), full control over request/response path |
+| Wizard backend | Go, go:embed | Serves React build + REST API; one binary, no nginx |
+| Wizard frontend | React 19, TypeScript, Tailwind, Vite | Typed API client, SPA routing, modern tooling |
+| Auth | HMAC-SHA256 (custom), Redis (optional) | Stateless tokens, scope enforcement, persistent revocation without JWT lib |
+| Session (wizard) | HMAC-SHA256, optional TOTP (stdlib) | Signed cookies, replay-resistant (jti), optional MFA |
+| Orchestration | Docker Compose | Five services, health checks, resource limits, internal network |
+| Observability | Prometheus, Grafana | /metrics, dashboards, 6 alert rules; LOG_FORMAT=json for SIEM |
+| Testing | go test, Vitest (wizard UI optional), fuzz | Unit, integration, fuzz; CI with race detector and coverage gate |
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Host (127.0.0.1 only)                    │
+│                                                                  │
+│   :3000 (Wizard)                    :8080 (Gateway)              │
+│   ┌──────────────┐                  ┌──────────────────────────┐ │
+│   │ Go + React   │                  │ Go reverse proxy         │ │
+│   │ session+TOTP │                  │ auth · rate limit · scan │ │
+│   │ audit · .env │                  │ metrics · logging        │ │
+│   └──────┬───────┘                  └─────────────┬──────────────┘ │
+│          │ Docker socket (ro)                     │               │
+└──────────┼───────────────────────────────────────┼───────────────┘
+           │                                       │
+           ▼                                       ▼
+┌─────────────────────── Internal network ────────────────────────┐
+│  ┌─────────┐   ┌─────────┐   ┌─────────────┐   ┌──────────────┐  │
+│  │ Redis   │   │Postgres │   │ OpenClaw    │   │ OpenClaw     │  │
+│  │ :6379   │   │ :5432   │   │ :18789      │   │ (no host     │  │
+│  │ state   │   │ config  │   │ (AI asst)   │   │  ports)      │  │
+│  └─────────┘   └─────────┘   └─────────────┘   └──────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Request flow
+
+```
+Request → Metrics → Security headers → Request ID (server UUID only)
+        → Origin check → Brute-force guard → Rate limit → Auth (HMAC + revocation)
+        → Body scanner (prompt injection) → Output scanner (XSS/secrets)
+        → Reverse proxy → OpenClaw
+```
+
+### Key design decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| OpenClaw not exposed to host | Single security perimeter; all traffic is authenticated, rate-limited, and scanned. |
+| Auth and revocation in gateway | Stateless HMAC tokens; revocation in Redis so it survives restarts and is shared across instances. |
+| Wizard reads Docker socket read-only | Health and container list only; no privilege escalation from UI. |
+| Heuristic-only AI scanning | No ML/LLM dependency; patterns versioned and auditable; documented as a limitation. |
+| Server-generated request IDs only | Client X-Request-ID ignored to avoid log injection and guarantee unique correlation IDs. |
+
+### Security posture
+
+| Boundary | Threat | Mitigation | Status |
+|----------|--------|------------|--------|
+| Gateway API | Unauthenticated access | AUTH_ENABLED=true default in Docker; HMAC tokens, scope enforcement | ✅ |
+| Gateway API | Token reuse after compromise | Redis-backed revocation; POST /admin/revoke | ✅ |
+| Gateway API | Brute force / abuse | Rate limit + brute-force guard (IP ban after N failures) | ✅ |
+| Gateway API | Prompt injection / exfil | Body scanner (14 patterns) + output scanner | ✅ Heuristic |
+| Gateway API | Spoofed identity when auth off | StripAuthHeaders removes X-Auth-Subject/Scope | ✅ |
+| Wizard admin | Weak or missing password | Auto-generated secret if unset; strong password in .env recommended | ✅ |
+| Wizard admin | Session replay | HMAC session tokens with jti (nonce) | ✅ |
+| Wizard admin | Credential stuffing | Optional TOTP (WIZARD_TOTP_SECRET); rate limit + delay on fail | ✅ |
+| Config | Secret leak in UI | .env keys masked in GET; PUT restricted to allowed list | ✅ |
+| Operations | Data loss | BACKUP-RECOVERY.md; RUNBOOK secret rotation | ✅ Documented |
+
+Full threat model: [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md). Incident response: [RUNBOOK.md](beautifulplanet/safepaw/RUNBOOK.md).
+
+---
+
+# Part 3: Quick start
+
+### Prerequisites
+
+- Docker and Docker Compose (v2)
+- Ports 3000 (wizard) and 8080 (gateway) free
+- For production: set `AUTH_ENABLED=true`, `AUTH_SECRET`, and optionally `TLS_ENABLED` with certs
+
+### Commands
 
 ```bash
-# Clone
+# Clone (adjust URL if your repo differs)
 git clone https://github.com/beautifulplanet/SafePaw.git
-cd SafePaw
+cd SafePaw/beautifulplanet/safepaw
 
 # Configure
 cp .env.example .env
-# Edit .env with your API keys and channel tokens
+# Edit .env: API keys, channel tokens, AUTH_SECRET if using auth
 
 # Launch
 docker compose up -d
 
 # Access
-# Setup wizard: http://localhost:3000  (admin password printed on first launch)
-# Gateway:      http://localhost:8080  (proxies to OpenClaw)
+# Wizard:  http://localhost:3000   (password in docker compose logs wizard or set WIZARD_ADMIN_PASSWORD in .env)
+# Gateway: http://localhost:8080  (proxies to OpenClaw)
 ```
 
-The wizard auto-generates a secure admin password on first launch and prints
-it to stdout. Set `WIZARD_ADMIN_PASSWORD` in `.env` to use a fixed password.
+First run: wizard prints an admin password once to stdout. Use `docker compose logs wizard` or set `WIZARD_ADMIN_PASSWORD` in `.env`.
 
 ---
 
-## Security Design
-
-### Defense in Depth
-Every request passes through multiple security layers. If one layer fails,
-the next catches it:
-
-```
-Request
-  -> Security Headers (HSTS, CSP, X-Frame-Options)
-  -> Request ID (UUID tracing)
-  -> Origin Check (CSRF/CSWSH protection)
-  -> Rate Limit (per-IP throttle)
-  -> Auth (HMAC token validation, optional)
-  -> Body Scanner (prompt injection detection)
-  -> Reverse Proxy -> OpenClaw
-```
-
-### Session Tokens (Wizard)
-The wizard uses custom HMAC-SHA256 signed tokens (similar to JWT,
-zero external dependencies):
-- Token format: `base64url(payload).base64url(hmac_signature)`
-- Payload: `{"sub":"admin","iat":unix,"exp":unix}`
-- Signing key: admin password (never leaves the server)
-- HttpOnly, SameSite=Strict cookies for browser sessions
-- Bearer tokens for API clients
-- 24-hour TTL with server-side expiry validation
-
-### Docker Socket Access
-The wizard has read-only access to the Docker socket (`/var/run/docker.sock:ro`)
-for health monitoring. It uses a zero-dependency Docker Engine API client (v1.43)
-to query container state without pulling in the full Docker SDK.
-
-### AI Defense Patterns Detected
-
-The body scanner catches:
-- **Instruction override** — "ignore previous instructions"
-- **Identity hijacking** — "you are now admin"
-- **System delimiter injection** — `` ```system ``, `<|system|>`, `[SYSTEM]`
-- **Secret extraction** — "reveal your system prompt"
-- **Jailbreak keywords** — DAN, developer mode
-- **Encoding evasion** — base64/eval tricks
-- **Data exfiltration** — external URL injection
-- **Role injection** — `ASSISTANT:`, `SYSTEM:` framing
-
-Risk levels: `none`, `low`, `medium`, `high` — attached as `X-SafePaw-Risk` header.
-
----
-
-## Skills Demonstrated
-
-| Skill | Evidence |
-|-------|----------|
-| **Go systems programming** | Reverse proxy, goroutine rate limiters, graceful shutdown, Unix socket Docker client |
-| **Security engineering** | HMAC-SHA256 auth (constant-time `hmac.Equal`), signed session tokens, CSP, CORS, rate limiting, non-root containers |
-| **AI defense** | 14-pattern heuristic body scanner for prompt injection, risk levels, trigger logging |
-| **React + TypeScript** | React 19, strict mode, typed API client, state machine routing, Tailwind UI |
-| **Infrastructure as code** | Docker Compose with health checks, resource limits, internal networks, SHA256-pinned images |
-| **Testing** | 30 Go unit tests (session, middleware, handler, WS proxy) |
-| **Zero-dep philosophy** | Docker client over raw HTTP (no SDK), session tokens (no JWT library), embed (no nginx) |
-| **Build tooling** | Multi-stage Docker builds, stripped Go binaries, Vite + tsc, `go:embed` |
-
----
+# Part 4: Configuration, development, and reference
 
 ## Configuration
 
-All configuration via environment variables (`.env` file):
+All configuration via environment variables (e.g. `.env` in the safepaw directory).
 
 ### Essential
+
 | Variable | Description |
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Anthropic API key for OpenClaw |
 | `OPENAI_API_KEY` | OpenAI API key (optional) |
 
-### Channel Tokens
+### Channel tokens (optional)
+
 | Variable | Description |
 |----------|-------------|
-| `DISCORD_BOT_TOKEN` | Discord bot token |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token |
-| `SLACK_BOT_TOKEN` | Slack bot token |
-| `SLACK_APP_TOKEN` | Slack app-level token |
+| `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | Channel bot tokens |
 
 ### Security
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AUTH_ENABLED` | `false` | Enable gateway authentication |
+| `AUTH_ENABLED` | `true` (Docker) | Enable gateway HMAC auth |
 | `AUTH_SECRET` | — | HMAC signing key (min 32 bytes) |
-| `TLS_ENABLED` | `false` | Enable HTTPS |
-| `RATE_LIMIT` | `60` | Requests per minute per IP |
+| `TLS_ENABLED` | `false` | Enable TLS on gateway |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE` | /certs/... | TLS cert and key paths |
+| `RATE_LIMIT` | 60 | Requests per minute per IP |
+| `LOG_FORMAT` | `text` | `json` for SIEM-style logs |
 | `WIZARD_ADMIN_PASSWORD` | auto-generated | Wizard admin password |
+| `WIZARD_TOTP_SECRET` | — | Optional base32 TOTP for wizard MFA |
 
-See [.env.example](.env.example) for the full list.
-
----
-
-## Project Structure
-
-```
-safepaw/
-+-- docker-compose.yml          # 5-service orchestration
-+-- .env.example                 # Configuration template
-+-- SECURITY.md                  # Incident response, logging, hardening, Phase 2 roadmap
-+-- services/
-|   +-- gateway/                 # Go reverse proxy (zero deps except uuid)
-|   |   +-- main.go              # Proxy + body scanner + WS routing
-|   |   +-- ws_proxy.go          # Explicit WebSocket tunnel
-|   |   +-- ws_proxy_test.go     # WS upgrade detection tests
-|   |   +-- config/              # Env-based config
-|   |   +-- middleware/
-|   |   |   +-- sanitize.go      # AI defense (14 patterns, 404 lines)
-|   |   |   +-- security.go      # Headers, rate limit, origin, request ID
-|   |   |   +-- auth.go          # HMAC-SHA256 tokens (scoped, stateless)
-|   |   +-- tools/tokengen/      # Token generation CLI
-|   |   +-- Dockerfile           # Multi-stage, alpine, non-root
-|   +-- wizard/                  # Go setup UI + embedded React SPA
-|   |   +-- cmd/wizard/          # Entry point, middleware chain
-|   |   +-- internal/
-|   |   |   +-- api/             # REST handler + SPA fallback
-|   |   |   +-- config/          # Env config, auto-gen password
-|   |   |   +-- docker/          # Docker Engine API client (zero deps)
-|   |   |   +-- middleware/      # Security headers, CORS, auth, rate limit
-|   |   |   +-- session/         # HMAC-SHA256 session tokens
-|   |   +-- ui/                  # React 19 + TypeScript 5.8 + Tailwind 3.4
-|   |   |   +-- src/pages/       # Login, Prerequisites, Dashboard
-|   |   |   +-- src/api.ts       # Typed fetch wrapper
-|   |   |   +-- embed.go         # go:embed all:dist
-|   |   |   +-- dist/            # Production build (baked into Go binary)
-|   |   +-- Dockerfile           # Multi-stage, alpine, non-root
-|   +-- postgres/
-|       +-- init/                # Schema init scripts
-+-- _archived/                   # Previous architecture (portfolio evidence)
-|   +-- router/                  # Go Redis Streams message router
-|   +-- agent/                   # TypeScript echo service
-|   +-- gateway-redis/           # Redis stream client
-|   +-- gateway-ws/              # WebSocket hub + handler
-+-- shared/
-    +-- proto/                   # Protobuf schemas
-```
-
----
+See [.env.example](beautifulplanet/safepaw/.env.example) for the full list.
 
 ## Development
 
 ```bash
 # Gateway
-cd services/gateway
+cd beautifulplanet/safepaw/services/gateway
 go build -o gateway .
 PROXY_TARGET=http://localhost:18789 ./gateway
 
-# Generate auth token
+# Token (when auth enabled)
 export AUTH_SECRET=$(openssl rand -base64 48)
-go run tools/tokengen/main.go -sub "admin" -scope "proxy" -ttl 24h
+go run tools/tokengen/main.go -sub admin -scope proxy -ttl 24h
 
 # Wizard
-cd services/wizard
+cd beautifulplanet/safepaw/services/wizard
 go build -o wizard ./cmd/wizard
 WIZARD_ADMIN_PASSWORD=dev ./wizard
 
 # Wizard UI (hot reload)
-cd services/wizard/ui
-npm install
-npm run dev  # Vite dev server on :5173, proxies /api to :3000
-
-# Run all tests
-cd services/gateway && go test ./... -v
-cd services/wizard && go test ./... -v
+cd beautifulplanet/safepaw/services/wizard/ui
+npm install && npm run dev
 ```
 
+From safepaw root: `make lint`, `make vulncheck`, `make fuzz`. See [CONTRIBUTING.md](beautifulplanet/safepaw/CONTRIBUTING.md).
+
+## Testing
+
+| Suite | Location | Command |
+|-------|----------|---------|
+| Gateway | `services/gateway` | `go test ./... -race` |
+| Wizard | `services/wizard` | `go test ./... -race` |
+| Fuzz (gateway) | `services/gateway` | `go test -fuzz=...` or `make fuzz` |
+| Vuln check | safepaw root | `make vulncheck` |
+| E2E (live stack) | safepaw/scripts | `./verify-deployment.sh` (after `docker compose up -d`) |
+
+CI runs build, test with coverage gate (60%), lint, gosec, govulncheck, and Docker build.
+
+## Project structure
+
+```
+beautifulplanet/safepaw/
+├── docker-compose.yml       # 5 services, health checks, resource limits
+├── Makefile                 # build, test, lint, vulncheck, fuzz, Docker
+├── .env.example
+├── SECURITY.md              # Incident response, logging, hardening, MFA
+├── RUNBOOK.md               # 6 playbooks, secret rotation
+├── THREAT-MODEL.md          # STRIDE (27 threats)
+├── BACKUP-RECOVERY.md       # Postgres, Redis, volumes, .env
+├── CONTRIBUTING.md
+├── monitoring/              # Prometheus, Grafana, alerts
+├── services/
+│   ├── gateway/             # Go reverse proxy, middleware, tools/tokengen
+│   ├── wizard/              # Go + React (cmd, internal, ui)
+│   └── postgres/init/
+├── _archived/               # Legacy / previous architecture
+└── shared/proto/
+```
+
+## Troubleshooting
+
+| Issue | What to do |
+|-------|------------|
+| Lost wizard admin password | `docker compose logs wizard` (first lines) or set `WIZARD_ADMIN_PASSWORD` in `.env` and restart. [SECURITY.md](beautifulplanet/safepaw/SECURITY.md) § Recovery. |
+| Prerequisites fail | Install Docker and Compose; ensure 3000 and 8080 are free. |
+| Dashboard shows no services | Wizard needs read-only Docker socket; check compose mount for `/var/run/docker.sock` (or npipe on Windows). |
+| Gateway 502 / backend unreachable | OpenClaw may still be starting. `docker compose logs openclaw`; `curl http://localhost:8080/health`. |
+| Auth required | Set `AUTH_ENABLED=true` and `AUTH_SECRET`; use `tools/tokengen` to create tokens. |
+
+## Verify deployment
+
+```bash
+curl -s http://localhost:3000/api/v1/health | jq .
+curl -s http://localhost:8080/health | jq .
+```
+
+Then open http://localhost:3000, sign in, and check the dashboard. Full script: `scripts/verify-deployment.sh` in the safepaw directory.
+
+## Limitations
+
+- **Prompt-injection and output scanning** — Heuristic (regex/patterns) only; no ML/LLM. See [SECURITY.md](beautifulplanet/safepaw/SECURITY.md).
+- **Token revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
+- **Wizard password** — No “forgot password” flow; recovery via logs or `.env` and restart.
+- **Stack** — Docker-first; wizard expects Docker socket for health. No generic bare-metal install path.
+
 ---
 
-## Test Coverage
+## Documentation index
 
-| Package | Tests | What's Covered |
-|---------|-------|---------------|
-| `wizard/internal/session` | 6 | Token create/validate, wrong secret, expired, invalid format, uniqueness, tampered payload |
-| `wizard/internal/middleware` | 13 | Security headers, CORS (allowed/disallowed/preflight), AdminAuth (6 cases), rate limit, public paths |
-| `wizard/internal/api` | 7 | Health, login success/fail/bad body, SPA fallback, service restart (unknown service, no Docker) |
-| `gateway` | 8 | WebSocket upgrade detection (valid, case-insensitive, multi-value, missing headers) |
-| **Total** | **34** | |
-
----
-
-## Status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Gateway reverse proxy | **Complete** | HTTP + WebSocket proxying |
-| Security middleware | **Complete** | 5 layers: headers, origin, rate limit, auth, body scanner |
-| AI body scanner | **Complete** | 14 prompt injection patterns, 4 risk levels |
-| WebSocket tunnel | **Complete** | Explicit upgrade with bidirectional copy |
-| TLS termination | **Complete** | TLS 1.2+, strong ciphers, X25519 |
-| Wizard REST API | **Complete** | Health, login, prerequisites, status, service restart, SPA fallback |
-| Wizard React UI | **Complete** | Login, prerequisites, dashboard with live polling and service restart |
-| Session tokens | **Complete** | HMAC-SHA256 signed, HttpOnly cookies, 24h TTL |
-| Docker health client | **Complete** | Zero-dep Engine API client over Unix socket |
-| Docker Compose | **Complete** | 5-service orchestration with health checks |
-| Unit tests | **Complete** | 34 tests across 4 packages |
-| SECURITY.md | **Complete** | Incident response, logging, defense-in-depth, Phase 2 revocation roadmap |
+| Document | Purpose |
+|----------|---------|
+| [README.md](README.md) | This file — summary through reference |
+| [SECURITY.md](beautifulplanet/safepaw/SECURITY.md) | Incident response, logging, defense-in-depth, MFA, recovery |
+| [RUNBOOK.md](beautifulplanet/safepaw/RUNBOOK.md) | 6 incident playbooks, secret rotation |
+| [BACKUP-RECOVERY.md](beautifulplanet/safepaw/BACKUP-RECOVERY.md) | Backup/restore for Postgres, Redis, volumes, .env |
+| [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md) | STRIDE threat model, residual risks |
+| [SCOPE-IMPROVEMENTS.md](beautifulplanet/safepaw/SCOPE-IMPROVEMENTS.md) | Review feedback triage (done vs. open) and improvement backlog |
+| [CONTRIBUTING.md](beautifulplanet/safepaw/CONTRIBUTING.md) | Dev workflow, coding standards, PR process |
+| [.env.example](beautifulplanet/safepaw/.env.example) | All configuration variables with comments |
 
 ---
 
