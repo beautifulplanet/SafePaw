@@ -1,0 +1,185 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Gateway ──────────────────────────────────────────
+  gateway:
+    name: Gateway (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: beautifulplanet/safepaw/services/gateway
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: beautifulplanet/safepaw/services/gateway/go.sum
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Coverage threshold (>60%)
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Gateway coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below 60% threshold"
+            exit 1
+          fi
+
+      - name: Fuzz tests (seed corpus)
+        run: go test -run "Fuzz" -v ./...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-coverage
+          path: beautifulplanet/safepaw/services/gateway/coverage.out
+
+  # ── Wizard ───────────────────────────────────────────
+  wizard:
+    name: Wizard (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: beautifulplanet/safepaw/services/wizard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: beautifulplanet/safepaw/services/wizard/go.sum
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Coverage threshold (>60%)
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Wizard coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below 60% threshold"
+            exit 1
+          fi
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: wizard-coverage
+          path: beautifulplanet/safepaw/services/wizard/coverage.out
+
+  # ── Lint ─────────────────────────────────────────────
+  lint:
+    name: Lint & Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: golangci-lint (gateway)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: beautifulplanet/safepaw/services/gateway
+          args: --timeout=5m
+
+      - name: golangci-lint (wizard)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: beautifulplanet/safepaw/services/wizard
+          args: --timeout=5m
+
+  # ── Security Scan ────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Install security tools
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: gosec (gateway)
+        run: gosec -exclude-dir=tools ./...
+        working-directory: beautifulplanet/safepaw/services/gateway
+
+      - name: gosec (wizard)
+        run: gosec ./...
+        working-directory: beautifulplanet/safepaw/services/wizard
+
+      - name: govulncheck (gateway)
+        run: govulncheck ./...
+        working-directory: beautifulplanet/safepaw/services/gateway
+
+      - name: govulncheck (wizard)
+        run: govulncheck ./...
+        working-directory: beautifulplanet/safepaw/services/wizard
+
+  # ── Docker Build ─────────────────────────────────────
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build gateway image
+        run: docker build -t safepaw-gateway:ci ./beautifulplanet/safepaw/services/gateway
+
+      - name: Build wizard image
+        run: docker build -t safepaw-wizard:ci ./beautifulplanet/safepaw/services/wizard
+
+      - name: Verify images
+        run: |
+          docker images safepaw-gateway:ci
+          docker images safepaw-wizard:ci
+
+  # ── Summary ──────────────────────────────────────────
+  ci-pass:
+    name: CI Pass
+    needs: [gateway, wizard, lint, security, docker]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.gateway.result }}" != "success" ]] || \
+             [[ "${{ needs.wizard.result }}" != "success" ]] || \
+             [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.security.result }}" != "success" ]] || \
+             [[ "${{ needs.docker.result }}" != "success" ]]; then
+            echo "One or more CI jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed"
