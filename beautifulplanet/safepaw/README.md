@@ -241,6 +241,7 @@ Then open http://localhost:3000, sign in, and check the dashboard. Full script: 
 | [THREAT-MODEL.md](THREAT-MODEL.md) | STRIDE, residual risks |
 | [SCOPE-IMPROVEMENTS.md](SCOPE-IMPROVEMENTS.md) | Review feedback triage and improvement backlog |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev workflow, PR process |
+| [RELEASE.md](RELEASE.md) | Going public: timestamp, checklist, positioning, licensing |
 | [.env.example](.env.example) | Configuration reference |
 
 ---

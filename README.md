@@ -363,6 +363,7 @@ Then open http://localhost:3000, sign in, and check the dashboard. Full script: 
 | [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md) | STRIDE threat model, residual risks |
 | [SCOPE-IMPROVEMENTS.md](beautifulplanet/safepaw/SCOPE-IMPROVEMENTS.md) | Review feedback triage (done vs. open) and improvement backlog |
 | [CONTRIBUTING.md](beautifulplanet/safepaw/CONTRIBUTING.md) | Dev workflow, coding standards, PR process |
+| [RELEASE.md](beautifulplanet/safepaw/RELEASE.md) | Going public: timestamp, checklist, positioning, licensing |
 | [.env.example](beautifulplanet/safepaw/.env.example) | All configuration variables with comments |
 
 ---
