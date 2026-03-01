@@ -138,8 +138,8 @@ func (w *jsonLogWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 
 	data, _ := json.Marshal(entry)
-	w.out.Write(data)
-	w.out.Write([]byte("\n"))
+	_, _ = w.out.Write(data)
+	_, _ = w.out.Write([]byte("\n"))
 	return len(p), nil
 }
 
@@ -262,8 +262,8 @@ func (l *Logger) writeJSON(level LogLevel, msg string, fields []Field) {
 		entry[f.Key] = f.Value
 	}
 	data, _ := json.Marshal(entry)
-	l.out.Write(data)
-	l.out.Write([]byte("\n"))
+	_, _ = l.out.Write(data)
+	_, _ = l.out.Write([]byte("\n"))
 }
 
 func (l *Logger) writeText(level LogLevel, msg string, fields []Field) {
@@ -276,7 +276,7 @@ func (l *Logger) writeText(level LogLevel, msg string, fields []Field) {
 		fmt.Fprintf(&b, " %s=%v", f.Key, f.Value)
 	}
 	b.WriteByte('\n')
-	l.out.Write([]byte(b.String()))
+	_, _ = l.out.Write([]byte(b.String()))
 }
 
 // Info logs at info level.

@@ -77,7 +77,7 @@ func Load() (*Config, error) {
 		ProxyTarget: proxyTarget,
 
 		// Rate limiting
-		RateLimit:       envInt("RATE_LIMIT", 60),                                                            // 60 req/min per IP
+		RateLimit:       envInt("RATE_LIMIT", 60), // 60 req/min per IP
 		RateLimitWindow: time.Duration(envInt("RATE_LIMIT_WINDOW_SEC", 60)) * time.Second,
 
 		// Security — empty = reject all in production (dev allows localhost)

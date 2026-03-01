@@ -81,7 +81,7 @@ func (rc *RedisClient) sendCommand(args ...string) error {
 		}
 	}
 
-	rc.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = rc.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "*%d\r\n", len(args))
@@ -94,7 +94,7 @@ func (rc *RedisClient) sendCommand(args ...string) error {
 }
 
 func (rc *RedisClient) readLine() (string, error) {
-	rc.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = rc.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	line, err := rc.reader.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -128,7 +128,7 @@ func (rc *RedisClient) readResponse() (string, error) {
 			return "", nil // nil
 		}
 		buf := make([]byte, n+2) // +2 for \r\n
-		rc.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_ = rc.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		_, err = bufio.NewReader(rc.reader).Read(buf)
 		if err != nil {
 			full := make([]byte, 0, n+2)
@@ -152,7 +152,9 @@ func (rc *RedisClient) readResponse() (string, error) {
 			return "0", nil
 		}
 		for i := 0; i < n; i++ {
-			rc.readResponse()
+			if _, err := rc.readResponse(); err != nil {
+				return "", err
+			}
 		}
 		return strconv.Itoa(n), nil
 	default:
