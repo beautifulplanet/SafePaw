@@ -71,8 +71,8 @@ Items below are **not** yet fully in place. They are grouped by theme and ordere
 | T3 | **UI test automation** — Cypress/Playwright for wizard flows (login, config, dashboard) | Medium | E2E script exists; add browser E2E |
 | T4 | **Coverage target increase** — Raise from 60% toward 90% for critical packages | Low | Per FAANG-style feedback |
 | T5 | **SonarQube (or equivalent)** — Optional additional static analysis in CI | Low | gosec + govulncheck already; add if desired |
-| T6 | **Mock backend for gateway tests** — Lightweight HTTP server (Go/Node/Python) that echoes requests, returns configurable status codes, delays, and payloads that trigger scanning/auth/rate-limit logic | High | Test gateway/proxy/scanning without OpenClaw or InstallerClaw |
-| T7 | **Integration suite (gateway + mock)** — Automated tests that spin up gateway and mock backend, then validate security, scanning, rate limiting, auth, error handling, and (where applicable) logs/metrics/audit | High | CI/CD; complements existing integration_test.go |
+| T6 | **Mock backend for gateway tests** — Lightweight HTTP server (Go/Node/Python) that echoes requests, returns configurable status codes, delays, and payloads that trigger scanning/auth/rate-limit logic | High | **Done:** [services/mockbackend/](services/mockbackend/) (Go, /health, /echo, /status/:code, /payload/injection, /payload/xss, /delay) |
+| T7 | **Integration suite (gateway + mock)** — Automated tests that spin up gateway and mock backend, then validate security, scanning, rate limiting, auth, error handling, and (where applicable) logs/metrics/audit | High | **Done:** [scripts/integration-gateway-mock.sh](scripts/integration-gateway-mock.sh) + `make verify-gateway-mock` |
 | T8 | **Docker Compose dummy backend** — Optional compose profile or override that swaps the real backend for a minimal service (httpbin, nginx, or custom echo) for local/CI runs | Medium | Service discovery, health checks, network isolation without real backend |
 | T9 | **Test harness / script** — Curl, httpie, or Postman collection for manual or scripted runs: auth flows, rate limiting, security headers, prompt-injection payloads, timeouts, invalid payloads | Medium | Exploratory and regression; can drive T7 cases |
 | T10 | **Pitfalls checklist + mitigations** — Document and address: mock ≠ real world, overfitting to happy paths, security edge-case coverage, log/audit validation, resource/concurrency, and use fuzzing/chaos to find gaps | Medium | See “Gateway testing without backend” below |
@@ -196,9 +196,9 @@ Items below are **not** yet fully in place. They are grouped by theme and ordere
 - I2 Container image scanning in CI  
 - O4 Log sanitization audit and doc  
 
-**Phase 2b — Gateway testing without real backend (by priority)**  
-1. **T6 Mock backend** — Lightweight HTTP server (echo, status codes, delays, payloads that trigger scanning/auth/rate limit).  
-2. **T7 Integration suite** — Spin up gateway + mock; automate security, scanning, rate limit, auth, errors; validate logs/metrics/audit where applicable.  
+**Phase 2b — Gateway testing without real backend (by priority)** ✅ T6–T7 done  
+1. **T6 Mock backend** — **Done:** services/mockbackend (Go), /health, /echo, /status/:code, /payload/injection, /payload/xss, /delay.  
+2. **T7 Integration suite** — **Done:** scripts/integration-gateway-mock.sh, make verify-gateway-mock.  
 3. **T8 Docker Compose dummy** — Optional profile or override with httpbin/echo/dummy for local and CI.  
 4. **T9 Test harness** — Script or collection (curl/httpie/Postman) for auth, rate limit, headers, injection, timeouts; manual and scripted.  
 5. **T10 Pitfalls checklist** — Document mock limitations, overfitting, security edge cases, log validation; add chaos/fuzz where feasible.  

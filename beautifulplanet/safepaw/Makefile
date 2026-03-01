@@ -89,11 +89,15 @@ up-monitoring: ## Start with Prometheus + Grafana
 verify: ## Run E2E verification against live deployment
 	./scripts/verify-deployment.sh
 
+verify-gateway-mock: ## Run gateway + mock backend integration (no OpenClaw)
+	./scripts/integration-gateway-mock.sh
+
 # ── Clean ──────────────────────────────────────────────
 
 clean: ## Remove build artifacts and coverage files
 	rm -f $(GATEWAY_DIR)/coverage.out $(WIZARD_DIR)/coverage.out
 	rm -f $(GATEWAY_DIR)/gateway $(WIZARD_DIR)/wizard
+	rm -f services/mockbackend/mockbackend
 
 # ── Help ───────────────────────────────────────────────
 
