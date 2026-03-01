@@ -1,0 +1,195 @@
+# =============================================================
+# SafePaw - Grafana Alert Rules (Provisioning)
+# =============================================================
+# These alerts fire when security or availability thresholds
+# are breached. Configure notification channels (Slack, PagerDuty,
+# email) in Grafana UI under Alerting → Contact Points.
+#
+# Severity levels:
+#   critical — requires immediate human response
+#   warning  — investigate within 1 hour
+#   info     — review during next business day
+# =============================================================
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: SafePaw Security Alerts
+    folder: SafePaw
+    interval: 1m
+    rules:
+      # ── Availability ─────────────────────────────────
+      - uid: safepaw-gateway-down
+        title: "Gateway Down"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: up{job="safepaw-gateway"}
+              intervalMs: 60000
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SafePaw Gateway is DOWN"
+          description: "Gateway has been unreachable for >2 minutes. Check container health."
+          runbook_url: "RUNBOOK.md#3-gateway-down"
+
+      # ── Auth Failures ────────────────────────────────
+      - uid: safepaw-auth-spike
+        title: "Auth Failure Spike"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(safepaw_auth_failures_total[5m]) * 300
+              intervalMs: 60000
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [50]
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High auth failure rate (>50 in 5 min)"
+          description: "Possible credential stuffing or brute-force attack. Check brute-force guard for banned IPs."
+          runbook_url: "RUNBOOK.md#4-brute-force-on-wizard"
+
+      # ── Rate Limiting ────────────────────────────────
+      - uid: safepaw-rate-limit-spike
+        title: "Rate Limit Spike"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(safepaw_rate_limited_total[5m]) * 300
+              intervalMs: 60000
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [100]
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sustained rate limiting (>100 blocked in 5 min)"
+          description: "One or more IPs are persistently exceeding rate limits. Brute-force guard should be banning them."
+
+      # ── Prompt Injection ─────────────────────────────
+      - uid: safepaw-injection-high
+        title: "High-Risk Prompt Injection Detected"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: increase(safepaw_prompt_injection_detected_total{risk="high"}[5m])
+              intervalMs: 60000
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Multiple high-risk prompt injections detected"
+          description: "5+ high-risk prompt injection attempts in 5 minutes. Check scanner logs for patterns."
+          runbook_url: "RUNBOOK.md#2-prompt-injection-attack"
+
+      # ── Error Rate ───────────────────────────────────
+      - uid: safepaw-error-rate
+        title: "High Error Rate"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                rate(safepaw_requests_total{status=~"5.."}[5m])
+                / rate(safepaw_requests_total[5m]) * 100
+              intervalMs: 60000
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [10]
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate >10% for 5 minutes"
+          description: "The gateway is returning >10% 5xx errors. Backend may be unhealthy."
+          runbook_url: "RUNBOOK.md#3-gateway-down"
+
+      # ── Token Revocation ─────────────────────────────
+      - uid: safepaw-revocation-activity
+        title: "Token Revocation Activity"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: increase(safepaw_tokens_revoked_total[1h])
+              intervalMs: 60000
+          - refId: C
+            datasourceUid: "-100"
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 0s
+        labels:
+          severity: info
+        annotations:
+          summary: "Token revocation detected"
+          description: "One or more tokens were revoked in the last hour. Verify this was intentional."
+          runbook_url: "RUNBOOK.md#1-token-compromise"

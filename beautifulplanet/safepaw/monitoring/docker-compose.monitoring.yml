@@ -1,0 +1,62 @@
+# =============================================================
+# SafePaw Monitoring Stack (Optional)
+# =============================================================
+# Run alongside the main stack:
+#   docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
+#
+# Prometheus: http://localhost:9090
+# Grafana:    http://localhost:3001 (admin/admin)
+# =============================================================
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: safepaw-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - safepaw-internal
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: safepaw-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-dashboard.json:/etc/grafana/provisioning/dashboards/safepaw.json:ro
+      - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./grafana-dashboard-provider.yml:/etc/grafana/provisioning/dashboards/default.yml:ro
+      - ./grafana-alerts.yml:/etc/grafana/provisioning/alerting/safepaw-alerts.yml:ro
+    ports:
+      - "127.0.0.1:3001:3000"
+    networks:
+      - safepaw-internal
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+networks:
+  safepaw-internal:
+    external: true
+    name: safepaw_safepaw-internal
+
+volumes:
+  prometheus-data:
+  grafana-data:
