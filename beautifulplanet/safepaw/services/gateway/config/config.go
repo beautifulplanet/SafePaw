@@ -48,6 +48,10 @@ type Config struct {
 
 	// Body scanning
 	MaxBodySize int64 // Max request body size for scanning (default: 1MB)
+
+	// Redis (for persistent revocation, optional)
+	RedisAddr     string
+	RedisPassword string
 }
 
 // Load reads config from environment variables with safe defaults.
@@ -92,6 +96,10 @@ func Load() (*Config, error) {
 
 		// Body scanning
 		MaxBodySize: int64(envInt("MAX_BODY_SIZE", 1048576)), // 1MB
+
+		// Redis (optional — enables persistent revocation)
+		RedisAddr:     envStr("REDIS_ADDR", ""),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 	}
 
 	// Load auth secret (required if auth is enabled)

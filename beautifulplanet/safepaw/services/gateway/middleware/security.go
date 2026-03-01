@@ -190,10 +190,20 @@ func (rl *RateLimiter) Stop() {
 
 // RateLimit wraps a handler with per-IP rate limiting.
 func RateLimit(rl *RateLimiter, next http.Handler) http.Handler {
+	return RateLimitWithGuard(rl, nil, next)
+}
+
+// RateLimitWithGuard is RateLimit + brute-force integration.
+// Every rate limit denial counts as a strike. Persistent abusers
+// get escalating bans from the guard.
+func RateLimitWithGuard(rl *RateLimiter, guard *BruteForceGuard, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := extractIP(r)
 		if !rl.Allow(ip) {
 			log.Printf("[SECURITY] Rate limited IP=%s request_id=%s", ip, r.Header.Get("X-Request-ID"))
+			if guard != nil {
+				guard.RecordFailure(ip, "rate_limit_exceeded")
+			}
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
 		}
@@ -205,16 +215,14 @@ func RateLimit(rl *RateLimiter, next http.Handler) http.Handler {
 // Layer 4: Request ID
 // ================================================================
 
-// RequestID injects a unique UUID into every request for tracing.
-// This lets us track a single user's message across gateway → router → agent.
+// RequestID injects a unique server-generated UUID into every request for tracing.
+// Client-provided X-Request-ID is ignored so that IDs are always unique and
+// server-controlled (prevents log injection and correlation confusion).
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqID := r.Header.Get("X-Request-ID")
-		if reqID == "" {
-			reqID = uuid.New().String()
-		}
+		reqID := uuid.New().String()
+		r.Header.Set("X-Request-ID", reqID) // Downstream middleware and handlers use this for logs
 		w.Header().Set("X-Request-ID", reqID)
-		r.Header.Set("X-Request-ID", reqID) // So downstream can log it for incident response
 		next.ServeHTTP(w, r)
 	})
 }

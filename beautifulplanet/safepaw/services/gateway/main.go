@@ -38,7 +38,11 @@ import (
 )
 
 func main() {
+if middleware.InstallJSONLogger() {
+log.Println("[CONFIG] Structured JSON logging enabled (LOG_FORMAT=json)")
+} else {
 log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+}
 log.Println("=== SafePaw Gateway starting ===")
 
 // --------------------------------------------------------
@@ -85,23 +89,31 @@ FlushInterval: -1,
 }
 
 // --------------------------------------------------------
-// Step 3: Set up rate limiter
+// Step 3: Set up rate limiter + brute force guard
 // --------------------------------------------------------
 rateLimiter := middleware.NewRateLimiter(cfg.RateLimit, cfg.RateLimitWindow)
 defer rateLimiter.Stop()
+
+bruteForce := middleware.NewBruteForceGuard(5, 5*time.Minute)
+defer bruteForce.Stop()
 
 // --------------------------------------------------------
 // Step 4: Build HTTP routes with middleware stack
 // --------------------------------------------------------
 mux := http.NewServeMux()
 
+// Prometheus metrics
+metrics := middleware.NewMetrics()
+mux.Handle("/metrics", metrics.Handler())
+
 // Health check  no auth, no middleware (used by Docker/k8s)
 mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 status := map[string]interface{}{
-"status":    "ok",
-"service":   "safepaw-gateway",
-"proxy":     cfg.ProxyTarget.String(),
-"timestamp": time.Now().UTC().Format(time.RFC3339),
+"status":          "ok",
+"service":         "safepaw-gateway",
+"proxy":           cfg.ProxyTarget.String(),
+"pattern_version": middleware.PatternVersion,
+"timestamp":       time.Now().UTC().Format(time.RFC3339),
 }
 
 // Deep health check: probe the OpenClaw backend
@@ -139,7 +151,7 @@ if isWebSocketUpgrade(r) {
 wsHandler.ServeHTTP(w, r)
 return
 }
-bodyScanner(cfg.MaxBodySize, proxy).ServeHTTP(w, r)
+middleware.OutputScanner(cfg.MaxBodySize, bodyScanner(cfg.MaxBodySize, proxy)).ServeHTTP(w, r)
 }))
 
 // Apply middleware (outermost first):
@@ -152,19 +164,60 @@ auth, err := middleware.NewAuthenticator(cfg.AuthSecret, cfg.AuthDefaultTTL, cfg
 if err != nil {
 log.Fatalf("[FATAL] Auth setup failed: %v", err)
 }
-log.Printf("[AUTH] Authentication ENABLED (default TTL=%v, max TTL=%v)",
+
+var redisClient *middleware.RedisClient
+if cfg.RedisAddr != "" {
+	redisClient = middleware.NewRedisClient(cfg.RedisAddr, cfg.RedisPassword)
+	log.Printf("[CONFIG] Redis connected at %s (persistent revocation enabled)", cfg.RedisAddr)
+}
+
+revocations := middleware.NewRevocationListWithRedis(cfg.AuthMaxTTL, redisClient)
+defer revocations.Stop()
+
+// Admin endpoint for token revocation (requires admin scope)
+mux.Handle("/admin/revoke", middleware.AuthRequired(auth, "admin", revocations,
+http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Subject string `json:"subject"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Subject == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "subject is required"})
+		return
+	}
+	revocations.Revoke(body.Subject, body.Reason)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "revoked",
+		"subject": body.Subject,
+		"active_revocations": revocations.Count(),
+	})
+})))
+
+log.Printf("[AUTH] Authentication ENABLED (default TTL=%v, max TTL=%v, revocation=enabled)",
 cfg.AuthDefaultTTL, cfg.AuthMaxTTL)
-// Use "proxy" scope  accepts "proxy" and "admin" tokens
-handler = middleware.AuthRequired(auth, "proxy", handler)
+handler = middleware.AuthRequiredWithGuard(auth, "proxy", revocations, bruteForce, handler)
 } else {
-log.Println("[AUTH] Authentication DISABLED (set AUTH_ENABLED=true for production)")
+log.Println("[SECURITY] ╔══════════════════════════════════════════════════════════════╗")
+log.Println("[SECURITY] ║  WARNING: Authentication is DISABLED                        ║")
+log.Println("[SECURITY] ║  All requests pass through without token validation.        ║")
+log.Println("[SECURITY] ║  Set AUTH_ENABLED=true and AUTH_SECRET for production.       ║")
+log.Println("[SECURITY] ╚══════════════════════════════════════════════════════════════╝")
 handler = middleware.StripAuthHeaders(handler)
 }
 
-handler = middleware.RateLimit(rateLimiter, handler)
+handler = middleware.RateLimitWithGuard(rateLimiter, bruteForce, handler)
+handler = middleware.BruteForceMiddleware(bruteForce, handler)
 handler = middleware.OriginCheck(cfg.AllowedOrigins, handler)
 handler = middleware.RequestID(handler)
 handler = middleware.SecurityHeaders(handler)
+handler = middleware.MetricsMiddleware(metrics, handler)
 
 // --------------------------------------------------------
 // Step 5: Create and start HTTP server
@@ -201,7 +254,11 @@ if err := server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil 
 log.Fatalf("[FATAL] TLS server error: %v", err)
 }
 } else {
-log.Printf("[SERVER] Listening on :%d (TLS disabled  dev mode)", cfg.Port)
+log.Println("[SECURITY] ╔══════════════════════════════════════════════════════════════╗")
+log.Println("[SECURITY] ║  WARNING: TLS is DISABLED — traffic is unencrypted          ║")
+log.Println("[SECURITY] ║  Set TLS_ENABLED=true with cert/key for production.         ║")
+log.Println("[SECURITY] ╚══════════════════════════════════════════════════════════════╝")
+log.Printf("[SERVER] Listening on :%d (TLS disabled — dev mode)", cfg.Port)
 if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 log.Fatalf("[FATAL] Server error: %v", err)
 }
