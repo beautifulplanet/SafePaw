@@ -180,6 +180,7 @@ The setup wizard should guide users toward secure defaults:
 
 - **Strong admin password:** Prefer setting `WIZARD_ADMIN_PASSWORD` in `.env` to a strong value instead of relying on the one-time auto-generated password (which is only in logs).
 - **Optional MFA (TOTP):** Set `WIZARD_TOTP_SECRET` in `.env` to a base32 TOTP secret; login will then require password + 6-digit code from an authenticator app. See `.env.example` for generation hints.
+- **Session invalidation on credential change:** When `WIZARD_ADMIN_PASSWORD` or `WIZARD_TOTP_SECRET` is updated via PUT `/api/v1/config`, the wizard reloads credentials from `.env` and bumps the session generation; all existing session tokens are invalidated and users must log in again.
 - **Enable security layers:** In production, set `AUTH_ENABLED=true`, provide `AUTH_SECRET`, and enable `TLS_ENABLED` with valid certs.
 - **Rate limiting:** Document that `RATE_LIMIT` controls gateway request rate per IP and that it can be tuned for abuse protection.
 

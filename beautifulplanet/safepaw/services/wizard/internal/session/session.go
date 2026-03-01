@@ -40,6 +40,7 @@ type Claims struct {
 	IssuedAt  int64  `json:"iat"`           // Unix timestamp
 	ExpiresAt int64  `json:"exp"`           // Unix timestamp
 	JTI       string `json:"jti,omitempty"` // Unique nonce (replay protection)
+	Gen       int    `json:"gen,omitempty"` // Session generation; tokens with gen < current are invalid (e.g. after password/TOTP change)
 }
 
 var (
@@ -52,7 +53,8 @@ var (
 // Create generates an HMAC-SHA256 signed session token.
 // The secret should be the admin password (never leaves the server).
 // Each token includes a unique cryptographic nonce (jti) for replay protection.
-func Create(secret string, ttl time.Duration) (string, error) {
+// gen is the current session generation; when password or TOTP is changed, bump gen so old tokens fail Validate.
+func Create(secret string, ttl time.Duration, gen int) (string, error) {
 	nonce, err := generateNonce()
 	if err != nil {
 		return "", err
@@ -64,6 +66,7 @@ func Create(secret string, ttl time.Duration) (string, error) {
 		IssuedAt:  now.Unix(),
 		ExpiresAt: now.Add(ttl).Unix(),
 		JTI:       nonce,
+		Gen:       gen,
 	}
 
 	payload, err := json.Marshal(claims)
@@ -77,9 +80,13 @@ func Create(secret string, ttl time.Duration) (string, error) {
 	return encode(payload) + "." + encode(sig), nil
 }
 
+// ErrSessionInvalidated is returned when the token was issued before a credential rotation (password/TOTP change).
+var ErrSessionInvalidated = errors.New("session invalidated by credential change")
+
 // Validate verifies an HMAC-SHA256 signed token and returns claims.
-// Returns an error if the signature is invalid or the token is expired.
-func Validate(token, secret string) (*Claims, error) {
+// currentGen is the current session generation; tokens with claims.Gen < currentGen are rejected (password/TOTP was changed).
+// Returns an error if the signature is invalid, the token is expired, or the session was invalidated.
+func Validate(token, secret string, currentGen int) (*Claims, error) {
 	parts := strings.SplitN(token, ".", 2)
 	if len(parts) != 2 {
 		return nil, ErrInvalidFormat
@@ -105,6 +112,11 @@ func Validate(token, secret string) (*Claims, error) {
 	var claims Claims
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return nil, ErrInvalidFormat
+	}
+
+	// Reject tokens issued before the latest credential rotation
+	if currentGen > 0 && claims.Gen < currentGen {
+		return nil, ErrSessionInvalidated
 	}
 
 	// Check expiry

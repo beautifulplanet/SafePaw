@@ -14,6 +14,14 @@ var ok = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 })
 
+// sessionValidator returns a SessionValidator that validates tokens with the given secret and gen 0 (for tests).
+func sessionValidator(secret string) SessionValidator {
+	return func(token string) bool {
+		_, err := session.Validate(token, secret, 0)
+		return err == nil
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	handler := SecurityHeaders(ok)
 
@@ -80,7 +88,7 @@ func TestCORS_Preflight(t *testing.T) {
 }
 
 func TestAdminAuth_PublicPaths(t *testing.T) {
-	handler := AdminAuth("secret", ok)
+	handler := AdminAuth(sessionValidator("secret"), ok)
 
 	publicPaths := []string{
 		"/api/v1/health",
@@ -102,7 +110,7 @@ func TestAdminAuth_PublicPaths(t *testing.T) {
 }
 
 func TestAdminAuth_ProtectedWithoutToken(t *testing.T) {
-	handler := AdminAuth("secret", ok)
+	handler := AdminAuth(sessionValidator("secret"), ok)
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	rec := httptest.NewRecorder()
@@ -115,9 +123,9 @@ func TestAdminAuth_ProtectedWithoutToken(t *testing.T) {
 
 func TestAdminAuth_ValidBearerToken(t *testing.T) {
 	secret := "test-admin-password"
-	handler := AdminAuth(secret, ok)
+	handler := AdminAuth(sessionValidator(secret), ok)
 
-	token, _ := session.Create(secret, time.Hour)
+	token, _ := session.Create(secret, time.Hour, 0)
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -131,9 +139,9 @@ func TestAdminAuth_ValidBearerToken(t *testing.T) {
 
 func TestAdminAuth_ValidCookie(t *testing.T) {
 	secret := "test-admin-password"
-	handler := AdminAuth(secret, ok)
+	handler := AdminAuth(sessionValidator(secret), ok)
 
-	token, _ := session.Create(secret, time.Hour)
+	token, _ := session.Create(secret, time.Hour, 0)
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -146,9 +154,9 @@ func TestAdminAuth_ValidCookie(t *testing.T) {
 }
 
 func TestAdminAuth_InvalidToken(t *testing.T) {
-	handler := AdminAuth("real-secret", ok)
+	handler := AdminAuth(sessionValidator("real-secret"), ok)
 
-	token, _ := session.Create("wrong-secret", time.Hour)
+	token, _ := session.Create("wrong-secret", time.Hour, 0)
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -162,9 +170,9 @@ func TestAdminAuth_InvalidToken(t *testing.T) {
 
 func TestAdminAuth_ExpiredToken(t *testing.T) {
 	secret := "test-admin-password"
-	handler := AdminAuth(secret, ok)
+	handler := AdminAuth(sessionValidator(secret), ok)
 
-	token, _ := session.Create(secret, -1*time.Hour) // Already expired
+	token, _ := session.Create(secret, -1*time.Hour, 0) // Already expired
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -318,7 +326,7 @@ func TestCORS_PreflightDisallowedOrigin(t *testing.T) {
 }
 
 func TestAdminAuth_EmptyBearerToken(t *testing.T) {
-	handler := AdminAuth("secret", ok)
+	handler := AdminAuth(sessionValidator("secret"), ok)
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer ")
@@ -331,7 +339,7 @@ func TestAdminAuth_EmptyBearerToken(t *testing.T) {
 }
 
 func TestAdminAuth_MalformedAuthHeader(t *testing.T) {
-	handler := AdminAuth("secret", ok)
+	handler := AdminAuth(sessionValidator("secret"), ok)
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "NotBearer sometoken")
@@ -345,10 +353,10 @@ func TestAdminAuth_MalformedAuthHeader(t *testing.T) {
 
 func TestAdminAuth_BearerTakesPrecedenceOverCookie(t *testing.T) {
 	secret := "test-admin-password"
-	handler := AdminAuth(secret, ok)
+	handler := AdminAuth(sessionValidator(secret), ok)
 
-	goodToken, _ := session.Create(secret, time.Hour)
-	badToken, _ := session.Create("wrong-secret", time.Hour)
+	goodToken, _ := session.Create(secret, time.Hour, 0)
+	badToken, _ := session.Create("wrong-secret", time.Hour, 0)
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer "+goodToken)
@@ -362,7 +370,7 @@ func TestAdminAuth_BearerTakesPrecedenceOverCookie(t *testing.T) {
 }
 
 func TestAdminAuth_PathTraversalNotPublic(t *testing.T) {
-	handler := AdminAuth("secret", ok)
+	handler := AdminAuth(sessionValidator("secret"), ok)
 
 	paths := []string{
 		"/api/v1/auth/login/../config",

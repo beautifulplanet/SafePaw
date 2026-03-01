@@ -16,8 +16,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"safepaw/wizard/internal/session"
 )
 
 // SecurityHeaders adds defense-in-depth HTTP headers.
@@ -68,11 +66,15 @@ func CORS(allowedOrigins []string, next http.Handler) http.Handler {
 	})
 }
 
+// SessionValidator is a function that returns true if the token is a valid session.
+// Used so the handler can supply password and session generation (invalidated on credential change).
+type SessionValidator func(token string) bool
+
 // AdminAuth protects API endpoints with signed session tokens.
 // Accepts Bearer token in Authorization header or "session" cookie.
-// Tokens are HMAC-SHA256 signed — the admin password is the signing key.
+// validate is typically handler.SessionValidator() so password and session generation stay in sync.
 // Static assets (UI files) are served without auth so the login page loads.
-func AdminAuth(password string, next http.Handler) http.Handler {
+func AdminAuth(validate SessionValidator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Allow unauthenticated access to:
 		//   - Static UI files (so login page can load)
@@ -86,7 +88,7 @@ func AdminAuth(password string, next http.Handler) http.Handler {
 		// Check Authorization: Bearer <token>
 		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 			token := strings.TrimPrefix(auth, "Bearer ")
-			if _, err := session.Validate(token, password); err == nil {
+			if validate(token) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -94,7 +96,7 @@ func AdminAuth(password string, next http.Handler) http.Handler {
 
 		// Check cookie fallback (for browser-based access)
 		if cookie, err := r.Cookie("session"); err == nil {
-			if _, err := session.Validate(cookie.Value, password); err == nil {
+			if validate(cookie.Value) {
 				next.ServeHTTP(w, r)
 				return
 			}

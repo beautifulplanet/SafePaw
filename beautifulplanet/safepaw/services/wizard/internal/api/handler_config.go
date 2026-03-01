@@ -57,6 +57,15 @@ func (h *Handler) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Invalidate existing sessions when credentials change so users must re-login with new password/TOTP
+	if _, touchedPassword := updates["WIZARD_ADMIN_PASSWORD"]; touchedPassword {
+		h.ReloadCredsFromEnv()
+		h.BumpSessionGen()
+	} else if _, touchedTOTP := updates["WIZARD_TOTP_SECRET"]; touchedTOTP {
+		h.ReloadCredsFromEnv()
+		h.BumpSessionGen()
+	}
+
 	configIP := r.RemoteAddr
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 		configIP = fwd

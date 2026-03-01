@@ -80,7 +80,7 @@ func TestLoginSuccess(t *testing.T) {
 	}
 
 	// Token should validate
-	claims, err := session.Validate(resp.Token, "test-password-123")
+	claims, err := session.Validate(resp.Token, "test-password-123", 0)
 	if err != nil {
 		t.Fatalf("Returned token is invalid: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestLoginSuccess(t *testing.T) {
 	}
 
 	// Cookie value should also be a valid token
-	if _, err := session.Validate(sessionCookie.Value, "test-password-123"); err != nil {
+	if _, err := session.Validate(sessionCookie.Value, "test-password-123", 0); err != nil {
 		t.Errorf("Cookie token is invalid: %v", err)
 	}
 }

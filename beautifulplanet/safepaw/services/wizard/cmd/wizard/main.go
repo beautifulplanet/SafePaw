@@ -54,7 +54,7 @@ func main() {
 	//   SecurityHeaders → CORS → AdminAuth → RateLimit → Router
 	chain := middleware.SecurityHeaders(
 		middleware.CORS(cfg.AllowedOrigins,
-			middleware.AdminAuth(cfg.AdminPassword,
+			middleware.AdminAuth(handler.SessionValidator(),
 				middleware.RateLimit(60, time.Minute,
 					handler.Router(),
 				),

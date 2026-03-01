@@ -9,7 +9,7 @@ func TestCreateAndValidate(t *testing.T) {
 	secret := "test-secret-key-32bytes-long!!"
 	ttl := 1 * time.Hour
 
-	token, err := Create(secret, ttl)
+	token, err := Create(secret, ttl, 0)
 	if err != nil {
 		t.Fatalf("Create() failed: %v", err)
 	}
@@ -22,8 +22,8 @@ func TestCreateAndValidate(t *testing.T) {
 		t.Fatalf("Token too short: %q", token)
 	}
 
-	// Validate with correct secret
-	claims, err := Validate(token, secret)
+	// Validate with correct secret and same gen
+	claims, err := Validate(token, secret, 0)
 	if err != nil {
 		t.Fatalf("Validate() failed: %v", err)
 	}
@@ -36,9 +36,9 @@ func TestCreateAndValidate(t *testing.T) {
 }
 
 func TestValidateWrongSecret(t *testing.T) {
-	token, _ := Create("correct-secret", 1*time.Hour)
+	token, _ := Create("correct-secret", 1*time.Hour, 0)
 
-	_, err := Validate(token, "wrong-secret")
+	_, err := Validate(token, "wrong-secret", 0)
 	if err == nil {
 		t.Fatal("Validate() should fail with wrong secret")
 	}
@@ -50,12 +50,12 @@ func TestValidateWrongSecret(t *testing.T) {
 func TestValidateExpired(t *testing.T) {
 	secret := "test-secret"
 	// Create a token that's already expired (negative TTL)
-	token, err := Create(secret, -1*time.Hour)
+	token, err := Create(secret, -1*time.Hour, 0)
 	if err != nil {
 		t.Fatalf("Create() failed: %v", err)
 	}
 
-	_, err = Validate(token, secret)
+	_, err = Validate(token, secret, 0)
 	if err == nil {
 		t.Fatal("Validate() should fail with expired token")
 	}
@@ -78,7 +78,7 @@ func TestValidateInvalidFormat(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Validate(tc.token, "secret")
+			_, err := Validate(tc.token, "secret", 0)
 			if err != tc.err {
 				t.Errorf("Validate(%q) err = %v, want %v", tc.token, err, tc.err)
 			}
@@ -88,27 +88,27 @@ func TestValidateInvalidFormat(t *testing.T) {
 
 func TestTokensAreUnique(t *testing.T) {
 	secret := "test"
-	token1, _ := Create(secret, time.Hour)
-	token2, _ := Create(secret, time.Hour)
+	token1, _ := Create(secret, time.Hour, 0)
+	token2, _ := Create(secret, time.Hour, 0)
 
 	// Tokens MUST differ even when created in the same second (nonce/jti)
 	if token1 == token2 {
 		t.Fatal("Two tokens created with same params should be different (jti nonce)")
 	}
 
-	if _, err := Validate(token1, secret); err != nil {
+	if _, err := Validate(token1, secret, 0); err != nil {
 		t.Errorf("token1 validation failed: %v", err)
 	}
-	if _, err := Validate(token2, secret); err != nil {
+	if _, err := Validate(token2, secret, 0); err != nil {
 		t.Errorf("token2 validation failed: %v", err)
 	}
 }
 
 func TestTokenHasJTI(t *testing.T) {
 	secret := "test"
-	token, _ := Create(secret, time.Hour)
+	token, _ := Create(secret, time.Hour, 0)
 
-	claims, err := Validate(token, secret)
+	claims, err := Validate(token, secret, 0)
 	if err != nil {
 		t.Fatalf("Validate() failed: %v", err)
 	}
@@ -122,12 +122,29 @@ func TestTokenHasJTI(t *testing.T) {
 
 func TestValidateTamperedPayload(t *testing.T) {
 	secret := "test-secret"
-	token, _ := Create(secret, time.Hour)
+	token, _ := Create(secret, time.Hour, 0)
 
 	// Tamper with the payload (change first char)
 	tampered := "X" + token[1:]
-	_, err := Validate(tampered, secret)
+	_, err := Validate(tampered, secret, 0)
 	if err == nil {
 		t.Fatal("Should reject tampered token")
+	}
+}
+
+func TestValidateSessionInvalidated(t *testing.T) {
+	secret := "test-secret"
+	token, _ := Create(secret, time.Hour, 0)
+
+	// Same gen: valid
+	_, err := Validate(token, secret, 0)
+	if err != nil {
+		t.Fatalf("Validate(gen=0) should succeed: %v", err)
+	}
+
+	// Higher gen: token issued before rotation should be rejected
+	_, err = Validate(token, secret, 1)
+	if err != ErrSessionInvalidated {
+		t.Errorf("Validate(gen=1) with token gen=0: err = %v, want ErrSessionInvalidated", err)
 	}
 }

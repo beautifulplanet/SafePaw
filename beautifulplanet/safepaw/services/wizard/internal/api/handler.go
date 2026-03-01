@@ -27,21 +27,25 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"safepaw/wizard/internal/audit"
 	"safepaw/wizard/internal/config"
 	"safepaw/wizard/internal/docker"
+	"safepaw/wizard/internal/middleware"
 	"safepaw/wizard/internal/session"
 	"safepaw/wizard/internal/totp"
 	"safepaw/wizard/ui"
 )
 
 // Handler holds all API dependencies.
+// sessionGen is bumped when admin password or TOTP secret is changed via PUT /config so existing sessions are invalidated.
 type Handler struct {
-	cfg    *config.Config
-	docker *docker.Client
-	audit  *audit.Logger
+	cfg        *config.Config
+	docker     *docker.Client
+	audit      *audit.Logger
+	sessionGen atomic.Uint64
 }
 
 // NewHandler creates a new API handler.
@@ -55,6 +59,37 @@ func (h *Handler) Close() {
 		h.docker.Close()
 	}
 	log.Println("[INFO] API handler closed")
+}
+
+// SessionValidator returns a function that validates session tokens using the current admin password and session generation.
+// Pass this to middleware.AdminAuth so that when password or TOTP is changed via PUT /config, existing tokens fail validation.
+func (h *Handler) SessionValidator() middleware.SessionValidator {
+	return func(token string) bool {
+		_, err := session.Validate(token, h.cfg.AdminPassword, int(h.sessionGen.Load()))
+		return err == nil
+	}
+}
+
+// ReloadCredsFromEnv re-reads the .env file and updates AdminPassword and TOTPSecret in memory.
+// Call after PUT /config updates those keys so new logins use the new credentials.
+func (h *Handler) ReloadCredsFromEnv() {
+	env, err := readEnvFile(h.cfg.EnvFilePath)
+	if err != nil {
+		log.Printf("[WARN] ReloadCredsFromEnv: read failed: %v", err)
+		return
+	}
+	if v, ok := env["WIZARD_ADMIN_PASSWORD"]; ok {
+		h.cfg.AdminPassword = v
+	}
+	if v, ok := env["WIZARD_TOTP_SECRET"]; ok {
+		h.cfg.TOTPSecret = v
+	}
+}
+
+// BumpSessionGen increments the session generation so all existing tokens fail validation (e.g. after password or TOTP change).
+func (h *Handler) BumpSessionGen() {
+	h.sessionGen.Add(1)
+	log.Println("[INFO] Session generation bumped; existing sessions invalidated")
 }
 
 // Router returns the HTTP handler with all routes registered.
@@ -150,9 +185,9 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Generate signed session token (24h TTL)
+	// Generate signed session token (24h TTL); include current gen so credential rotation invalidates old tokens
 	const ttl = 24 * time.Hour
-	token, err := session.Create(h.cfg.AdminPassword, ttl)
+	token, err := session.Create(h.cfg.AdminPassword, ttl, int(h.sessionGen.Load()))
 	if err != nil {
 		log.Printf("[ERROR] Failed to create session token: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})
