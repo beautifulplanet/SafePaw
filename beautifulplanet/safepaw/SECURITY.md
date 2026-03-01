@@ -184,6 +184,20 @@ The setup wizard should guide users toward secure defaults:
 - **Enable security layers:** In production, set `AUTH_ENABLED=true`, provide `AUTH_SECRET`, and enable `TLS_ENABLED` with valid certs.
 - **Rate limiting:** Document that `RATE_LIMIT` controls gateway request rate per IP and that it can be tuned for abuse protection.
 
+### Editable config keys (wizard PUT /api/v1/config)
+
+Only the keys below are accepted by PUT `/api/v1/config`; all others are ignored so the stack is not broken by accident. **Why these:** wizard/admin credentials, gateway auth and TLS, rate limits, and integration tokens the operator may rotate without editing the file by hand.
+
+| Key | Purpose |
+|-----|--------|
+| `WIZARD_ADMIN_PASSWORD`, `WIZARD_TOTP_SECRET` | Wizard login; changing them invalidates existing sessions. |
+| `AUTH_ENABLED`, `AUTH_SECRET`, `AUTH_DEFAULT_TTL_HOURS`, `AUTH_MAX_TTL_HOURS` | Gateway HMAC auth and token TTL. |
+| `TLS_ENABLED`, `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_PORT` | Gateway TLS. |
+| `RATE_LIMIT`, `RATE_LIMIT_WINDOW_SEC` | Gateway per-IP rate limit. |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SIGNAL_CLI_PATH` | OpenClaw/integration config. |
+
+GET `/api/v1/config` returns all keys with **secret values masked** (e.g. `***xxxx` for last 4 chars). The wizard **never logs secret values**—only key names (e.g. in the audit log for “config change”) so logs stay safe for SIEM or shared viewing.
+
 ---
 
 ## 10. Known limitations and adoption considerations
