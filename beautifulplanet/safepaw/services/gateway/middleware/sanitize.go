@@ -258,6 +258,26 @@ func (r PromptInjectionRisk) String() string {
 	}
 }
 
+// PatternVersion tracks the prompt injection pattern set.
+// Increment on every pattern addition/modification.
+// This version is exposed via /health and /metrics for monitoring.
+const PatternVersion = "2.0.0"
+
+// PatternChangelog documents pattern set evolution.
+// Review quarterly or when new attack techniques emerge.
+//
+//	v1.0.0 (2024-12-01) — Initial 14-pattern set
+//	v2.0.0 (2026-02-28) — Added pattern versioning and changelog.
+//	                       Patterns unchanged; version system introduced
+//	                       for audit trail and monitoring integration.
+//
+// REVIEW SCHEDULE: Update when OWASP LLM Top 10 or academic papers
+// publish new injection techniques. See THREAT-MODEL.md §4.
+var PatternChangelog = []string{
+	"v1.0.0 (2024-12-01): Initial 14-pattern set (instruction override, identity hijack, system delimiter, jailbreak, data exfiltration, encoding evasion)",
+	"v2.0.0 (2026-02-28): Added version tracking, changelog, /health exposure. No pattern changes.",
+}
+
 // promptInjectionPatterns are regex patterns that indicate potential
 // prompt injection attempts. These are heuristic — they WILL have
 // false positives. The goal is to FLAG, not BLOCK.

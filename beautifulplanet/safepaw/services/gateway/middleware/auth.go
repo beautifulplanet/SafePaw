@@ -248,42 +248,77 @@ func (a *Authenticator) sign(data []byte) []byte {
 // X-Auth-Subject so downstream handlers can read the authenticated identity.
 //
 // On failure, returns 401 Unauthorized with a JSON error body.
-func AuthRequired(auth *Authenticator, requiredScope string, next http.Handler) http.Handler {
+//
+// revocations is optional (nil = no revocation checks).
+// guard is optional (nil = no brute-force tracking).
+func AuthRequired(auth *Authenticator, requiredScope string, revocations *RevocationList, next http.Handler) http.Handler {
+	return AuthRequiredWithGuard(auth, requiredScope, revocations, nil, next)
+}
+
+// AuthRequiredWithGuard is AuthRequired + brute-force integration.
+// On auth failure, the client IP gets a strike. After enough strikes
+// the BruteForceGuard bans the IP entirely (handled upstream).
+// On success, strikes are cleared (legitimate user shouldn't be penalized).
+func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocations *RevocationList, guard *BruteForceGuard, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Extract token from request
+		ip := extractIP(r)
+		reqID := r.Header.Get("X-Request-ID")
+
 		token := extractToken(r)
 		if token == "" {
 			log.Printf("[AUTH] Rejected: no token provided (remote=%s path=%s request_id=%s)",
-				extractIP(r), r.URL.Path, r.Header.Get("X-Request-ID"))
+				ip, r.URL.Path, reqID)
+			if guard != nil {
+				guard.RecordFailure(ip, "missing_token")
+			}
 			writeAuthError(w, "missing_token", "Authentication required. Provide token via ?token= parameter or Authorization: Bearer header.")
 			return
 		}
 
-		// Validate the token
 		claims, err := auth.ValidateToken(token)
 		if err != nil {
-			log.Printf("[AUTH] Rejected: %v (remote=%s request_id=%s)", err, extractIP(r), r.Header.Get("X-Request-ID"))
+			log.Printf("[AUTH] Rejected: %v (remote=%s request_id=%s)", err, ip, reqID)
+			if guard != nil {
+				guard.RecordFailure(ip, "invalid_token")
+			}
 			writeAuthError(w, "invalid_token", err.Error())
 			return
 		}
 
-		// Check scope
+		if revocations != nil {
+			if revoked, reason := revocations.IsRevoked(claims.Sub, claims.Iat); revoked {
+				log.Printf("[AUTH] Rejected: token revoked for sub=%s reason=%s (remote=%s request_id=%s)",
+					claims.Sub, reason, ip, reqID)
+				if guard != nil {
+					guard.RecordFailure(ip, "token_revoked")
+				}
+				writeAuthError(w, "token_revoked",
+					fmt.Sprintf("Token has been revoked (reason: %s). Please obtain a new token.", reason))
+				return
+			}
+		}
+
 		if requiredScope != "" && claims.Scope != requiredScope && claims.Scope != "admin" {
 			log.Printf("[AUTH] Rejected: scope=%q required=%q (sub=%s remote=%s request_id=%s)",
-				claims.Scope, requiredScope, claims.Sub, extractIP(r), r.Header.Get("X-Request-ID"))
+				claims.Scope, requiredScope, claims.Sub, ip, reqID)
+			if guard != nil {
+				guard.RecordFailure(ip, "insufficient_scope")
+			}
 			writeAuthError(w, "insufficient_scope",
 				fmt.Sprintf("This endpoint requires scope=%q, token has scope=%q", requiredScope, claims.Scope))
 			return
 		}
 
-		// Pass identity to downstream handlers via REQUEST headers only.
-		// We deliberately do NOT set response headers (W header) to avoid
-		// leaking internal identity info (X-Auth-Subject) to the client.
+		// Auth succeeded — clear any strikes for this IP
+		if guard != nil {
+			guard.Reset(ip)
+		}
+
 		r.Header.Set("X-Auth-Subject", claims.Sub)
 		r.Header.Set("X-Auth-Scope", claims.Scope)
 
 		log.Printf("[AUTH] Authenticated: sub=%s scope=%s ttl=%v (remote=%s request_id=%s)",
-			claims.Sub, claims.Scope, claims.RemainingTTL().Round(time.Second), extractIP(r), r.Header.Get("X-Request-ID"))
+			claims.Sub, claims.Scope, claims.RemainingTTL().Round(time.Second), ip, reqID)
 
 		next.ServeHTTP(w, r)
 	})

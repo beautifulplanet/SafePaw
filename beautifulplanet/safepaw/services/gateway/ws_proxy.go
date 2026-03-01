@@ -23,6 +23,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"safepaw/gateway/middleware"
 )
 
 const (
@@ -119,13 +121,17 @@ func wsProxy(target *url.URL) http.Handler {
 
 		// Bidirectional copy — when either side closes, both are torn down
 		done := make(chan struct{}, 2)
+		reqID := r.Header.Get("X-Request-ID")
 
+		// Backend → Client: scan output for dangerous content
 		go func() {
+			scanner := middleware.NewScanningReader(backendConn, reqID, r.URL.Path)
 			buf := make([]byte, wsBufferSize)
-			io.CopyBuffer(clientConn, backendConn, buf)
+			io.CopyBuffer(clientConn, scanner, buf)
 			done <- struct{}{}
 		}()
 
+		// Client → Backend: pass through (input already scanned by body scanner)
 		go func() {
 			buf := make([]byte, wsBufferSize)
 			io.CopyBuffer(backendConn, clientConn, buf)

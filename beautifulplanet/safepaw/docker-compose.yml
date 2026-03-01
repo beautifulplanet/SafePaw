@@ -32,9 +32,11 @@ services:
     environment:
       WIZARD_PORT: "3000"
       WIZARD_ADMIN_PASSWORD: ${WIZARD_ADMIN_PASSWORD:-}
+      WIZARD_TOTP_SECRET: ${WIZARD_TOTP_SECRET:-}
       DOCKER_HOST: ${DOCKER_HOST:-unix:///var/run/docker.sock}
       COMPOSE_FILE_PATH: "/app/docker-compose.yml"
       ENV_FILE_PATH: "/app/.env"
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
       OPENCLAW_HEALTH_URL: "http://openclaw:18789/health"
       REDIS_ADDR: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -86,8 +88,11 @@ services:
       GATEWAY_PORT: "8080"
       # Reverse proxy target — OpenClaw's internal address
       PROXY_TARGET: "http://openclaw:18789"
-      # Auth
-      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      # Rate limiting
+      RATE_LIMIT: ${RATE_LIMIT:-60}
+      RATE_LIMIT_WINDOW_SEC: ${RATE_LIMIT_WINDOW_SEC:-60}
+      # Auth (enabled by default in Docker deploy — disable with AUTH_ENABLED=false for dev only)
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_DEFAULT_TTL_HOURS: ${AUTH_DEFAULT_TTL_HOURS:-24}
       AUTH_MAX_TTL_HOURS: ${AUTH_MAX_TTL_HOURS:-168}
@@ -97,6 +102,8 @@ services:
       TLS_KEY_FILE: ${TLS_KEY_FILE:-/certs/tls.key}
       TLS_PORT: ${TLS_PORT:-8443}
       # Redis (for rate limiter state, optional)
+      # Structured logging (json for SIEM, text for dev)
+      LOG_FORMAT: ${LOG_FORMAT:-text}
       REDIS_ADDR: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     ports:
@@ -129,7 +136,7 @@ services:
   # tools, voice, and the Control UI.
   # INTERNAL ONLY — all traffic must go through the Gateway.
   openclaw:
-    image: node:22-alpine
+    image: node:22-alpine@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34
     container_name: safepaw-openclaw
     working_dir: /app
     command: >
