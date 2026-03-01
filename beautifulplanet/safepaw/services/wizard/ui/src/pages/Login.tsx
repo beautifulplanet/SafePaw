@@ -7,8 +7,11 @@ interface LoginProps {
 
 export function Login({ onSuccess }: LoginProps) {
   const [password, setPassword] = useState('')
+  const [totp, setTotp] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showRecovery, setShowRecovery] = useState(false)
+  const [showTotp, setShowTotp] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -16,12 +19,14 @@ export function Login({ onSuccess }: LoginProps) {
     setLoading(true)
 
     try {
-      const res = await api.login(password)
+      const res = await api.login(password, totp || undefined)
       setToken(res.token)
       onSuccess()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        setError('Invalid password')
+        const msg = err.message === 'totp_required' ? 'TOTP code required (MFA is enabled)' : err.message === 'invalid totp code' ? 'Invalid TOTP code' : 'Invalid password'
+        setError(msg)
+        if (err.message === 'totp_required') setShowTotp(true)
       } else {
         setError('Connection failed — is the wizard server running?')
       }
@@ -64,6 +69,55 @@ export function Login({ onSuccess }: LoginProps) {
             <p className="text-xs text-gray-500 mt-1.5">
               The password was shown once when the wizard started.
             </p>
+          </div>
+          {(showTotp || totp) && (
+            <div>
+              <label htmlFor="totp" className="block text-sm font-medium text-gray-300 mb-1.5">
+                TOTP code (MFA)
+              </label>
+              <input
+                id="totp"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="000000"
+                className="input font-mono text-lg tracking-widest"
+                value={totp}
+                onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                disabled={loading}
+              />
+              <p className="text-xs text-gray-500 mt-1.5">
+                Enter the 6-digit code from your authenticator app.
+              </p>
+            </div>
+          )}
+          {!showTotp && !totp && (
+            <button
+              type="button"
+              onClick={() => setShowTotp(true)}
+              className="text-xs text-paw-400 hover:text-paw-300"
+            >
+              Using MFA? Enter TOTP code
+            </button>
+          )}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowRecovery(!showRecovery)}
+              className="text-xs text-paw-400 hover:text-paw-300 mt-1"
+            >
+              {showRecovery ? 'Hide' : 'Lost your password?'}
+            </button>
+            {showRecovery && (
+              <div className="mt-3 p-3 rounded-lg bg-gray-800/50 border border-gray-700 text-xs text-gray-400 space-y-2">
+                <p className="font-medium text-gray-300">Recovery options:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Get the password from container logs: <code className="px-1 rounded bg-gray-900 font-mono">docker compose logs wizard</code> or <code className="px-1 rounded bg-gray-900 font-mono">docker logs safepaw-wizard</code> (check the first startup lines).</li>
+                  <li>Set a new password: add <code className="px-1 rounded bg-gray-900">WIZARD_ADMIN_PASSWORD=yourpassword</code> to <code className="px-1 rounded bg-gray-900">.env</code>, then run <code className="px-1 rounded bg-gray-900 font-mono">docker compose restart wizard</code>. Use the new password to sign in.</li>
+                </ol>
+              </div>
+            )}
           </div>
 
           {error && (

@@ -26,22 +26,28 @@ export function Layout({ children, page, onLogout, onNavigate }: LayoutProps) {
           <div className="flex items-center gap-3">
             {/* Breadcrumb-style navigation */}
             <nav className="hidden sm:flex items-center gap-1 text-sm text-gray-500">
-              <span className={page === 'login' ? 'text-paw-400 font-medium' : page !== 'login' ? 'text-gray-400' : ''}>
+              <span className={page === 'login' ? 'text-paw-400 font-medium' : 'text-gray-400'}>
                 Login
               </span>
               <ChevronRight />
-              <span className={page === 'prerequisites' ? 'text-paw-400 font-medium' : page === 'dashboard' ? 'text-gray-400' : ''}>
+              <span className={page === 'prerequisites' ? 'text-paw-400 font-medium' : 'text-gray-400'}>
                 Prerequisites
               </span>
               <ChevronRight />
-              <span className={page === 'dashboard' ? 'text-paw-400 font-medium' : ''}>
+              <span className={page === 'dashboard' ? 'text-paw-400 font-medium' : page === 'config' ? 'text-gray-400' : ''}>
                 Dashboard
               </span>
+              {page === 'config' && (
+                <>
+                  <ChevronRight />
+                  <span className="text-paw-400 font-medium">Configuration</span>
+                </>
+              )}
             </nav>
 
             {onNavigate && (
               <button onClick={onNavigate} className="btn-secondary text-sm py-1.5 px-3">
-                Prerequisites
+                {page === 'config' ? 'Dashboard' : 'Prerequisites'}
               </button>
             )}
             {onLogout && (

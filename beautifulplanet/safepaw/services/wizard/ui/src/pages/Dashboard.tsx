@@ -3,7 +3,11 @@ import { api, type ServiceInfo, type StatusResponse } from '../api'
 
 const POLL_INTERVAL = 5000 // ms
 
-export function Dashboard() {
+interface DashboardProps {
+  onOpenConfig?: () => void
+}
+
+export function Dashboard({ onOpenConfig }: DashboardProps) {
   const [data, setData] = useState<StatusResponse | null>(null)
   const [error, setError] = useState('')
   const [restarting, setRestarting] = useState<string | null>(null)
@@ -49,6 +53,11 @@ export function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           {data && <OverallBadge overall={data.overall} />}
+          {onOpenConfig && (
+            <button onClick={onOpenConfig} className="btn-secondary text-sm py-1.5 px-3">
+              Configuration
+            </button>
+          )}
           <button onClick={fetchStatus} className="btn-secondary text-sm py-1.5 px-3">
             Refresh
           </button>

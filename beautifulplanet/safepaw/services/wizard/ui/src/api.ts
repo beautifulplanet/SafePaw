@@ -96,16 +96,20 @@ export interface StatusResponse {
   overall: 'healthy' | 'degraded' | 'down' | 'unknown'
 }
 
+export interface ConfigResponse {
+  config: Record<string, string>
+}
+
 // ─── Endpoints ───────────────────────────────────────────────
 
 export const api = {
   health: () =>
     request<HealthResponse>('/health'),
 
-  login: (password: string) =>
+  login: (password: string, totp?: string) =>
     request<LoginResponse>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, ...(totp && totp.trim() && { totp: totp.trim() }) }),
     }),
 
   prerequisites: () =>
@@ -118,5 +122,16 @@ export const api = {
   restartService: (name: string) =>
     request<{ status: string; service: string }>(`/services/${encodeURIComponent(name)}/restart`, {
       method: 'POST',
+    }),
+
+  /** Get current .env config (secrets masked). */
+  getConfig: () =>
+    request<ConfigResponse>('/config'),
+
+  /** Update allowed config keys. Keys not in allowlist are ignored. */
+  putConfig: (updates: Record<string, string>) =>
+    request<{ status: string }>('/config', {
+      method: 'PUT',
+      body: JSON.stringify(updates),
     }),
 }
