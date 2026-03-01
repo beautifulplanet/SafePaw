@@ -137,6 +137,26 @@ docker compose up -d
 
 ---
 
+## Automated backup (script + cron)
+
+A script is provided to run the procedures above in one go. From the SafePaw project directory:
+
+```bash
+./scripts/backup.sh
+```
+
+Backups are written to `./backups/` (or set `BACKUP_DIR`). The script backs up Postgres (logical dump), Redis (RDB), OpenClaw home volume (if present), and a copy of `.env`. It requires `docker compose` and a running stack; load `.env` before running (the script sources it if present).
+
+**Example cron (daily at 02:00):**
+
+```cron
+0 2 * * * cd /path/to/safepaw && ./scripts/backup.sh >> /var/log/safepaw-backup.log 2>&1
+```
+
+Add retention (e.g. delete backups older than 7 days) in a separate cron or inside the script if desired.
+
+---
+
 ## Recommended Schedule
 
 | Asset | Frequency | Retention |
