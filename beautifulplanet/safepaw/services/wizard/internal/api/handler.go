@@ -10,6 +10,8 @@
 //   POST /api/v1/auth/login      — Authenticate with admin password
 //   GET  /api/v1/status          — All service statuses (Docker container list + overall health)
 //   GET  /api/v1/prerequisites   — Check system requirements
+//   GET  /api/v1/config          — Current .env config (secrets masked)
+//   PUT  /api/v1/config         — Update allowed keys in .env
 //   POST /api/v1/services/{name}/restart — Restart a SafePaw service (wizard, gateway, openclaw, redis, postgres)
 // =============================================================
 
@@ -27,9 +29,11 @@ import (
 	"strings"
 	"time"
 
+	"safepaw/wizard/internal/audit"
 	"safepaw/wizard/internal/config"
 	"safepaw/wizard/internal/docker"
 	"safepaw/wizard/internal/session"
+	"safepaw/wizard/internal/totp"
 	"safepaw/wizard/ui"
 )
 
@@ -37,11 +41,12 @@ import (
 type Handler struct {
 	cfg    *config.Config
 	docker *docker.Client
+	audit  *audit.Logger
 }
 
 // NewHandler creates a new API handler.
 func NewHandler(cfg *config.Config, dc *docker.Client) (*Handler, error) {
-	return &Handler{cfg: cfg, docker: dc}, nil
+	return &Handler{cfg: cfg, docker: dc, audit: audit.New()}, nil
 }
 
 // Close cleans up resources.
@@ -61,6 +66,8 @@ func (h *Handler) Router() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/login", h.handleLogin)
 	mux.HandleFunc("GET /api/v1/prerequisites", h.handlePrerequisites)
 	mux.HandleFunc("GET /api/v1/status", h.handleStatus)
+	mux.HandleFunc("GET /api/v1/config", h.handleGetConfig)
+	mux.HandleFunc("PUT /api/v1/config", h.handlePutConfig)
 	mux.HandleFunc("POST /api/v1/services/{name}/restart", h.handleServiceRestart)
 
 	// ── SPA Fallback ──
@@ -94,6 +101,7 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 type loginRequest struct {
 	Password string `json:"password"`
+	TOTP     string `json:"totp,omitempty"` // Required when MFA (WIZARD_TOTP_SECRET) is enabled
 }
 
 type loginResponse struct {
@@ -112,16 +120,34 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Password != h.cfg.AdminPassword {
-		// Log failed attempt with IP for intrusion detection
 		ip := r.RemoteAddr
 		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 			ip = fwd
 		}
 		log.Printf("[WARN] Failed login attempt from %s", ip)
-		// Deliberate delay to slow brute force
+		h.audit.LoginFailure(ip, "invalid_password")
 		time.Sleep(500 * time.Millisecond)
 		writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid password"})
 		return
+	}
+
+	// When MFA is enabled, require and validate TOTP code
+	if h.cfg.TOTPSecret != "" {
+		if req.TOTP == "" {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{"totp_required"})
+			return
+		}
+		if !totp.Validate(h.cfg.TOTPSecret, req.TOTP) {
+			ip := r.RemoteAddr
+			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+				ip = fwd
+			}
+			log.Printf("[WARN] Failed TOTP verification from %s", ip)
+			h.audit.LoginFailure(ip, "invalid_totp")
+			time.Sleep(500 * time.Millisecond)
+			writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid totp code"})
+			return
+		}
 	}
 
 	// Generate signed session token (24h TTL)
@@ -133,14 +159,19 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set HttpOnly cookie (browser sessions) AND return token (API clients)
+	ip := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ip = fwd
+	}
+	h.audit.LoginSuccess(ip)
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   false, // localhost doesn't use HTTPS
+		Secure:   h.cfg.SecureCookies,
 		MaxAge:   int(ttl.Seconds()),
 	})
 
@@ -382,12 +413,19 @@ func (h *Handler) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
+	restartIP := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		restartIP = fwd
+	}
+
 	if err := h.docker.RestartContainer(ctx, containerName, 10); err != nil {
 		log.Printf("[WARN] Restart %s failed: %v", containerName, err)
+		h.audit.ServiceRestart(restartIP, name, "failure")
 		writeJSON(w, http.StatusInternalServerError, errorResponse{fmt.Sprintf("restart failed: %v", err)})
 		return
 	}
 
+	h.audit.ServiceRestart(restartIP, name, "success")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": name})
 }
 

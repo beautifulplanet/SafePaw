@@ -89,17 +89,34 @@ func TestValidateInvalidFormat(t *testing.T) {
 func TestTokensAreUnique(t *testing.T) {
 	secret := "test"
 	token1, _ := Create(secret, time.Hour)
-	// Small delay to ensure different iat
-	time.Sleep(1 * time.Millisecond)
 	token2, _ := Create(secret, time.Hour)
 
-	// Tokens should differ because iat differs (at second granularity they might match)
-	// But they should both validate
+	// Tokens MUST differ even when created in the same second (nonce/jti)
+	if token1 == token2 {
+		t.Fatal("Two tokens created with same params should be different (jti nonce)")
+	}
+
 	if _, err := Validate(token1, secret); err != nil {
 		t.Errorf("token1 validation failed: %v", err)
 	}
 	if _, err := Validate(token2, secret); err != nil {
 		t.Errorf("token2 validation failed: %v", err)
+	}
+}
+
+func TestTokenHasJTI(t *testing.T) {
+	secret := "test"
+	token, _ := Create(secret, time.Hour)
+
+	claims, err := Validate(token, secret)
+	if err != nil {
+		t.Fatalf("Validate() failed: %v", err)
+	}
+	if claims.JTI == "" {
+		t.Error("Token should have a JTI (nonce) for replay protection")
+	}
+	if len(claims.JTI) != 32 { // 16 bytes → 32 hex chars
+		t.Errorf("JTI length = %d, want 32 hex chars", len(claims.JTI))
 	}
 }
 

@@ -256,3 +256,179 @@ func TestIsPublicPath(t *testing.T) {
 		}
 	}
 }
+
+// =============================================================
+// Edge-Case Tests
+// =============================================================
+
+func TestRateLimit_RetryAfterHeader(t *testing.T) {
+	handler := RateLimit(1, time.Minute, ok)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.55:1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req) // First request — allowed
+
+	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.55:1234"
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req) // Second — blocked
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", rec.Code)
+	}
+}
+
+func TestCORS_EmptyAllowedOrigins(t *testing.T) {
+	handler := CORS([]string{}, ok)
+
+	req := httptest.NewRequest("GET", "/api/v1/status", nil)
+	req.Header.Set("Origin", "http://anything.com")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Expected no ACAO for empty allowlist, got %q", got)
+	}
+}
+
+func TestCORS_NoOriginHeader(t *testing.T) {
+	handler := CORS([]string{"http://localhost:3000"}, ok)
+
+	req := httptest.NewRequest("GET", "/api/v1/status", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Request without Origin should pass through, got %d", rec.Code)
+	}
+}
+
+func TestCORS_PreflightDisallowedOrigin(t *testing.T) {
+	handler := CORS([]string{"http://localhost:3000"}, ok)
+
+	req := httptest.NewRequest("OPTIONS", "/api/v1/status", nil)
+	req.Header.Set("Origin", "http://evil.com")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Preflight from disallowed origin should not set ACAO, got %q", got)
+	}
+}
+
+func TestAdminAuth_EmptyBearerToken(t *testing.T) {
+	handler := AdminAuth("secret", ok)
+
+	req := httptest.NewRequest("GET", "/api/v1/status", nil)
+	req.Header.Set("Authorization", "Bearer ")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("Empty bearer token should be 401, got %d", rec.Code)
+	}
+}
+
+func TestAdminAuth_MalformedAuthHeader(t *testing.T) {
+	handler := AdminAuth("secret", ok)
+
+	req := httptest.NewRequest("GET", "/api/v1/status", nil)
+	req.Header.Set("Authorization", "NotBearer sometoken")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("Malformed auth header should be 401, got %d", rec.Code)
+	}
+}
+
+func TestAdminAuth_BearerTakesPrecedenceOverCookie(t *testing.T) {
+	secret := "test-admin-password"
+	handler := AdminAuth(secret, ok)
+
+	goodToken, _ := session.Create(secret, time.Hour)
+	badToken, _ := session.Create("wrong-secret", time.Hour)
+
+	req := httptest.NewRequest("GET", "/api/v1/status", nil)
+	req.Header.Set("Authorization", "Bearer "+goodToken)
+	req.AddCookie(&http.Cookie{Name: "session", Value: badToken})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Valid bearer should take precedence over bad cookie, got %d", rec.Code)
+	}
+}
+
+func TestAdminAuth_PathTraversalNotPublic(t *testing.T) {
+	handler := AdminAuth("secret", ok)
+
+	paths := []string{
+		"/api/v1/auth/login/../config",
+		"/api/v1/health/../../v1/status",
+	}
+
+	for _, path := range paths {
+		req := httptest.NewRequest("GET", path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusOK {
+			t.Errorf("Path %q should not bypass auth (got 200)", path)
+		}
+	}
+}
+
+func TestRateLimit_IPParsesPort(t *testing.T) {
+	handler := RateLimit(1, time.Minute, ok)
+
+	// Same IP, different ports — should share the rate limit
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.99:5555"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatal("first request should be OK")
+	}
+
+	req = httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.99:6666"
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("Same IP different port should share rate limit, got %d", rec.Code)
+	}
+}
+
+func TestSecurityHeaders_CSPPresent(t *testing.T) {
+	handler := SecurityHeaders(ok)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if csp == "" {
+		t.Error("CSP header missing")
+	}
+	// Should restrict scripts to self
+	if !containsSubstring(csp, "'self'") {
+		t.Errorf("CSP should contain 'self', got %q", csp)
+	}
+}
+
+func containsSubstring(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(s) > 0 && findSubstring(s, sub))
+}
+
+func findSubstring(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}

@@ -7,19 +7,27 @@
 // the client — only a signed, time-limited session token.
 //
 // Token format: base64url(payload).base64url(hmac_signature)
-//   payload = JSON {"sub":"admin","iat":unix,"exp":unix}
+//   payload = JSON {"sub":"admin","iat":unix,"exp":unix,"jti":"nonce"}
 //
 // This is similar to JWT but stripped to essentials with zero
 // external dependencies. The signing key is the admin password
 // itself (unique per installation, auto-generated if not set).
+//
+// REPLAY PROTECTION:
+//   Each token includes a cryptographic nonce (jti) generated from
+//   crypto/rand. This ensures every token is unique even if created
+//   in the same second for the same subject. Two calls to Create()
+//   will always produce different tokens.
 // =============================================================
 
 package session
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -28,9 +36,10 @@ import (
 
 // Claims represents the token payload.
 type Claims struct {
-	Subject   string `json:"sub"` // Always "admin" for wizard
-	IssuedAt  int64  `json:"iat"` // Unix timestamp
-	ExpiresAt int64  `json:"exp"` // Unix timestamp
+	Subject   string `json:"sub"`           // Always "admin" for wizard
+	IssuedAt  int64  `json:"iat"`           // Unix timestamp
+	ExpiresAt int64  `json:"exp"`           // Unix timestamp
+	JTI       string `json:"jti,omitempty"` // Unique nonce (replay protection)
 }
 
 var (
@@ -42,12 +51,19 @@ var (
 
 // Create generates an HMAC-SHA256 signed session token.
 // The secret should be the admin password (never leaves the server).
+// Each token includes a unique cryptographic nonce (jti) for replay protection.
 func Create(secret string, ttl time.Duration) (string, error) {
+	nonce, err := generateNonce()
+	if err != nil {
+		return "", err
+	}
+
 	now := time.Now()
 	claims := Claims{
 		Subject:   "admin",
 		IssuedAt:  now.Unix(),
 		ExpiresAt: now.Add(ttl).Unix(),
+		JTI:       nonce,
 	}
 
 	payload, err := json.Marshal(claims)
@@ -111,4 +127,14 @@ func encode(data []byte) string {
 
 func decode(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(s)
+}
+
+// generateNonce produces a 16-byte cryptographic random hex string.
+// Used as the jti (JWT ID) field for replay protection.
+func generateNonce() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }

@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"safepaw/wizard/internal/config"
 	"safepaw/wizard/internal/session"
+	"safepaw/wizard/internal/totp"
 )
 
 func newTestHandler(t *testing.T) *Handler {
@@ -108,6 +110,79 @@ func TestLoginSuccess(t *testing.T) {
 	// Cookie value should also be a valid token
 	if _, err := session.Validate(sessionCookie.Value, "test-password-123"); err != nil {
 		t.Errorf("Cookie token is invalid: %v", err)
+	}
+}
+
+func TestLoginWithMFA_RequiresTOTP(t *testing.T) {
+	cfg := &config.Config{
+		Port:        3000,
+		AdminPassword: "test-password-123",
+		TOTPSecret:  "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", // RFC test vector
+		DockerHost:  "unix:///var/run/docker.sock",
+	}
+	h, _ := NewHandler(cfg, nil)
+	router := h.Router()
+
+	body, _ := json.Marshal(loginRequest{Password: "test-password-123"}) // no TOTP
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("Status = %d, want 401 when MFA enabled but no TOTP", rec.Code)
+	}
+	var errResp errorResponse
+	_ = json.NewDecoder(rec.Body).Decode(&errResp)
+	if errResp.Error != "totp_required" {
+		t.Errorf("Error = %q, want totp_required", errResp.Error)
+	}
+}
+
+func TestLoginWithMFA_RejectsInvalidTOTP(t *testing.T) {
+	cfg := &config.Config{
+		Port:          3000,
+		AdminPassword: "test-password-123",
+		TOTPSecret:    "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+		DockerHost:    "unix:///var/run/docker.sock",
+	}
+	h, _ := NewHandler(cfg, nil)
+	router := h.Router()
+
+	body, _ := json.Marshal(loginRequest{Password: "test-password-123", TOTP: "000000"})
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("Status = %d, want 401 for wrong TOTP", rec.Code)
+	}
+}
+
+func TestLoginWithMFA_AcceptsValidTOTP(t *testing.T) {
+	secret := "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+	cfg := &config.Config{
+		Port:          3000,
+		AdminPassword: "test-password-123",
+		TOTPSecret:    secret,
+		DockerHost:    "unix:///var/run/docker.sock",
+	}
+	h, _ := NewHandler(cfg, nil)
+	router := h.Router()
+
+	code := totp.CodeForTime(secret, time.Now())
+	if code == "" {
+		t.Fatal("CodeForTime returned empty")
+	}
+	body, _ := json.Marshal(loginRequest{Password: "test-password-123", TOTP: code})
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want 200 when password + valid TOTP. Body: %s", rec.Code, rec.Body.String())
 	}
 }
 
