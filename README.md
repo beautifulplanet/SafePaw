@@ -1,8 +1,17 @@
-# SafePaw
+# InstallerClaw (SafePaw)
 
 **Secure, one-click deployer for [OpenClaw](https://github.com/nicepkg/openclaw).**
 
-A security perimeter (Go gateway + Go/React wizard) that wraps the OpenClaw personal AI assistant: reverse proxy with auth, rate limiting, prompt-injection and output scanning, TLS, and a guided setup UI. One command brings up the full stack; the wizard handles configuration and health monitoring.
+We call it **InstallerClaw** because it is the install and deploy layer around OpenClaw: one perimeter (gateway + wizard) that handles auth, rate limiting, scanning, TLS, and guided setup. The repo and paths still use **SafePaw** / `safepaw` for historical reasons; treat “InstallerClaw” as the product name and “SafePaw” as the codebase/organizational name.
+
+**What it is:** A security perimeter (Go gateway + Go/React wizard) that wraps the OpenClaw personal AI assistant: reverse proxy with auth, rate limiting, prompt-injection and output scanning, TLS, and a guided setup UI. One command brings up the full stack; the wizard handles configuration and health monitoring.
+
+**The trend we’re addressing:** Self-hosted AI assistants (OpenClaw, and similar local/private LLM front-ends) are popular. InstallerClaw is a safe, deployable perimeter for them—auth, scanning, and ops in one place—so you don’t expose the assistant without a guardrail layer.
+
+### Non-goals / not a guarantee
+
+- **Scanning is heuristic-only** — Pattern- and regex-based; it **reduces risk** of prompt injection and exfil, but does **not** guarantee prevention. Novel or obfuscated attacks may get through. Use defense-in-depth and treat scanning as one layer.
+- **No silver bullet** — We document threats and mitigations in [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md). Residual risks remain (e.g. in-memory bans, heuristic limits). Suited for indie/small-team use; enterprise may need additional controls.
 
 ---
 
@@ -290,7 +299,7 @@ From safepaw root: `make lint`, `make vulncheck`, `make fuzz`. See [CONTRIBUTING
 | Vuln check | safepaw root | `make vulncheck` |
 | E2E (live stack) | safepaw/scripts | `./verify-deployment.sh` (after `docker compose up -d`) |
 
-CI runs build, test with coverage gate (60%), lint, gosec, govulncheck, and Docker build.
+CI runs build, test with coverage gate (gateway 60%, wizard 55%), lint, gosec, govulncheck, and Docker build.
 
 ## Project structure
 
@@ -334,10 +343,12 @@ Then open http://localhost:3000, sign in, and check the dashboard. Full script: 
 
 ## Limitations
 
-- **Prompt-injection and output scanning** — Heuristic (regex/patterns) only; no ML/LLM. See [SECURITY.md](beautifulplanet/safepaw/SECURITY.md).
+- **Prompt-injection and output scanning** — Heuristic (regex/patterns) only; **reduces risk**, does not guarantee prevention. No ML/LLM. See [SECURITY.md](beautifulplanet/safepaw/SECURITY.md).
 - **Token revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
 - **Wizard password** — No “forgot password” flow; recovery via logs or `.env` and restart.
 - **Stack** — Docker-first; wizard expects Docker socket for health. No generic bare-metal install path.
+
+**Release / packaging:** No versioned releases or installers are published yet. When going public: plan for versioned tags (e.g. `v0.1.0`), checksums for binaries, and optionally a single-command installer or `docker compose` image pinning. See [CONTRIBUTING.md](beautifulplanet/safepaw/CONTRIBUTING.md) for build and test commands.
 
 ---
 

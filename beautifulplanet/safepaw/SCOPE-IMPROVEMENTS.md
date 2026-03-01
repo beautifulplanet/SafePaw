@@ -71,6 +71,44 @@ Items below are **not** yet fully in place. They are grouped by theme and ordere
 | T3 | **UI test automation** — Cypress/Playwright for wizard flows (login, config, dashboard) | Medium | E2E script exists; add browser E2E |
 | T4 | **Coverage target increase** — Raise from 60% toward 90% for critical packages | Low | Per FAANG-style feedback |
 | T5 | **SonarQube (or equivalent)** — Optional additional static analysis in CI | Low | gosec + govulncheck already; add if desired |
+| T6 | **Mock backend for gateway tests** — Lightweight HTTP server (Go/Node/Python) that echoes requests, returns configurable status codes, delays, and payloads that trigger scanning/auth/rate-limit logic | High | Test gateway/proxy/scanning without OpenClaw or InstallerClaw |
+| T7 | **Integration suite (gateway + mock)** — Automated tests that spin up gateway and mock backend, then validate security, scanning, rate limiting, auth, error handling, and (where applicable) logs/metrics/audit | High | CI/CD; complements existing integration_test.go |
+| T8 | **Docker Compose dummy backend** — Optional compose profile or override that swaps the real backend for a minimal service (httpbin, nginx, or custom echo) for local/CI runs | Medium | Service discovery, health checks, network isolation without real backend |
+| T9 | **Test harness / script** — Curl, httpie, or Postman collection for manual or scripted runs: auth flows, rate limiting, security headers, prompt-injection payloads, timeouts, invalid payloads | Medium | Exploratory and regression; can drive T7 cases |
+| T10 | **Pitfalls checklist + mitigations** — Document and address: mock ≠ real world, overfitting to happy paths, security edge-case coverage, log/audit validation, resource/concurrency, and use fuzzing/chaos to find gaps | Medium | See “Gateway testing without backend” below |
+
+#### Gateway testing without real backend: strategy and pitfalls
+
+**Goal:** Validate gateway/proxy/scanning and operational features without running OpenClaw or InstallerClaw as the backend.
+
+**Approaches (by priority):**
+
+1. **Mock backend service** — Simple HTTP server that can echo requests, return custom status codes (200, 400, 500), simulate delays and errors, and return payloads that trigger scanning, rate limiting, and auth logic. Enables testing request/response flow and error handling.
+2. **Integration test suite** — Tests that start the gateway and mock backend, then run a battery of cases (auth, rate limit, scanning, headers, timeouts). Automate in CI.
+3. **Docker Compose with dummy service** — Replace or override the backend in `docker-compose.yml` with a minimal container (httpbin, nginx, or custom echo) for local and CI runs. Validates service discovery, health checks, and network isolation.
+4. **Test harness / script** — Curl, httpie, or Postman to send requests to the gateway and assert on responses. Covers auth, rate limiting, security headers, injection scenarios, and edge cases. Can be automated or used for exploratory testing.
+5. **Static / canned responses** — Gateway or mock serves static or canned responses for specific paths to test scanning and security logic in a predictable way.
+
+**Pitfalls and risks:**
+
+| Risk | Mitigation |
+|------|-------------|
+| **Mock ≠ real world** — Mocks may not replicate backend quirks (timeouts, malformed data, protocol edge cases). | Use fuzzing and mutation testing; occasionally run against real backend in staging. |
+| **Overfitting to happy paths** — Missing rare or adversarial cases (e.g. slowloris, fragmented payloads). | Include failure-mode and chaos tests (T2); adversarial test cases in T9. |
+| **Security edge cases** — Prompt injection, header spoofing, auth bypass, rate-limit edge cases can be subtle. | Expand regression suite (T1); add explicit negative tests in T7/T9; update payloads when new vectors appear. |
+| **Logging / audit blind spots** — Sensitive data in logs or incomplete audit trails. | Assert in T7 that secrets are never logged; validate audit entries for critical actions. |
+| **Resource / concurrency** — Mocks rarely stress resource limits or race conditions. | Add load or concurrency tests; chaos tests for dropped connections and timeouts. |
+| **False positives/negatives in scanning** — Heuristic scanning may flag benign input or miss subtle attacks. | T1 regression suite; linguistic/encoding variations in T9; document limitations. |
+| **Test data staleness** — Static payloads become outdated as attackers evolve. | Review and update test cases periodically; tie to THREAT-MODEL and pattern changelog. |
+
+**Mitigation strategies (to apply in T6–T10):**
+
+- Use fuzzing and mutation testing to find unexpected failures.
+- Regularly refresh test cases with new attack patterns.
+- Include chaos testing (random failures, latency, dropped connections) where feasible.
+- Validate logs, metrics, and audit trails as part of the integration suite.
+- Run tests in an environment that mirrors production where possible.
+- Combine automation with manual, adversarial testing.
 
 ---
 
@@ -158,6 +196,13 @@ Items below are **not** yet fully in place. They are grouped by theme and ordere
 - I2 Container image scanning in CI  
 - O4 Log sanitization audit and doc  
 
+**Phase 2b — Gateway testing without real backend (by priority)**  
+1. **T6 Mock backend** — Lightweight HTTP server (echo, status codes, delays, payloads that trigger scanning/auth/rate limit).  
+2. **T7 Integration suite** — Spin up gateway + mock; automate security, scanning, rate limit, auth, errors; validate logs/metrics/audit where applicable.  
+3. **T8 Docker Compose dummy** — Optional profile or override with httpbin/echo/dummy for local and CI.  
+4. **T9 Test harness** — Script or collection (curl/httpie/Postman) for auth, rate limit, headers, injection, timeouts; manual and scripted.  
+5. **T10 Pitfalls checklist** — Document mock limitations, overfitting, security edge cases, log validation; add chaos/fuzz where feasible.  
+
 **Phase 3 — Hardening & compliance**  
 - D2 Pentest policy  
 - D3 Compliance considerations (SOC2/GDPR)  
@@ -178,4 +223,4 @@ Items below are **not** yet fully in place. They are grouped by theme and ordere
 ## Summary
 
 - **Review feedback is partially outdated:** token revocation, brute-force protection, MFA, structured logging, Prometheus/Grafana, resource limits, audit logs, fuzz tests, integration tests, static/dependency scanning, runbooks, backup/restore procedures, secret rotation procedures, and threat model are already in place.
-- **Valid remaining work** is captured above: RBAC, abuse detection, notifications, incident timeline, backup automation, image scanning, regression tests for patterns, compliance docs, vault integration, and the rest of the long list. Use this doc as the single scope list and prioritize by your timeline and risk appetite.
+- **Valid remaining work** is captured above: RBAC, abuse detection, notifications, incident timeline, backup automation, image scanning, regression tests for patterns, **gateway testing without real backend (T6–T10: mock backend, integration suite, Compose dummy, harness, pitfalls checklist)**, compliance docs, vault integration, and the rest of the long list. Use this doc as the single scope list and prioritize by your timeline and risk appetite.
