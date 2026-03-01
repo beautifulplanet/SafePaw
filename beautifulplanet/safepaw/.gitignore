@@ -50,6 +50,8 @@ coverage/
 # 4a. Go build artifacts
 *.exe
 *.exe~
+services/gateway/gateway
+services/mockbackend/mockbackend
 *.dll
 *.so
 *.dylib
