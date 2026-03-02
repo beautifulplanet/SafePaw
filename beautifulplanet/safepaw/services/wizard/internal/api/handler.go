@@ -65,7 +65,7 @@ func (h *Handler) Close() {
 // Pass this to middleware.AdminAuth so that when password or TOTP is changed via PUT /config, existing tokens fail validation.
 func (h *Handler) SessionValidator() middleware.SessionValidator {
 	return func(token string) bool {
-		_, err := session.Validate(token, h.cfg.AdminPassword, int(h.sessionGen.Load()))
+		_, err := session.Validate(token, h.cfg.AdminPassword, h.sessionGen.Load())
 		return err == nil
 	}
 }
@@ -187,7 +187,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Generate signed session token (24h TTL); include current gen so credential rotation invalidates old tokens
 	const ttl = 24 * time.Hour
-	token, err := session.Create(h.cfg.AdminPassword, ttl, int(h.sessionGen.Load()))
+	token, err := session.Create(h.cfg.AdminPassword, ttl, h.sessionGen.Load())
 	if err != nil {
 		log.Printf("[ERROR] Failed to create session token: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})
@@ -220,7 +220,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 type prerequisiteCheck struct {
 	Name     string `json:"name"`
-	Status   string `json:"status"`   // "pass", "fail", "warn"
+	Status   string `json:"status"` // "pass", "fail", "warn"
 	Message  string `json:"message"`
 	HelpURL  string `json:"help_url,omitempty"`
 	Required bool   `json:"required"`
@@ -306,7 +306,9 @@ func checkPorts(ports ...int) prerequisiteCheck {
 		if err != nil {
 			busy = append(busy, fmt.Sprintf("%d", port))
 		} else {
-			ln.Close()
+			if err := ln.Close(); err != nil {
+				log.Printf("[WARN] Failed to close probe listener on port %d: %v", port, err)
+			}
 		}
 	}
 

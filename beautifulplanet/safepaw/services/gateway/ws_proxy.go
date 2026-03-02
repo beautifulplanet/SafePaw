@@ -16,6 +16,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -28,8 +29,8 @@ import (
 )
 
 const (
-	wsDialTimeout  = 10 * time.Second
-	wsBufferSize   = 32 * 1024 // 32KB copy buffer
+	wsDialTimeout = 10 * time.Second
+	wsBufferSize  = 32 * 1024 // 32KB copy buffer
 )
 
 // isWebSocketUpgrade checks if a request is a WebSocket upgrade.
@@ -112,7 +113,10 @@ func wsProxy(target *url.URL) http.Handler {
 		if clientBuf.Reader.Buffered() > 0 {
 			buffered := make([]byte, clientBuf.Reader.Buffered())
 			if _, err := clientBuf.Read(buffered); err == nil {
-				backendConn.Write(buffered)
+				if _, err := backendConn.Write(buffered); err != nil {
+					log.Printf("[WS] Failed to flush buffered client bytes: %v", err)
+					return
+				}
 			}
 		}
 
@@ -127,14 +131,18 @@ func wsProxy(target *url.URL) http.Handler {
 		go func() {
 			scanner := middleware.NewScanningReader(backendConn, reqID, r.URL.Path)
 			buf := make([]byte, wsBufferSize)
-			io.CopyBuffer(clientConn, scanner, buf)
+			if _, err := io.CopyBuffer(clientConn, scanner, buf); err != nil && !isExpectedWSCloseError(err) {
+				log.Printf("[WS] backend->client copy error: %v", err)
+			}
 			done <- struct{}{}
 		}()
 
 		// Client → Backend: pass through (input already scanned by body scanner)
 		go func() {
 			buf := make([]byte, wsBufferSize)
-			io.CopyBuffer(backendConn, clientConn, buf)
+			if _, err := io.CopyBuffer(backendConn, clientConn, buf); err != nil && !isExpectedWSCloseError(err) {
+				log.Printf("[WS] client->backend copy error: %v", err)
+			}
 			done <- struct{}{}
 		}()
 
@@ -143,4 +151,13 @@ func wsProxy(target *url.URL) http.Handler {
 
 		log.Printf("[WS] Tunnel closed: %s (path=%s)", r.RemoteAddr, r.URL.Path)
 	})
+}
+
+func isExpectedWSCloseError(err error) bool {
+	if err == nil {
+		return true
+	}
+	return errors.Is(err, io.EOF) ||
+		errors.Is(err, net.ErrClosed) ||
+		strings.Contains(err.Error(), "use of closed network connection")
 }

@@ -81,16 +81,29 @@ func (l *Logger) Log(actor, action, resource, outcome string, details map[string
 	defer l.mu.Unlock()
 
 	if l.jsonMode {
-		data, _ := json.Marshal(ev)
-		l.out.Write(data)
-		l.out.Write([]byte("\n"))
+		data, err := json.Marshal(ev)
+		if err != nil {
+			log.Printf("[AUDIT] Failed to encode audit event: %v", err)
+			return
+		}
+		if _, err := l.out.Write(data); err != nil {
+			log.Printf("[AUDIT] Failed to write audit event: %v", err)
+			return
+		}
+		if _, err := l.out.Write([]byte("\n")); err != nil {
+			log.Printf("[AUDIT] Failed to write audit newline: %v", err)
+			return
+		}
 	} else {
 		msg := fmt.Sprintf("[AUDIT] action=%s actor=%s resource=%s outcome=%s",
 			action, actor, resource, outcome)
 		for k, v := range details {
 			msg += fmt.Sprintf(" %s=%s", k, v)
 		}
-		l.out.Write([]byte(msg + "\n"))
+		if _, err := l.out.Write([]byte(msg + "\n")); err != nil {
+			log.Printf("[AUDIT] Failed to write audit line: %v", err)
+			return
+		}
 	}
 
 	log.Printf("[AUDIT] %s %s on %s by %s (%s)", outcome, action, resource, actor, ev.Timestamp.Format(time.RFC3339))

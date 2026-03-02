@@ -31,8 +31,8 @@ func TestSecurityHeaders(t *testing.T) {
 
 	checks := map[string]string{
 		"X-Content-Type-Options": "nosniff",
-		"X-Frame-Options":       "DENY",
-		"Referrer-Policy":       "strict-origin-when-cross-origin",
+		"X-Frame-Options":        "DENY",
+		"Referrer-Policy":        "strict-origin-when-cross-origin",
 	}
 
 	for header, want := range checks {

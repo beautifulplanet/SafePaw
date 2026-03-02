@@ -241,8 +241,8 @@ func (a *Authenticator) sign(data []byte) []byte {
 
 // AuthRequired is HTTP middleware that validates auth tokens.
 // It extracts the token from:
-//   1. Query parameter: ?token=<token>   (for WebSocket upgrades)
-//   2. Authorization header: Bearer <token> (for REST-style calls)
+//  1. Query parameter: ?token=<token>   (for WebSocket upgrades)
+//  2. Authorization header: Bearer <token> (for REST-style calls)
 //
 // On success, the validated claims are stored in the response header
 // X-Auth-Subject so downstream handlers can read the authenticated identity.

@@ -40,7 +40,7 @@ type Claims struct {
 	IssuedAt  int64  `json:"iat"`           // Unix timestamp
 	ExpiresAt int64  `json:"exp"`           // Unix timestamp
 	JTI       string `json:"jti,omitempty"` // Unique nonce (replay protection)
-	Gen       int    `json:"gen,omitempty"` // Session generation; tokens with gen < current are invalid (e.g. after password/TOTP change)
+	Gen       uint64 `json:"gen,omitempty"` // Session generation; tokens with gen < current are invalid (e.g. after password/TOTP change)
 }
 
 var (
@@ -54,7 +54,7 @@ var (
 // The secret should be the admin password (never leaves the server).
 // Each token includes a unique cryptographic nonce (jti) for replay protection.
 // gen is the current session generation; when password or TOTP is changed, bump gen so old tokens fail Validate.
-func Create(secret string, ttl time.Duration, gen int) (string, error) {
+func Create(secret string, ttl time.Duration, gen uint64) (string, error) {
 	nonce, err := generateNonce()
 	if err != nil {
 		return "", err
@@ -86,7 +86,7 @@ var ErrSessionInvalidated = errors.New("session invalidated by credential change
 // Validate verifies an HMAC-SHA256 signed token and returns claims.
 // currentGen is the current session generation; tokens with claims.Gen < currentGen are rejected (password/TOTP was changed).
 // Returns an error if the signature is invalid, the token is expired, or the session was invalidated.
-func Validate(token, secret string, currentGen int) (*Claims, error) {
+func Validate(token, secret string, currentGen uint64) (*Claims, error) {
 	parts := strings.SplitN(token, ".", 2)
 	if len(parts) != 2 {
 		return nil, ErrInvalidFormat

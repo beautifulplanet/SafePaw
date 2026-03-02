@@ -25,6 +25,7 @@ var secretKeys = map[string]bool{
 // readEnvFile reads path and returns a map of key -> value.
 // Comment lines and empty lines are skipped. Invalid lines are skipped.
 func readEnvFile(path string) (map[string]string, error) {
+	// #nosec G304 -- path is loaded from trusted process configuration (ENV_FILE_PATH).
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -72,7 +73,7 @@ func maskValue(key, value string) string {
 var allowedConfigKeys = map[string]bool{
 	"WIZARD_ADMIN_PASSWORD": true,
 	"WIZARD_TOTP_SECRET":    true, // Optional; when set, login requires TOTP code (MFA)
-	"AUTH_ENABLED": true, "AUTH_SECRET": true, "AUTH_DEFAULT_TTL_HOURS": true, "AUTH_MAX_TTL_HOURS": true,
+	"AUTH_ENABLED":          true, "AUTH_SECRET": true, "AUTH_DEFAULT_TTL_HOURS": true, "AUTH_MAX_TTL_HOURS": true,
 	"TLS_ENABLED": true, "TLS_CERT_FILE": true, "TLS_KEY_FILE": true, "TLS_PORT": true,
 	"RATE_LIMIT": true, "RATE_LIMIT_WINDOW_SEC": true,
 	"ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true,
@@ -83,6 +84,7 @@ var allowedConfigKeys = map[string]bool{
 // writeEnvFile updates path by replacing values for keys in updates and
 // appending any new keys. Preserves comments, blank lines, and key order.
 func writeEnvFile(path string, updates map[string]string) error {
+	// #nosec G304 -- path is loaded from trusted process configuration (ENV_FILE_PATH).
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
