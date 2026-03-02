@@ -10,9 +10,27 @@ permissions:
   contents: read
 
 jobs:
+  # ── Change Detection ───────────────────────────────────
+  changes:
+    name: Detect CI-Relevant Changes
+    runs-on: ubuntu-latest
+    outputs:
+      services_changed: ${{ steps.filter.outputs.services_changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            services_changed:
+              - 'beautifulplanet/safepaw/services/**'
+
   # ── Gateway ──────────────────────────────────────────
   gateway:
     name: Gateway (Go)
+    needs: [changes]
+    if: needs.changes.outputs.services_changed == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -53,6 +71,8 @@ jobs:
   # ── Wizard ───────────────────────────────────────────
   wizard:
     name: Wizard (Go)
+    needs: [changes]
+    if: needs.changes.outputs.services_changed == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -90,6 +110,8 @@ jobs:
   # ── Lint ─────────────────────────────────────────────
   lint:
     name: Lint & Static Analysis
+    needs: [changes]
+    if: needs.changes.outputs.services_changed == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -117,6 +139,8 @@ jobs:
   # ── Security Scan ────────────────────────────────────
   security:
     name: Security Scan
+    needs: [changes]
+    if: needs.changes.outputs.services_changed == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -159,6 +183,8 @@ jobs:
   # ── Docker Build ─────────────────────────────────────
   docker:
     name: Docker Build
+    needs: [changes]
+    if: needs.changes.outputs.services_changed == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -178,12 +204,17 @@ jobs:
   # ── Summary ──────────────────────────────────────────
   ci-pass:
     name: CI Pass
-    needs: [gateway, wizard, lint, security, docker]
+    needs: [changes, gateway, wizard, lint, security, docker]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check results
         run: |
+          if [[ "${{ needs.changes.outputs.services_changed }}" != "true" ]]; then
+            echo "No service changes detected; skipping CI jobs."
+            exit 0
+          fi
+
           if [[ "${{ needs.gateway.result }}" != "success" ]] || \
              [[ "${{ needs.wizard.result }}" != "success" ]] || \
              [[ "${{ needs.lint.result }}" != "success" ]] || \
