@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	wsDialTimeout  = 10 * time.Second
-	wsBufferSize   = 32 * 1024 // 32KB copy buffer
+	wsDialTimeout = 10 * time.Second
+	wsBufferSize  = 32 * 1024 // 32KB copy buffer
 )
 
 // isWebSocketUpgrade checks if a request is a WebSocket upgrade.
@@ -112,7 +112,7 @@ func wsProxy(target *url.URL) http.Handler {
 		if clientBuf.Reader.Buffered() > 0 {
 			buffered := make([]byte, clientBuf.Reader.Buffered())
 			if _, err := clientBuf.Read(buffered); err == nil {
-				backendConn.Write(buffered)
+				_, _ = backendConn.Write(buffered)
 			}
 		}
 
@@ -127,14 +127,14 @@ func wsProxy(target *url.URL) http.Handler {
 		go func() {
 			scanner := middleware.NewScanningReader(backendConn, reqID, r.URL.Path)
 			buf := make([]byte, wsBufferSize)
-			io.CopyBuffer(clientConn, scanner, buf)
+			_, _ = io.CopyBuffer(clientConn, scanner, buf)
 			done <- struct{}{}
 		}()
 
 		// Client → Backend: pass through (input already scanned by body scanner)
 		go func() {
 			buf := make([]byte, wsBufferSize)
-			io.CopyBuffer(backendConn, clientConn, buf)
+			_, _ = io.CopyBuffer(backendConn, clientConn, buf)
 			done <- struct{}{}
 		}()
 
