@@ -1,3 +1,3 @@
 module safepaw/wizard
 
-go 1.22
+go 1.25
