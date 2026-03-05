@@ -37,6 +37,29 @@ func main() {
 	port := getEnv("PORT", defaultPort)
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`<!DOCTYPE html>
+<html><head><title>InstallerClaw Mock Backend</title>
+<style>body{font-family:monospace;max-width:700px;margin:40px auto;background:#1a1a2e;color:#e0e0e0;padding:20px}
+a{color:#0ff;text-decoration:none}a:hover{text-decoration:underline}
+h1{color:#0ff}li{margin:8px 0}</style></head>
+<body><h1>&#9881; InstallerClaw Mock Backend</h1>
+<p>Available endpoints for T6/T7 gateway integration testing:</p>
+<ul>
+<li><a href="/health">GET /health</a> &mdash; 200 OK health check</li>
+<li><a href="/echo?foo=bar">GET /echo</a> &mdash; echo query + headers as JSON</li>
+<li>POST /echo &mdash; echo body as JSON</li>
+<li><a href="/status/200">GET /status/:code</a> &mdash; return any HTTP status (<a href="/status/404">404</a>, <a href="/status/500">500</a>)</li>
+<li><a href="/payload/injection">GET /payload/injection</a> &mdash; prompt-injection test payload</li>
+<li><a href="/payload/xss">GET /payload/xss</a> &mdash; XSS test payload</li>
+<li><a href="/delay?ms=1000">GET /delay?ms=1000</a> &mdash; delayed response (timeout testing)</li>
+</ul>
+<p style="color:#888;margin-top:30px">Port: ` + port + `</p>
+</body></html>`))
+	})
+
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

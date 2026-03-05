@@ -1,0 +1,30 @@
+========================================
+InstallerClaw demo — what I did for you
+========================================
+
+1. CREATED YOUR .env FILE
+   - Demo wizard password: DemoPassword123!
+   - Auth is off so you can open the gateway in the browser without tokens.
+   - All in:  NOPEnclaw\beautifulplanet\safepaw\.env
+
+2. YOU ONLY NEED TO DO 2 THINGS
+   A) Start Docker Desktop (from Start menu). Wait until it says "Docker Desktop is running".
+   B) Start the demo:
+      - Double-click:  START-DEMO.bat
+      - Or right-click START-DEMO.ps1 → Run with PowerShell
+      (Both are in the safepaw folder.)
+
+3. AFTER IT STARTS (wait 30–60 seconds)
+   - Open in your browser:  http://localhost:3000
+   - Password:  DemoPassword123!
+   - You’ll see Prerequisites, then Dashboard with all 5 services.
+   - Gateway:  http://localhost:8080/health
+
+4. TO STOP THE DEMO LATER
+   Open PowerShell in the safepaw folder and run:
+   docker compose down
+
+5. FOR YOUR LINKEDIN VIDEO
+   Follow the scenes in DEMO-VIDEO.md (same folder). Everything is already set up; just record the browser and maybe the terminal.
+
+========================================
