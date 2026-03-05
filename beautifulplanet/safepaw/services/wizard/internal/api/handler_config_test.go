@@ -21,7 +21,7 @@ func TestGetConfig(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Port:       3000,
+		Port:        3000,
 		EnvFilePath: envPath,
 	}
 	h, err := NewHandler(cfg, nil)

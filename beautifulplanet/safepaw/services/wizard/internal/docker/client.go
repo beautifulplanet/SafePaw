@@ -57,11 +57,11 @@ type ContainerDetail struct {
 
 // ContainerState is the runtime state from inspect.
 type ContainerState struct {
-	Status     string          `json:"Status"`  // "running", "exited", etc.
-	Running    bool            `json:"Running"`
-	StartedAt  string          `json:"StartedAt"`
-	FinishedAt string          `json:"FinishedAt"`
-	Health     *HealthState    `json:"Health,omitempty"`
+	Status     string       `json:"Status"` // "running", "exited", etc.
+	Running    bool         `json:"Running"`
+	StartedAt  string       `json:"StartedAt"`
+	FinishedAt string       `json:"FinishedAt"`
+	Health     *HealthState `json:"Health,omitempty"`
 }
 
 // HealthState is the container health check result.
@@ -71,12 +71,12 @@ type HealthState struct {
 
 // ServiceInfo is a simplified view for the wizard UI.
 type ServiceInfo struct {
-	Name    string `json:"name"`
-	ID      string `json:"id"`
-	State   string `json:"state"`   // "running", "stopped", "error"
-	Health  string `json:"health"`  // "healthy", "unhealthy", "starting", "none"
-	Image   string `json:"image"`
-	Uptime  string `json:"uptime,omitempty"`
+	Name   string `json:"name"`
+	ID     string `json:"id"`
+	State  string `json:"state"`  // "running", "stopped", "error"
+	Health string `json:"health"` // "healthy", "unhealthy", "starting", "none"
+	Image  string `json:"image"`
+	Uptime string `json:"uptime,omitempty"`
 }
 
 // New creates a Docker client connected to the daemon.
