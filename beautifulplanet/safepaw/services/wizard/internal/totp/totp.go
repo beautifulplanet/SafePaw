@@ -9,7 +9,7 @@ package totp
 
 import (
 	"crypto/hmac"
-	"crypto/sha1" //nolint:gosec // #nosec G505 -- SHA-1 is required by TOTP/HOTP (RFC 6238/4226)
+	"crypto/sha1" // #nosec G505 -- SHA-1 is required by TOTP/HOTP (RFC 6238/4226)
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"

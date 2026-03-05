@@ -25,7 +25,7 @@ var secretKeys = map[string]bool{
 // readEnvFile reads path and returns a map of key -> value.
 // Comment lines and empty lines are skipped. Invalid lines are skipped.
 func readEnvFile(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is from internal config, not user input
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ var allowedConfigKeys = map[string]bool{
 // writeEnvFile updates path by replacing values for keys in updates and
 // appending any new keys. Preserves comments, blank lines, and key order.
 func writeEnvFile(path string, updates map[string]string) error {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is from internal config, not user input
 	if err != nil {
 		return err
 	}
