@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,14 @@ func TestOutputScanner_HTTPMiddleware(t *testing.T) {
 	}
 	if rec.Header().Get("X-SafePaw-Output-Risk") != "high" {
 		t.Errorf("output risk header = %q, want high", rec.Header().Get("X-SafePaw-Output-Risk"))
+	}
+	// Content-Length must match actual body after sanitization
+	cl := rec.Header().Get("Content-Length")
+	if cl == "" {
+		t.Fatal("Content-Length header missing after sanitization")
+	}
+	if cl != fmt.Sprintf("%d", len(body)) {
+		t.Errorf("Content-Length = %s, want %d (actual body length)", cl, len(body))
 	}
 }
 

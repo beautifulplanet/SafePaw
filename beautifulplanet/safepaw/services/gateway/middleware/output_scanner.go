@@ -26,6 +26,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -135,6 +136,7 @@ func OutputScanner(maxScanSize int64, next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("X-SafePaw-Output-Risk", risk.String())
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 		if !cw.headerWritten {
 			w.WriteHeader(cw.statusCode)
 		}
