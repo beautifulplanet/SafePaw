@@ -113,7 +113,7 @@ services:
       - safepaw-internal
     depends_on:
       openclaw:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -135,6 +135,7 @@ services:
   # Telegram, Slack, WhatsApp, Signal, etc.), LLM providers,
   # tools, voice, and the Control UI.
   # INTERNAL ONLY — all traffic must go through the Gateway.
+  # Built from services/openclaw/Dockerfile (openclaw installed at build time).
   openclaw:
     build:
       context: /workspaces/codespaces-blank/openclaw
