@@ -65,7 +65,7 @@ func (h *Handler) Close() {
 // Pass this to middleware.AdminAuth so that when password or TOTP is changed via PUT /config, existing tokens fail validation.
 func (h *Handler) SessionValidator() middleware.SessionValidator {
 	return func(token string) bool {
-		_, err := session.Validate(token, h.cfg.AdminPassword, int(h.sessionGen.Load()))
+		_, err := session.Validate(token, h.cfg.AdminPassword, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
 		return err == nil
 	}
 }
@@ -159,7 +159,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 			ip = fwd
 		}
-		log.Printf("[WARN] Failed login attempt from %s", ip)
+		log.Printf("[WARN] Failed login attempt from %s", sanitizeLog(ip))
 		h.audit.LoginFailure(ip, "invalid_password")
 		time.Sleep(500 * time.Millisecond)
 		writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid password"})
@@ -177,7 +177,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 				ip = fwd
 			}
-			log.Printf("[WARN] Failed TOTP verification from %s", ip)
+			log.Printf("[WARN] Failed TOTP verification from %s", sanitizeLog(ip))
 			h.audit.LoginFailure(ip, "invalid_totp")
 			time.Sleep(500 * time.Millisecond)
 			writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid totp code"})
@@ -187,7 +187,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Generate signed session token (24h TTL); include current gen so credential rotation invalidates old tokens
 	const ttl = 24 * time.Hour
-	token, err := session.Create(h.cfg.AdminPassword, ttl, int(h.sessionGen.Load()))
+	token, err := session.Create(h.cfg.AdminPassword, ttl, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
 	if err != nil {
 		log.Printf("[ERROR] Failed to create session token: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})
@@ -306,7 +306,7 @@ func checkPorts(ports ...int) prerequisiteCheck {
 		if err != nil {
 			busy = append(busy, fmt.Sprintf("%d", port))
 		} else {
-			ln.Close()
+			_ = ln.Close()
 		}
 	}
 
@@ -508,4 +508,15 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("[ERROR] JSON encode failed: %v", err)
 	}
+}
+
+// sanitizeLog strips control characters from a string before logging
+// to prevent log injection attacks (gosec G706).
+func sanitizeLog(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
 }
