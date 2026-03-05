@@ -261,6 +261,12 @@ func AuthRequired(auth *Authenticator, requiredScope string, revocations *Revoca
 // On success, strikes are cleared (legitimate user shouldn't be penalized).
 func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocations *RevocationList, guard *BruteForceGuard, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Exempt health and metrics endpoints from auth (Docker/k8s probes, monitoring)
+		if r.URL.Path == "/health" || r.URL.Path == "/metrics" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		ip := extractIP(r)
 		reqID := r.Header.Get("X-Request-ID")
 
