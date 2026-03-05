@@ -20,6 +20,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,7 +168,7 @@ func (rl *RateLimiter) Allow(ip string) bool {
 
 	rec.count++
 	rec.lastSeen = now
-	log.Printf("[RATELIMIT] Allowed ip=%s (%d/%d)", ip, rec.count, rl.limit)
+	log.Printf("[RATELIMIT] Allowed ip=%s (%d/%d)", SanitizeLogValue(ip), rec.count, rl.limit)
 	return true
 }
 
@@ -200,7 +201,7 @@ func RateLimitWithGuard(rl *RateLimiter, guard *BruteForceGuard, next http.Handl
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := extractIP(r)
 		if !rl.Allow(ip) {
-			log.Printf("[SECURITY] Rate limited IP=%s request_id=%s", ip, r.Header.Get("X-Request-ID"))
+			log.Printf("[SECURITY] Rate limited IP=%s request_id=%s", SanitizeLogValue(ip), SanitizeLogValue(r.Header.Get("X-Request-ID")))
 			if guard != nil {
 				guard.RecordFailure(ip, "rate_limit_exceeded")
 			}
@@ -272,4 +273,17 @@ func isLoopback(ip string) bool {
 		return false
 	}
 	return parsed.IsLoopback()
+}
+
+// SanitizeLogValue strips control characters (newlines, tabs, etc.) from
+// a string before it is interpolated into a log message. This prevents
+// log injection attacks where an attacker embeds \n or \r in request
+// fields like URL path or RemoteAddr to forge log entries.
+func SanitizeLogValue(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1 // drop control characters
+		}
+		return r
+	}, s)
 }

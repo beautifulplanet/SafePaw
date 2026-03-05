@@ -33,20 +33,20 @@ import (
 )
 
 type banEntry struct {
-	strikes   int
-	bannedAt  time.Time
-	duration  time.Duration
-	reason    string
+	strikes  int
+	bannedAt time.Time
+	duration time.Duration
+	reason   string
 }
 
 // BruteForceGuard tracks and bans abusive IPs.
 type BruteForceGuard struct {
-	mu         sync.Mutex
-	strikes    map[string]*banEntry
-	threshold  int
-	baseBan    time.Duration
-	cleanupT   *time.Ticker
-	stopCh     chan struct{}
+	mu        sync.Mutex
+	strikes   map[string]*banEntry
+	threshold int
+	baseBan   time.Duration
+	cleanupT  *time.Ticker
+	stopCh    chan struct{}
 }
 
 // NewBruteForceGuard creates a guard that bans after threshold strikes.

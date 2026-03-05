@@ -220,7 +220,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 type prerequisiteCheck struct {
 	Name     string `json:"name"`
-	Status   string `json:"status"`   // "pass", "fail", "warn"
+	Status   string `json:"status"` // "pass", "fail", "warn"
 	Message  string `json:"message"`
 	HelpURL  string `json:"help_url,omitempty"`
 	Required bool   `json:"required"`
