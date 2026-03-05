@@ -23,7 +23,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.24"
           cache-dependency-path: beautifulplanet/safepaw/services/gateway/go.sum
 
       - name: Build
@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.24"
           cache: false
 
       - name: Build
@@ -97,7 +97,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.24"
           cache-dependency-path: beautifulplanet/safepaw/services/gateway/go.sum
 
       - name: golangci-lint (gateway)
@@ -124,7 +124,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.24"
           cache-dependency-path: beautifulplanet/safepaw/services/gateway/go.sum
 
       - name: Install security tools
@@ -151,12 +151,12 @@ jobs:
       - name: govulncheck (gateway)
         run: govulncheck ./...
         working-directory: beautifulplanet/safepaw/services/gateway
-        continue-on-error: true  # stdlib vulns fixed in Go 1.25.5+ (not yet released)
+        continue-on-error: true  # advisory-only until Go patches all stdlib CVEs
 
       - name: govulncheck (wizard)
         run: govulncheck ./...
         working-directory: beautifulplanet/safepaw/services/wizard
-        continue-on-error: true  # stdlib vulns fixed in Go 1.25.5+ (not yet released)
+        continue-on-error: true  # advisory-only until Go patches all stdlib CVEs
 
   # ── Docker Build ─────────────────────────────────────
   docker:
