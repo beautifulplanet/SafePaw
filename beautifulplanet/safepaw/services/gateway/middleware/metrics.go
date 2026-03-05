@@ -48,7 +48,7 @@ type Metrics struct {
 }
 
 type histogram struct {
-	buckets []int64  // count per bucket
+	buckets []int64 // count per bucket
 	sum     float64 // total seconds
 	count   int64
 	mu      sync.Mutex

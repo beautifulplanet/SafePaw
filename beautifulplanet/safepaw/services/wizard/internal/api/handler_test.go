@@ -115,10 +115,10 @@ func TestLoginSuccess(t *testing.T) {
 
 func TestLoginWithMFA_RequiresTOTP(t *testing.T) {
 	cfg := &config.Config{
-		Port:        3000,
+		Port:          3000,
 		AdminPassword: "test-password-123",
-		TOTPSecret:  "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", // RFC test vector
-		DockerHost:  "unix:///var/run/docker.sock",
+		TOTPSecret:    "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", // RFC test vector
+		DockerHost:    "unix:///var/run/docker.sock",
 	}
 	h, _ := NewHandler(cfg, nil)
 	router := h.Router()

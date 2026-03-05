@@ -62,18 +62,18 @@ func (l LogLevel) String() string {
 // componentLevel maps log prefixes to severity levels.
 var componentLevel = map[string]LogLevel{
 	"AUTH":        LevelInfo,
-	"SCANNER":    LevelWarn,
-	"SECURITY":   LevelWarn,
-	"PROXY":      LevelInfo,
-	"WS":         LevelInfo,
-	"RATELIMIT":  LevelInfo,
-	"REVOKE":     LevelWarn,
+	"SCANNER":     LevelWarn,
+	"SECURITY":    LevelWarn,
+	"PROXY":       LevelInfo,
+	"WS":          LevelInfo,
+	"RATELIMIT":   LevelInfo,
+	"REVOKE":      LevelWarn,
 	"OUTPUT-SCAN": LevelWarn,
-	"SANITIZE":   LevelInfo,
-	"SHUTDOWN":   LevelInfo,
-	"CONFIG":     LevelInfo,
-	"SERVER":     LevelInfo,
-	"FATAL":      LevelError,
+	"SANITIZE":    LevelInfo,
+	"SHUTDOWN":    LevelInfo,
+	"CONFIG":      LevelInfo,
+	"SERVER":      LevelInfo,
+	"FATAL":       LevelError,
 }
 
 // warnKeywords elevate a line to warn if found in the message.
