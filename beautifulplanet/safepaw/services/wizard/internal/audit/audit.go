@@ -82,15 +82,15 @@ func (l *Logger) Log(actor, action, resource, outcome string, details map[string
 
 	if l.jsonMode {
 		data, _ := json.Marshal(ev)
-		l.out.Write(data)
-		l.out.Write([]byte("\n"))
+		_, _ = l.out.Write(data)
+		_, _ = l.out.Write([]byte("\n"))
 	} else {
 		msg := fmt.Sprintf("[AUDIT] action=%s actor=%s resource=%s outcome=%s",
 			action, actor, resource, outcome)
 		for k, v := range details {
 			msg += fmt.Sprintf(" %s=%s", k, v)
 		}
-		l.out.Write([]byte(msg + "\n"))
+		_, _ = l.out.Write([]byte(msg + "\n"))
 	}
 
 	log.Printf("[AUDIT] %s %s on %s by %s (%s)", outcome, action, resource, actor, ev.Timestamp.Format(time.RFC3339))

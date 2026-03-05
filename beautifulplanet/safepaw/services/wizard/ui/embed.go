@@ -1,5 +1,5 @@
 // Package ui provides the embedded React SPA filesystem.
-// go:embed can only access files in or below the package directory,
+// Embed can only access files in or below the package directory,
 // so this package lives next to the dist/ folder it embeds.
 package ui
 

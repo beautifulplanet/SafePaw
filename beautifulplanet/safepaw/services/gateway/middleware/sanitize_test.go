@@ -220,9 +220,9 @@ func TestValidateContentType(t *testing.T) {
 
 func TestValidateChannel(t *testing.T) {
 	tests := []struct {
-		input   string
-		want    string
-		wantOK  bool
+		input  string
+		want   string
+		wantOK bool
 	}{
 		{"general", "general", true},
 		{"my-channel_v2", "my-channel_v2", true},

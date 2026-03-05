@@ -9,7 +9,7 @@ package totp
 
 import (
 	"crypto/hmac"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // #nosec G505 -- SHA-1 is required by TOTP/HOTP (RFC 6238/4226)
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
@@ -53,8 +53,8 @@ func ValidateAtTime(secretBase32, code string, t time.Time) bool {
 func match(secret []byte, counter int64, code string) bool {
 	// HOTP: HMAC-SHA1(secret, counter), then dynamic truncation
 	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(counter))
-	mac := hmac.New(sha1.New, secret)
+	binary.BigEndian.PutUint64(buf, uint64(counter)) // #nosec G115 -- TOTP counter from Unix time is always positive
+	mac := hmac.New(sha1.New, secret)                // #nosec G505 -- SHA-1 required by RFC 6238
 	mac.Write(buf)
 	sum := mac.Sum(nil)
 
@@ -82,8 +82,8 @@ func CodeForTime(secretBase32 string, t time.Time) string {
 	}
 	counter := t.Unix() / 30
 	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(counter))
-	mac := hmac.New(sha1.New, secret)
+	binary.BigEndian.PutUint64(buf, uint64(counter)) // #nosec G115 -- TOTP counter from Unix time is always positive
+	mac := hmac.New(sha1.New, secret)                // #nosec G505 -- SHA-1 required by RFC 6238
 	mac.Write(buf)
 	sum := mac.Sum(nil)
 	offset := int(sum[len(sum)-1] & 0x0f)

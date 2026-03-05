@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	wsDialTimeout  = 10 * time.Second
-	wsBufferSize   = 32 * 1024 // 32KB copy buffer
+	wsDialTimeout = 10 * time.Second
+	wsBufferSize  = 32 * 1024 // 32KB copy buffer
 )
 
 // isWebSocketUpgrade checks if a request is a WebSocket upgrade.
@@ -67,7 +67,7 @@ func wsProxy(target *url.URL) http.Handler {
 		}
 
 		log.Printf("[WS] Upgrade request: %s -> %s (remote=%s)",
-			r.URL.Path, backendAddr, r.RemoteAddr)
+			middleware.SanitizeLogValue(r.URL.Path), backendAddr, middleware.SanitizeLogValue(r.RemoteAddr))
 
 		// Dial the backend
 		backendConn, err := net.DialTimeout("tcp", backendAddr, wsDialTimeout)
@@ -112,12 +112,15 @@ func wsProxy(target *url.URL) http.Handler {
 		if clientBuf.Reader.Buffered() > 0 {
 			buffered := make([]byte, clientBuf.Reader.Buffered())
 			if _, err := clientBuf.Read(buffered); err == nil {
-				backendConn.Write(buffered)
+				if _, err := backendConn.Write(buffered); err != nil {
+					log.Printf("[WS] Failed to flush buffered data to backend: %v", err)
+					return
+				}
 			}
 		}
 
 		log.Printf("[WS] Tunnel established: %s <-> %s (path=%s)",
-			r.RemoteAddr, backendAddr, r.URL.Path)
+			middleware.SanitizeLogValue(r.RemoteAddr), backendAddr, middleware.SanitizeLogValue(r.URL.Path))
 
 		// Bidirectional copy — when either side closes, both are torn down
 		done := make(chan struct{}, 2)
@@ -127,20 +130,24 @@ func wsProxy(target *url.URL) http.Handler {
 		go func() {
 			scanner := middleware.NewScanningReader(backendConn, reqID, r.URL.Path)
 			buf := make([]byte, wsBufferSize)
-			io.CopyBuffer(clientConn, scanner, buf)
+			if _, err := io.CopyBuffer(clientConn, scanner, buf); err != nil {
+				log.Printf("[WS] Backend→Client copy error: %v", err)
+			}
 			done <- struct{}{}
 		}()
 
 		// Client → Backend: pass through (input already scanned by body scanner)
 		go func() {
 			buf := make([]byte, wsBufferSize)
-			io.CopyBuffer(backendConn, clientConn, buf)
+			if _, err := io.CopyBuffer(backendConn, clientConn, buf); err != nil {
+				log.Printf("[WS] Client→Backend copy error: %v", err)
+			}
 			done <- struct{}{}
 		}()
 
 		// Wait for either direction to finish
 		<-done
 
-		log.Printf("[WS] Tunnel closed: %s (path=%s)", r.RemoteAddr, r.URL.Path)
+		log.Printf("[WS] Tunnel closed: %s (path=%s)", middleware.SanitizeLogValue(r.RemoteAddr), middleware.SanitizeLogValue(r.URL.Path))
 	})
 }

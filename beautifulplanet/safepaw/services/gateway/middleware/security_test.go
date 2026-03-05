@@ -213,3 +213,22 @@ func TestExtractIP_NonLoopbackIgnoresXRealIP(t *testing.T) {
 		t.Errorf("got %q, want 10.0.0.5 (should ignore X-Real-IP from non-loopback)", ip)
 	}
 }
+
+func TestSanitizeLogValue(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"clean", "clean"},
+		{"line1\nline2", "line1line2"},
+		{"has\r\ntabs\there", "hastabshere"},
+		{"192.168.1.1", "192.168.1.1"},
+		{"/path/to/resource", "/path/to/resource"},
+		{"evil\x00null", "evilnull"},
+	}
+	for _, tt := range tests {
+		got := SanitizeLogValue(tt.in)
+		if got != tt.want {
+			t.Errorf("SanitizeLogValue(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
