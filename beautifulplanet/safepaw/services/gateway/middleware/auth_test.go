@@ -336,3 +336,36 @@ func TestRevocationList_Count(t *testing.T) {
 		t.Errorf("count = %d, want 2", rl.Count())
 	}
 }
+
+func TestAuthRequiredWithGuard_HealthExempt(t *testing.T) {
+	auth := newTestAuth(t)
+	handler := AuthRequiredWithGuard(auth, "proxy", nil, nil, okHandler())
+	req := httptest.NewRequest("GET", "/health", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("/health should be exempt from auth, got %d", rec.Code)
+	}
+}
+
+func TestAuthRequiredWithGuard_MetricsExempt(t *testing.T) {
+	auth := newTestAuth(t)
+	handler := AuthRequiredWithGuard(auth, "proxy", nil, nil, okHandler())
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("/metrics should be exempt from auth, got %d", rec.Code)
+	}
+}
+
+func TestAuthRequiredWithGuard_OtherPathsRequireAuth(t *testing.T) {
+	auth := newTestAuth(t)
+	handler := AuthRequiredWithGuard(auth, "proxy", nil, nil, okHandler())
+	req := httptest.NewRequest("GET", "/api/chat", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("/api/chat without token should be 401, got %d", rec.Code)
+	}
+}
