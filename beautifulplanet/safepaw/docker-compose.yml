@@ -138,13 +138,15 @@ services:
   # Built from services/openclaw/Dockerfile (openclaw installed at build time).
   openclaw:
     build:
-      context: ./services/openclaw
+      context: /workspaces/codespaces-blank/openclaw
       dockerfile: Dockerfile
-      args:
-        OPENCLAW_VERSION: ${OPENCLAW_VERSION:-latest}
-    image: safepaw-openclaw:latest
     container_name: safepaw-openclaw
-    command: ["openclaw", "gateway", "--port", "18789", "--bind", "lan", "--allow-unconfigured"]
+    command: >
+      sh -c '
+        mkdir -p /home/node/.openclaw &&
+        echo "{\"gateway\":{\"bind\":\"lan\",\"controlUi\":{\"enabled\":true,\"dangerouslyAllowHostHeaderOriginFallback\":true}}}" > /home/node/.openclaw/openclaw.json &&
+        exec node openclaw.mjs gateway --port 18789 --bind lan --allow-unconfigured
+      '
     environment:
       # OpenClaw reads config from ~/.openclaw/openclaw.json
       # and env vars for channel tokens.
@@ -161,21 +163,18 @@ services:
     # NO ports exposed to host — Gateway proxies all traffic
     networks:
       - safepaw-internal
-    volumes:
-      - openclaw-home:/home/node/.openclaw          # Persist OpenClaw config + workspace
-      - openclaw-workspace:/home/node/.openclaw/workspace  # Agent workspace
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G
           cpus: '2.0'
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:18789/health"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 30s  # OpenClaw may need time to load config on first run
+      start_period: 30s
 
   # ------------------------------------------------
   # Redis — State & Rate Limiting

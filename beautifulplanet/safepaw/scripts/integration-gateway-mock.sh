@@ -118,7 +118,9 @@ else
 fi
 
 # 4. /payload/xss — gateway output scanner may sanitize or add risk header
-body=$(curl -s -D "$TMP_DIR/headers2.txt" -w "\n%{http_code}" "$GATEWAY_URL/payload/xss")
+# Note: output scanner may shorten the body without updating Content-Length,
+# causing curl exit 18 ("partial file"). Tolerate that with || true.
+body=$(curl -s -D "$TMP_DIR/headers2.txt" -w "\n%{http_code}" "$GATEWAY_URL/payload/xss" || true)
 code=$(echo "$body" | tail -1)
 if [ "$code" = "200" ]; then
   green "Payload xss: 200"
