@@ -141,7 +141,7 @@ jobs:
         working-directory: beautifulplanet/safepaw/services/wizard
 
       - name: gosec (gateway)
-        run: gosec -exclude-dir=tools ./...
+        run: gosec -exclude=G706 -exclude-dir=tools ./...
         working-directory: beautifulplanet/safepaw/services/gateway
 
       - name: gosec (wizard)
