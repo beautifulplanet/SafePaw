@@ -1,4 +1,4 @@
-.PHONY: all build test lint security vulncheck fuzz clean docker up down verify help
+.PHONY: all build test lint security vulncheck fuzz clean docker up down verify help install-hooks
 
 GATEWAY_DIR := services/gateway
 WIZARD_DIR  := services/wizard
@@ -91,6 +91,12 @@ verify: ## Run E2E verification against live deployment
 
 verify-gateway-mock: ## Run gateway + mock backend integration (no OpenClaw)
 	./scripts/integration-gateway-mock.sh
+
+# ── Git Hooks ──────────────────────────────────────────
+
+install-hooks: ## Install pre-commit hook
+	@ln -sf ../../beautifulplanet/safepaw/scripts/pre-commit.sh $(shell git rev-parse --show-toplevel)/.git/hooks/pre-commit
+	@echo "Pre-commit hook installed."
 
 # ── Clean ──────────────────────────────────────────────
 

@@ -24,6 +24,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -183,7 +184,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Password != h.cfg.AdminPassword {
+	if subtle.ConstantTimeCompare([]byte(req.Password), []byte(h.cfg.AdminPassword)) != 1 {
 		ip := r.RemoteAddr
 		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 			ip = fwd
@@ -682,20 +683,20 @@ func parsePrometheusMetrics(text string) gatewayMetricsSummary {
 
 		// Parse "metric_name{labels} value" or "metric_name value"
 		name, value := parseMetricLine(line)
-		switch {
-		case name == "safepaw_requests_total":
+		switch name {
+		case "safepaw_requests_total":
 			s.TotalRequests += parseInt64(value)
-		case name == "safepaw_auth_failures_total":
+		case "safepaw_auth_failures_total":
 			s.AuthFailures += parseInt64(value)
-		case name == "safepaw_injection_detected_total":
+		case "safepaw_injection_detected_total":
 			s.InjectionsFound += parseInt64(value)
-		case name == "safepaw_rate_limited_total":
+		case "safepaw_rate_limited_total":
 			s.RateLimited += parseInt64(value)
-		case name == "safepaw_active_connections":
+		case "safepaw_active_connections":
 			s.ActiveConns = parseInt64(value)
-		case name == "safepaw_tokens_revoked_total":
+		case "safepaw_tokens_revoked_total":
 			s.TokensRevoked += parseInt64(value)
-		case name == "safepaw_request_duration_seconds_sum":
+		case "safepaw_request_duration_seconds_sum":
 			s.AvgResponseMs = parseFloat64(value) * 1000
 		}
 	}
@@ -816,7 +817,7 @@ func parseTopPaths(text string) []pathCount {
 	}
 
 	// Convert to sorted slice (top N)
-	var result []pathCount
+	result := make([]pathCount, 0, len(pathMap))
 	for p, c := range pathMap {
 		result = append(result, pathCount{Path: p, Count: c})
 	}
