@@ -46,9 +46,10 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		// Enable XSS filter in older browsers
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 
-		// Strict Transport Security — force HTTPS for 1 year
-		// (harmless in dev over HTTP, critical in production)
-		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		// Strict Transport Security — only sent when the request arrived over TLS
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 
 		// Content Security Policy — only allow resources from same origin
 		w.Header().Set("Content-Security-Policy", "default-src 'self'")

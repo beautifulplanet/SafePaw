@@ -17,8 +17,8 @@
 ARG NODE_IMAGE=node:22-alpine@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34
 FROM ${NODE_IMAGE}
 
-# Pin openclaw version at build time (override with --build-arg OPENCLAW_VERSION=1.2.3)
-ARG OPENCLAW_VERSION=latest
+# Pin openclaw version at build time (override with --build-arg OPENCLAW_VERSION=x.y.z)
+ARG OPENCLAW_VERSION
 ENV OPENCLAW_VERSION=${OPENCLAW_VERSION}
 
 # openclaw or its deps may use git (e.g. postinstall); gosu for entrypoint drop-to-node
