@@ -78,6 +78,7 @@ var allowedConfigKeys = map[string]bool{
 	"ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true,
 	"DISCORD_BOT_TOKEN": true, "TELEGRAM_BOT_TOKEN": true, "SLACK_BOT_TOKEN": true, "SLACK_APP_TOKEN": true,
 	"SIGNAL_CLI_PATH": true,
+	"SYSTEM_PROFILE":  true,
 }
 
 // writeEnvFile updates path by replacing values for keys in updates and

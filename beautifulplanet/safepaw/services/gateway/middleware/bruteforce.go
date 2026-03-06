@@ -179,9 +179,16 @@ func (g *BruteForceGuard) BannedIPs() int {
 }
 
 // BruteForceMiddleware rejects requests from banned IPs before
-// any further processing.
+// any further processing. Health and metrics endpoints are exempt
+// so internal monitors (wizard, Docker health checks) are never blocked.
 func BruteForceMiddleware(guard *BruteForceGuard, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Exempt monitoring endpoints from brute-force blocking
+		if r.URL.Path == "/health" || r.URL.Path == "/metrics" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		ip := extractIP(r)
 
 		banned, reason, remaining := guard.IsBanned(ip)
