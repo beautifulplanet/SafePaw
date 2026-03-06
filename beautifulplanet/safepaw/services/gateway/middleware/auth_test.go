@@ -164,11 +164,27 @@ func TestAuthRequired_ValidToken_QueryParam(t *testing.T) {
 	auth := newTestAuth(t)
 	token, _ := auth.CreateToken("user1", "proxy", nil)
 	handler := AuthRequired(auth, "proxy", nil, okHandler())
+	// ?token= is only accepted for WebSocket upgrade requests
 	req := httptest.NewRequest("GET", "/test?token="+token, nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestAuthRequired_QueryParam_RejectedForHTTP(t *testing.T) {
+	auth := newTestAuth(t)
+	token, _ := auth.CreateToken("user1", "proxy", nil)
+	handler := AuthRequired(auth, "proxy", nil, okHandler())
+	// Plain HTTP request with ?token= should be rejected (use Bearer header instead)
+	req := httptest.NewRequest("GET", "/test?token="+token, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 (?token= should not work for plain HTTP)", rec.Code)
 	}
 }
 
@@ -235,6 +251,32 @@ func TestAuthOptional_InvalidToken(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("optional auth with invalid token should still pass, got %d", rec.Code)
+	}
+}
+
+func TestAuthOptional_ValidToken_SetsHeaders(t *testing.T) {
+	auth := newTestAuth(t)
+	token, _ := auth.CreateToken("viewer1", "proxy", nil)
+
+	var gotSubject, gotScope string
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotSubject = r.Header.Get("X-Auth-Subject")
+		gotScope = r.Header.Get("X-Auth-Scope")
+	})
+
+	handler := AuthOptional(auth, inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	if gotSubject != "viewer1" {
+		t.Errorf("X-Auth-Subject = %q, want %q", gotSubject, "viewer1")
+	}
+	if gotScope != "proxy" {
+		t.Errorf("X-Auth-Scope = %q, want %q", gotScope, "proxy")
 	}
 }
 

@@ -78,6 +78,14 @@ func main() {
 			// Strip hop-by-hop headers that shouldn't be forwarded
 			req.Header.Del("X-SafePaw-Risk") // Don't let clients spoof risk headers
 
+			// Strip original auth credentials — backend uses X-Auth-Subject/X-Auth-Scope
+			req.Header.Del("Authorization")
+			q := req.URL.Query()
+			if q.Has("token") {
+				q.Del("token")
+				req.URL.RawQuery = q.Encode()
+			}
+
 			log.Printf("[PROXY] %s %s -> %s%s (remote=%s request_id=%s)",
 				req.Method, req.URL.Path, cfg.ProxyTarget.Host, req.URL.Path, req.RemoteAddr, req.Header.Get("X-Request-ID"))
 		},

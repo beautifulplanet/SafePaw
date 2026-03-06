@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -357,22 +358,29 @@ func AuthOptional(auth *Authenticator, next http.Handler) http.Handler {
 // ================================================================
 
 // extractToken gets the auth token from the request.
-// Priority: query param > Authorization header
-// Query param is preferred because WebSocket clients can't set custom headers
-// during the upgrade handshake in browsers.
+// For WebSocket upgrades, query param ?token= is accepted (browsers cannot set
+// custom headers during the upgrade handshake).
+// For regular HTTP requests, only the Authorization: Bearer header is checked.
 func extractToken(r *http.Request) string {
-	// 1. Check query parameter (WebSocket clients use this)
-	if token := r.URL.Query().Get("token"); token != "" {
-		return token
+	// 1. Check query parameter (WebSocket upgrade only)
+	if isUpgrade(r) {
+		if token := r.URL.Query().Get("token"); token != "" {
+			return token
+		}
 	}
 
-	// 2. Check Authorization header (REST clients use this)
+	// 2. Check Authorization header
 	authHeader := r.Header.Get("Authorization")
 	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 		return authHeader[7:]
 	}
 
 	return ""
+}
+
+// isUpgrade reports whether r looks like a WebSocket upgrade request.
+func isUpgrade(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 }
 
 // splitToken splits a token string on the single "." separator.
