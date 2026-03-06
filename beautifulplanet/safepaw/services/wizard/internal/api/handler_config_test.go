@@ -116,3 +116,109 @@ func TestPutConfigRejectsDisallowedKey(t *testing.T) {
 		t.Errorf("POSTGRES_PASSWORD should be unchanged, got %q", env["POSTGRES_PASSWORD"])
 	}
 }
+
+func TestPutConfigSystemProfileExpands(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envPath, []byte("SYSTEM_PROFILE=small\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{Port: 3000, EnvFilePath: envPath}
+	h, err := NewHandler(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := h.Router()
+
+	body := `{"SYSTEM_PROFILE":"large"}`
+	req := httptest.NewRequest("PUT", "/api/v1/config", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT SYSTEM_PROFILE=large: status = %d, want 200", rec.Code)
+	}
+	env, err := readEnvFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["SYSTEM_PROFILE"] != "large" {
+		t.Errorf("SYSTEM_PROFILE = %q, want large", env["SYSTEM_PROFILE"])
+	}
+	if env["OPENCLAW_MEM_LIMIT"] != "32G" {
+		t.Errorf("OPENCLAW_MEM_LIMIT = %q, want 32G", env["OPENCLAW_MEM_LIMIT"])
+	}
+	if env["POSTGRES_SHARED_BUFFERS"] != "2GB" {
+		t.Errorf("POSTGRES_SHARED_BUFFERS = %q, want 2GB", env["POSTGRES_SHARED_BUFFERS"])
+	}
+	if env["REDIS_MAXMEMORY"] != "1gb" {
+		t.Errorf("REDIS_MAXMEMORY = %q, want 1gb", env["REDIS_MAXMEMORY"])
+	}
+}
+
+func TestPutConfigSystemProfileVeryLarge(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envPath, []byte("SYSTEM_PROFILE=small\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{Port: 3000, EnvFilePath: envPath}
+	h, err := NewHandler(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := h.Router()
+
+	body := `{"SYSTEM_PROFILE":"very-large"}`
+	req := httptest.NewRequest("PUT", "/api/v1/config", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT SYSTEM_PROFILE=very-large: status = %d, want 200", rec.Code)
+	}
+	env, err := readEnvFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["OPENCLAW_MEM_LIMIT"] != "96G" {
+		t.Errorf("OPENCLAW_MEM_LIMIT = %q, want 96G", env["OPENCLAW_MEM_LIMIT"])
+	}
+	if env["GATEWAY_MEM_LIMIT"] != "2G" {
+		t.Errorf("GATEWAY_MEM_LIMIT = %q, want 2G", env["GATEWAY_MEM_LIMIT"])
+	}
+}
+
+func TestPutConfigSystemProfileInvalid(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envPath, []byte("SYSTEM_PROFILE=small\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{Port: 3000, EnvFilePath: envPath}
+	h, err := NewHandler(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := h.Router()
+
+	body := `{"SYSTEM_PROFILE":"gigantic"}`
+	req := httptest.NewRequest("PUT", "/api/v1/config", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("PUT SYSTEM_PROFILE=gigantic: status = %d, want 400", rec.Code)
+	}
+	// Verify env was not changed
+	env, _ := readEnvFile(envPath)
+	if env["SYSTEM_PROFILE"] != "small" {
+		t.Errorf("SYSTEM_PROFILE should be unchanged, got %q", env["SYSTEM_PROFILE"])
+	}
+}
