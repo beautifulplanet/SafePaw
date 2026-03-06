@@ -1,17 +1,140 @@
-# InstallerClaw (SafePaw)
+<p align="center">
+  <strong>InstallerClaw (SafePaw)</strong><br/>
+  Secure, one-click deployer for OpenClaw
+</p>
 
-**Secure, one-click deployer for [OpenClaw](https://github.com/nicepkg/openclaw).**
+<p align="center">
+  <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
+  <a href="#part-2-tech-stack--architecture"><strong>Architecture</strong></a> &middot;
+  <a href="https://github.com/beautifulplanet/SafePaw"><strong>GitHub</strong></a> &middot;
+  <a href="beautifulplanet/safepaw/SECURITY.md"><strong>Security</strong></a> &middot;
+  <a href="beautifulplanet/safepaw/RUNBOOK.md"><strong>Runbook</strong></a>
+</p>
 
-We call it **InstallerClaw** because it is the install and deploy layer around OpenClaw: one perimeter (gateway + wizard) that handles auth, rate limiting, scanning, TLS, and guided setup. The repo and paths still use **SafePaw** / `safepaw` for historical reasons; treat “InstallerClaw” as the product name and “SafePaw” as the codebase/organizational name.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+  <a href="https://github.com/beautifulplanet/SafePaw/stargazers"><img src="https://img.shields.io/github/stars/beautifulplanet/SafePaw?style=flat" alt="Stars" /></a>
+  <img src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go" alt="Go 1.24" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React 19" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker" alt="Docker Compose" />
+</p>
 
-**What it is:** A security perimeter (Go gateway + Go/React wizard) that wraps the OpenClaw personal AI assistant: reverse proxy with auth, rate limiting, prompt-injection and output scanning, TLS, and a guided setup UI. One command brings up the full stack; the wizard handles configuration and health monitoring.
+<br/>
 
-**The trend we’re addressing:** Self-hosted AI assistants (OpenClaw, and similar local/private LLM front-ends) are popular. InstallerClaw is a safe, deployable perimeter for them—auth, scanning, and ops in one place—so you don’t expose the assistant without a guardrail layer.
+## What is InstallerClaw?
 
-### Non-goals / not a guarantee
+# Secure perimeter for self-hosted AI assistants
 
-- **Scanning is heuristic-only** — Pattern- and regex-based; it **reduces risk** of prompt injection and exfil, but does **not** guarantee prevention. Novel or obfuscated attacks may get through. Use defense-in-depth and treat scanning as one layer.
-- **No silver bullet** — We document threats and mitigations in [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md). Residual risks remain (e.g. in-memory bans, heuristic limits). Suited for indie/small-team use; enterprise may need additional controls.
+**If OpenClaw is the _AI assistant_, InstallerClaw is the _security guard + setup crew_ around it.**
+
+InstallerClaw is a Go gateway and React wizard that wraps [OpenClaw](https://github.com/nicepkg/openclaw) in a hardened Docker environment. Auth, rate limiting, prompt-injection scanning, TLS, and guided setup — one command to deploy, one UI to manage.
+
+We call it **InstallerClaw** because it is the install and deploy layer around OpenClaw. The repo and paths still use **SafePaw** / `safepaw` for historical reasons; treat "InstallerClaw" as the product name and "SafePaw" as the codebase/organizational name.
+
+**The trend:** Self-hosted AI assistants (OpenClaw, and similar local/private LLM front-ends) are growing fast. InstallerClaw is a safe, deployable perimeter — auth, scanning, and ops in one place — so you never expose the assistant without a guardrail layer.
+
+<br/>
+
+## InstallerClaw is right for you if
+
+- ✅ You run **OpenClaw** (or any self-hosted AI assistant) and want a security layer in front of it
+- ✅ You want **one command** to deploy a hardened stack with auth, rate limiting, and scanning
+- ✅ You're **not a security expert** but want defense-in-depth without building it yourself
+- ✅ You need **operational tooling** — health dashboard, config UI, audit logs, incident runbooks
+- ✅ You want **guided setup** instead of editing YAML files and hoping for the best
+- ✅ You care about **prompt injection defense** and want heuristic scanning on every request
+
+<br/>
+
+## Features
+
+<table>
+<tr>
+<td align="center" width="33%">
+<h3>🛡️ Security Gateway</h3>
+HMAC auth, per-IP rate limiting, brute-force banning, origin validation, TLS termination. Every request authenticated before it reaches the AI.
+</td>
+<td align="center" width="33%">
+<h3>🔍 AI Defense Scanning</h3>
+14-pattern prompt injection body scanner + output scanner (XSS, secret leaks). Heuristic, versioned, auditable. Risk headers on every response.
+</td>
+<td align="center" width="33%">
+<h3>🧙 Setup Wizard</h3>
+React UI with guided setup: prerequisite checks, API key config, service health dashboard, masked secrets. No YAML editing required.
+</td>
+</tr>
+<tr>
+<td align="center">
+<h3>🔐 Auth & Sessions</h3>
+HMAC-SHA256 tokens, Redis-backed revocation, scope enforcement. Wizard has optional TOTP MFA, signed session cookies, audit trail.
+</td>
+<td align="center">
+<h3>📊 Observability</h3>
+Prometheus metrics, Grafana dashboards, 6 alert rules, structured JSON logging. SIEM-ready out of the box.
+</td>
+<td align="center">
+<h3>🐳 One-Command Deploy</h3>
+<code>docker compose up -d</code> — 5 services with health checks, resource limits, and internal-only backends. Only wizard and gateway exposed.
+</td>
+</tr>
+<tr>
+<td align="center">
+<h3>📋 Incident Runbooks</h3>
+6 playbooks: token compromise, injection detected, gateway down, brute force, secret rotation, disk full. Copy-paste commands.
+</td>
+<td align="center">
+<h3>🧪 258+ Tests</h3>
+Go unit and integration tests, 7 fuzz targets, coverage gate (60%) in CI. Lint, gosec, govulncheck, Docker build on every push.
+</td>
+<td align="center">
+<h3>📐 Threat Model</h3>
+STRIDE analysis with 27 documented threats, mitigations, and residual risks. Defense-in-depth, not security theater.
+</td>
+</tr>
+</table>
+
+<br/>
+
+## Problems InstallerClaw solves
+
+| Without InstallerClaw | With InstallerClaw |
+|---|---|
+| ❌ OpenClaw is exposed directly — no auth, no rate limiting, no scanning. | ✅ Gateway sits in front with HMAC auth, brute-force protection, and prompt-injection scanning on every request. |
+| ❌ You manually configure `.env` files, hope Docker ports are right, and debug health checks. | ✅ Wizard UI walks you through setup: prerequisites, API keys, service health — all from a browser. |
+| ❌ When something breaks, you dig through logs trying to figure out what happened. | ✅ Structured logging, Prometheus metrics, Grafana dashboards, and 6 incident runbooks with copy-paste commands. |
+| ❌ You have no audit trail — who logged in, what changed, when services restarted. | ✅ Wizard audit log records every login, config change, restart, and token creation with timestamps and IPs. |
+| ❌ Prompt injection attacks go straight to the AI with no filtering. | ✅ 14-pattern body scanner + output scanner catch common injection and exfiltration attempts before they reach OpenClaw. |
+| ❌ Secret rotation means editing files, restarting services, and hoping nothing breaks. | ✅ Runbook has ordered rotation procedures; wizard UI edits `.env` and restarts services in place. |
+
+<br/>
+
+## What InstallerClaw is not
+
+| | |
+|---|---|
+| **Not the AI itself.** | OpenClaw handles the assistant, channels, and LLM integration. InstallerClaw handles the perimeter. |
+| **Not a guarantee.** | Scanning is heuristic-only (regex/patterns). It **reduces risk** but does not prevent all attacks. See [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md). |
+| **Not enterprise-grade (yet).** | Suited for indie/small-team use. Enterprise deployments may need additional controls (WAF, external IdP, etc.). |
+| **Not a cloud service.** | Fully self-hosted. No accounts, no telemetry, no external dependencies at runtime. |
+| **Not a workflow builder.** | No drag-and-drop pipelines. InstallerClaw secures and operates a single AI stack. |
+
+<br/>
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><strong>Wraps</strong></td>
+    <td align="center"><strong>OpenClaw</strong><br/><sub>AI Assistant</sub></td>
+    <td align="center"><strong>Discord</strong><br/><sub>Channel</sub></td>
+    <td align="center"><strong>Telegram</strong><br/><sub>Channel</sub></td>
+    <td align="center"><strong>Slack</strong><br/><sub>Channel</sub></td>
+    <td align="center"><strong>Redis</strong><br/><sub>State</sub></td>
+    <td align="center"><strong>Postgres</strong><br/><sub>Config</sub></td>
+  </tr>
+</table>
+</div>
+
+<br/>
 
 ---
 
@@ -55,16 +178,16 @@ We call it **InstallerClaw** because it is the install and deploy layer around O
 
 ### How to read this README
 
-**If you’re evaluating the system**
+**If you're evaluating the system**
 
 | What you want | Where to find it | Time |
 |---------------|------------------|------|
-| What it is and why it exists | [Impact](#impact) + [Part 1: Summary](#part-1-summary) | 1 min |
+| What it is and why it exists | [What is InstallerClaw?](#what-is-installerclaw) + [Part 1: Summary](#part-1-summary) | 1 min |
 | Proof (tests, metrics, docs) | [Evidence](#evidence) | 1 min |
 | Security and ops posture | [Part 2: Tech stack & architecture](#part-2-tech-stack--architecture), [Security posture](#security-posture) | 2 min |
 | Limitations | [Limitations](#limitations) | 30 sec |
 
-**If you’re reviewing security & operations**
+**If you're reviewing security & operations**
 
 | What you want | Where to find it | Time |
 |---------------|------------------|------|
@@ -97,7 +220,7 @@ SafePaw combines:
 
 OpenClaw handles the AI assistant, channels (Discord, Telegram, Slack, etc.), and LLM integration. SafePaw handles the perimeter.
 
-### Why it’s interesting (for reviewers)
+### Why it's interesting (for reviewers)
 
 | Topic | Detail |
 |-------|--------|
@@ -208,10 +331,10 @@ Full threat model: [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md). I
 - Ports 3000 (wizard) and 8080 (gateway) free
 - For production: set `AUTH_ENABLED=true`, `AUTH_SECRET`, and optionally `TLS_ENABLED` with certs
 
-### Commands
+### Quickstart
 
 ```bash
-# Clone (adjust URL if your repo differs)
+# Clone
 git clone https://github.com/beautifulplanet/SafePaw.git
 cd SafePaw/beautifulplanet/safepaw
 
@@ -341,11 +464,28 @@ curl -s http://localhost:8080/health | jq .
 
 Then open http://localhost:3000, sign in, and check the dashboard. Full script: `scripts/verify-deployment.sh` in the safepaw directory.
 
+## FAQ
+
+**What does a typical setup look like?**
+Clone the repo, copy `.env.example` to `.env`, fill in your API keys, run `docker compose up -d`. The wizard at `:3000` guides you through the rest.
+
+**Can I use this without OpenClaw?**
+The gateway can proxy to any HTTP backend — change `PROXY_TARGET` in `.env`. The wizard's health checks and service management are OpenClaw-specific, but the gateway is generic.
+
+**How do I add TOTP (MFA) to the wizard?**
+Set `WIZARD_TOTP_SECRET` in `.env` to a base32-encoded secret (e.g. from Google Authenticator setup). The login page will prompt for a TOTP code automatically.
+
+**Is this production-ready?**
+For indie/small-team deployments behind localhost or a VPN, yes. For public-facing production, add TLS (`TLS_ENABLED=true`), set strong `AUTH_SECRET`, and review [SECURITY.md](beautifulplanet/safepaw/SECURITY.md) and the [Production Hardening Checklist](#production-hardening-checklist) in the safepaw README.
+
+**What if scanning misses an attack?**
+It will. Scanning is heuristic-only and documented as such. Treat it as one layer of defense-in-depth, not a guarantee. See [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md) for residual risks.
+
 ## Limitations
 
 - **Prompt-injection and output scanning** — Heuristic (regex/patterns) only; **reduces risk**, does not guarantee prevention. No ML/LLM. See [SECURITY.md](beautifulplanet/safepaw/SECURITY.md).
 - **Token revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
-- **Wizard password** — No “forgot password” flow; recovery via logs or `.env` and restart.
+- **Wizard password** — No "forgot password" flow; recovery via logs or `.env` and restart.
 - **Stack** — Docker-first; wizard expects Docker socket for health. No generic bare-metal install path.
 
 **Release / packaging:** No versioned releases or installers are published yet. When going public: plan for versioned tags (e.g. `v0.1.0`), checksums for binaries, and optionally a single-command installer or `docker compose` image pinning. See [CONTRIBUTING.md](beautifulplanet/safepaw/CONTRIBUTING.md) for build and test commands.
