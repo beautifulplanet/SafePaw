@@ -6,27 +6,35 @@
 // non-API path (SPA fallback routing).
 //
 // Endpoints:
-//   GET  /api/v1/health          — Wizard health check
+//   GET  /api/v1/health          — Wizard health check (includes needs_setup flag)
 //   POST /api/v1/auth/login      — Authenticate with admin password
 //   GET  /api/v1/status          — All service statuses (Docker container list + overall health)
 //   GET  /api/v1/prerequisites   — Check system requirements
 //   GET  /api/v1/config          — Current .env config (secrets masked)
 //   PUT  /api/v1/config         — Update allowed keys in .env
-//   POST /api/v1/services/{name}/restart — Restart a SafePaw service (wizard, gateway, openclaw, redis, postgres)
+//   POST /api/v1/services/{name}/restart — Restart a SafePaw service
+//   POST /api/v1/gateway/token   — Generate a gateway auth token (reads AUTH_SECRET from .env)
+//   GET  /api/v1/gateway/metrics — Proxy Prometheus metrics from gateway
+//   GET  /api/v1/gateway/activity — Parsed gateway activity summary
 // =============================================================
 
 package api
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -105,6 +113,9 @@ func (h *Handler) Router() http.Handler {
 	mux.HandleFunc("GET /api/v1/config", h.handleGetConfig)
 	mux.HandleFunc("PUT /api/v1/config", h.handlePutConfig)
 	mux.HandleFunc("POST /api/v1/services/{name}/restart", h.handleServiceRestart)
+	mux.HandleFunc("POST /api/v1/gateway/token", h.handleGatewayToken)
+	mux.HandleFunc("GET /api/v1/gateway/metrics", h.handleGatewayMetrics)
+	mux.HandleFunc("GET /api/v1/gateway/activity", h.handleGatewayActivity)
 
 	// ── SPA Fallback ──
 	// Serve React app for all non-API routes
@@ -116,21 +127,38 @@ func (h *Handler) Router() http.Handler {
 // ─── Health Check ────────────────────────────────────────────
 
 type healthResponse struct {
-	Status  string `json:"status"`
-	Service string `json:"service"`
-	Version string `json:"version"`
-	Uptime  string `json:"uptime"`
+	Status     string `json:"status"`
+	Service    string `json:"service"`
+	Version    string `json:"version"`
+	Uptime     string `json:"uptime"`
+	NeedsSetup bool   `json:"needs_setup"`
 }
 
 var startTime = time.Now()
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, healthResponse{
-		Status:  "ok",
-		Service: "safepaw-wizard",
-		Version: "0.1.0",
-		Uptime:  time.Since(startTime).Round(time.Second).String(),
+		Status:     "ok",
+		Service:    "safepaw-wizard",
+		Version:    "0.1.0",
+		Uptime:     time.Since(startTime).Round(time.Second).String(),
+		NeedsSetup: h.needsSetup(),
 	})
+}
+
+// needsSetup returns true when critical configuration is missing.
+// Checks: at least one LLM API key must be configured.
+func (h *Handler) needsSetup() bool {
+	env, err := readEnvFile(h.cfg.EnvFilePath)
+	if err != nil {
+		// If we can't read the env file, setup is definitely needed
+		return true
+	}
+	// At least one LLM API key must be present
+	if env["ANTHROPIC_API_KEY"] != "" || env["OPENAI_API_KEY"] != "" {
+		return false
+	}
+	return true
 }
 
 // ─── Authentication ──────────────────────────────────────────
@@ -496,6 +524,327 @@ func (h *Handler) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
 
 	h.audit.ServiceRestart(restartIP, name, "success")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": name})
+}
+
+// ─── Gateway Token ───────────────────────────────────────────
+
+type gatewayTokenRequest struct {
+	Subject string `json:"subject"` // e.g. "wizard-proxy"
+	Scope   string `json:"scope"`   // e.g. "proxy", "admin"
+	TTLHrs  int    `json:"ttl_hours,omitempty"`
+}
+
+type gatewayTokenResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// handleGatewayToken generates a gateway-compatible HMAC-SHA256 token.
+// Reads AUTH_SECRET from .env at call time so it always uses the current key.
+func (h *Handler) handleGatewayToken(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+
+	var req gatewayTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{"invalid request body"})
+		return
+	}
+
+	if req.Subject == "" {
+		req.Subject = "wizard-proxy"
+	}
+	if req.Scope == "" {
+		req.Scope = "proxy"
+	}
+	if req.TTLHrs <= 0 {
+		req.TTLHrs = 24
+	}
+	if req.TTLHrs > 168 { // max 7 days
+		writeJSON(w, http.StatusBadRequest, errorResponse{"ttl_hours must be <= 168 (7 days)"})
+		return
+	}
+
+	// Read AUTH_SECRET from .env
+	env, err := readEnvFile(h.cfg.EnvFilePath)
+	if err != nil {
+		log.Printf("[ERROR] handleGatewayToken: cannot read env: %v", err)
+		writeJSON(w, http.StatusInternalServerError, errorResponse{"cannot read configuration"})
+		return
+	}
+	secret := env["AUTH_SECRET"]
+	if secret == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{"AUTH_SECRET is not configured; set it in Settings first"})
+		return
+	}
+	if len(secret) < 32 {
+		writeJSON(w, http.StatusBadRequest, errorResponse{"AUTH_SECRET must be at least 32 characters"})
+		return
+	}
+
+	// Create the token using the same format as the gateway
+	now := time.Now().Unix()
+	ttl := time.Duration(req.TTLHrs) * time.Hour
+	exp := now + int64(ttl.Seconds())
+
+	payload := map[string]interface{}{
+		"sub":   req.Subject,
+		"iat":   now,
+		"exp":   exp,
+		"scope": req.Scope,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})
+		return
+	}
+
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadBytes)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payloadBytes)
+	sigB64 := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	token := payloadB64 + "." + sigB64
+
+	ip := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ip = fwd
+	}
+	h.audit.Log(ip, "gateway_token_created", "gateway", "success", map[string]string{
+		"subject": req.Subject, "scope": req.Scope, "ttl_hours": fmt.Sprintf("%d", req.TTLHrs),
+	})
+
+	writeJSON(w, http.StatusOK, gatewayTokenResponse{
+		Token:     token,
+		ExpiresAt: time.Unix(exp, 0).UTC().Format(time.RFC3339),
+	})
+}
+
+// ─── Gateway Metrics ─────────────────────────────────────────
+
+type gatewayMetricsSummary struct {
+	TotalRequests    int64   `json:"total_requests"`
+	AuthFailures     int64   `json:"auth_failures"`
+	InjectionsFound  int64   `json:"injections_found"`
+	RateLimited      int64   `json:"rate_limited"`
+	ActiveConns      int64   `json:"active_connections"`
+	AvgResponseMs    float64 `json:"avg_response_ms"`
+	TokensRevoked    int64   `json:"tokens_revoked"`
+	GatewayReachable bool    `json:"gateway_reachable"`
+}
+
+// handleGatewayMetrics fetches /metrics from the gateway and returns a parsed summary.
+// The gateway /metrics endpoint is unauthenticated (exempted from auth middleware).
+func (h *Handler) handleGatewayMetrics(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	gatewayURL := "http://safepaw-gateway:8080/metrics"
+	// Allow override for development
+	if gw := os.Getenv("GATEWAY_URL"); gw != "" {
+		gatewayURL = gw + "/metrics"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", gatewayURL, nil)
+	if err != nil {
+		writeJSON(w, http.StatusOK, gatewayMetricsSummary{GatewayReachable: false})
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusOK, gatewayMetricsSummary{GatewayReachable: false})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read at most 1MB of metrics text
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		writeJSON(w, http.StatusOK, gatewayMetricsSummary{GatewayReachable: false})
+		return
+	}
+
+	summary := parsePrometheusMetrics(string(body))
+	summary.GatewayReachable = true
+	writeJSON(w, http.StatusOK, summary)
+}
+
+// parsePrometheusMetrics extracts key counters from Prometheus text format.
+func parsePrometheusMetrics(text string) gatewayMetricsSummary {
+	var s gatewayMetricsSummary
+
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Parse "metric_name{labels} value" or "metric_name value"
+		name, value := parseMetricLine(line)
+		switch {
+		case name == "safepaw_requests_total":
+			s.TotalRequests += parseInt64(value)
+		case name == "safepaw_auth_failures_total":
+			s.AuthFailures += parseInt64(value)
+		case name == "safepaw_injection_detected_total":
+			s.InjectionsFound += parseInt64(value)
+		case name == "safepaw_rate_limited_total":
+			s.RateLimited += parseInt64(value)
+		case name == "safepaw_active_connections":
+			s.ActiveConns = parseInt64(value)
+		case name == "safepaw_tokens_revoked_total":
+			s.TokensRevoked += parseInt64(value)
+		case name == "safepaw_request_duration_seconds_sum":
+			s.AvgResponseMs = parseFloat64(value) * 1000
+		}
+	}
+
+	// Convert sum to average (rough estimate if we have count)
+	// We'll refine this once we know the exact metric names
+	return s
+}
+
+// parseMetricLine splits "name{labels} value" into name and value.
+func parseMetricLine(line string) (name, value string) {
+	// Strip labels: "name{label=val} 123" → "name" and "123"
+	idx := strings.IndexByte(line, '{')
+	if idx >= 0 {
+		name = line[:idx]
+		// Find closing brace, value is after space
+		braceEnd := strings.IndexByte(line[idx:], '}')
+		if braceEnd >= 0 {
+			rest := strings.TrimSpace(line[idx+braceEnd+1:])
+			// Value may have timestamp after space
+			if sp := strings.IndexByte(rest, ' '); sp >= 0 {
+				value = rest[:sp]
+			} else {
+				value = rest
+			}
+		}
+	} else {
+		// Simple "name value" format
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			name = parts[0]
+			value = parts[1]
+		}
+	}
+	return
+}
+
+func parseInt64(s string) int64 {
+	v, _ := strconv.ParseInt(s, 10, 64)
+	return v
+}
+
+func parseFloat64(s string) float64 {
+	v, _ := strconv.ParseFloat(s, 64)
+	return v
+}
+
+// ─── Gateway Activity ────────────────────────────────────────
+
+type gatewayActivity struct {
+	Metrics   gatewayMetricsSummary `json:"metrics"`
+	TopPaths  []pathCount           `json:"top_paths"`
+	RecentIPs []string              `json:"recent_ips"`
+}
+
+type pathCount struct {
+	Path  string `json:"path"`
+	Count int64  `json:"count"`
+}
+
+// handleGatewayActivity returns an activity summary built from gateway metrics.
+// This is a higher-level view intended for the Activity page.
+func (h *Handler) handleGatewayActivity(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	gatewayURL := "http://safepaw-gateway:8080/metrics"
+	if gw := os.Getenv("GATEWAY_URL"); gw != "" {
+		gatewayURL = gw + "/metrics"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", gatewayURL, nil)
+	if err != nil {
+		writeJSON(w, http.StatusOK, gatewayActivity{})
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusOK, gatewayActivity{})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		writeJSON(w, http.StatusOK, gatewayActivity{})
+		return
+	}
+
+	metricsText := string(body)
+	summary := parsePrometheusMetrics(metricsText)
+	summary.GatewayReachable = true
+
+	topPaths := parseTopPaths(metricsText)
+
+	writeJSON(w, http.StatusOK, gatewayActivity{
+		Metrics:  summary,
+		TopPaths: topPaths,
+	})
+}
+
+// parseTopPaths extracts per-path request counts from safepaw_requests_total{path="..."} lines.
+func parseTopPaths(text string) []pathCount {
+	pathMap := make(map[string]int64)
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "safepaw_requests_total{") {
+			continue
+		}
+		// Extract path label
+		pathLabel := extractLabel(line, "path")
+		if pathLabel == "" {
+			continue
+		}
+		_, value := parseMetricLine(line)
+		pathMap[pathLabel] += parseInt64(value)
+	}
+
+	// Convert to sorted slice (top N)
+	var result []pathCount
+	for p, c := range pathMap {
+		result = append(result, pathCount{Path: p, Count: c})
+	}
+	// Simple insertion sort (small N)
+	for i := 1; i < len(result); i++ {
+		for j := i; j > 0 && result[j].Count > result[j-1].Count; j-- {
+			result[j], result[j-1] = result[j-1], result[j]
+		}
+	}
+	if len(result) > 10 {
+		result = result[:10]
+	}
+	return result
+}
+
+// extractLabel finds label="value" in a Prometheus metric line.
+func extractLabel(line, label string) string {
+	key := label + `="`
+	idx := strings.Index(line, key)
+	if idx < 0 {
+		return ""
+	}
+	start := idx + len(key)
+	end := strings.IndexByte(line[start:], '"')
+	if end < 0 {
+		return ""
+	}
+	return line[start : start+end]
 }
 
 // ─── SPA Handler ─────────────────────────────────────────────

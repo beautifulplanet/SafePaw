@@ -1,13 +1,24 @@
 import type { ReactNode } from 'react'
 
+type Page = 'login' | 'prerequisites' | 'dashboard' | 'config' | 'activity' | 'settings' | 'setup'
+
 interface LayoutProps {
   children: ReactNode
   page: string
   onLogout?: () => void
   onNavigate?: () => void
+  onNavigateTo?: (page: Page) => void
 }
 
-export function Layout({ children, page, onLogout, onNavigate }: LayoutProps) {
+const mainTabs: { id: Page; label: string }[] = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'settings', label: 'Settings' },
+]
+
+export function Layout({ children, page, onLogout, onNavigate, onNavigateTo }: LayoutProps) {
+  const showTabs = ['dashboard', 'activity', 'settings', 'config'].includes(page)
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -24,26 +35,46 @@ export function Layout({ children, page, onLogout, onNavigate }: LayoutProps) {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Breadcrumb-style navigation */}
-            <nav className="hidden sm:flex items-center gap-1 text-sm text-gray-500">
-              <span className={page === 'login' ? 'text-paw-400 font-medium' : 'text-gray-400'}>
-                Login
-              </span>
-              <ChevronRight />
-              <span className={page === 'prerequisites' ? 'text-paw-400 font-medium' : 'text-gray-400'}>
-                Prerequisites
-              </span>
-              <ChevronRight />
-              <span className={page === 'dashboard' ? 'text-paw-400 font-medium' : page === 'config' ? 'text-gray-400' : ''}>
-                Dashboard
-              </span>
-              {page === 'config' && (
-                <>
-                  <ChevronRight />
-                  <span className="text-paw-400 font-medium">Configuration</span>
-                </>
-              )}
-            </nav>
+            {/* Breadcrumb nav for early flow */}
+            {!showTabs && (
+              <nav className="hidden sm:flex items-center gap-1 text-sm text-gray-500">
+                <span className={page === 'login' ? 'text-paw-400 font-medium' : 'text-gray-400'}>
+                  Login
+                </span>
+                <ChevronRight />
+                <span className={page === 'prerequisites' ? 'text-paw-400 font-medium' : 'text-gray-400'}>
+                  Prerequisites
+                </span>
+                {page === 'setup' && (
+                  <>
+                    <ChevronRight />
+                    <span className="text-paw-400 font-medium">Setup</span>
+                  </>
+                )}
+              </nav>
+            )}
+
+            {/* Tab pills for main pages */}
+            {showTabs && onNavigateTo && (
+              <nav className="hidden sm:flex items-center gap-1 bg-gray-800/50 rounded-lg p-1">
+                {mainTabs.map(tab => {
+                  const active = page === tab.id || (tab.id === 'settings' && page === 'config')
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => onNavigateTo(tab.id)}
+                      className={`text-sm px-3 py-1.5 rounded-md transition-colors ${
+                        active
+                          ? 'bg-paw-600 text-white font-medium'
+                          : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  )
+                })}
+              </nav>
+            )}
 
             {onNavigate && (
               <button onClick={onNavigate} className="btn-secondary text-sm py-1.5 px-3">
@@ -60,7 +91,7 @@ export function Layout({ children, page, onLogout, onNavigate }: LayoutProps) {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10">
+      <main key={page} className="flex-1 max-w-5xl mx-auto w-full px-6 py-10 page-enter">
         {children}
       </main>
 

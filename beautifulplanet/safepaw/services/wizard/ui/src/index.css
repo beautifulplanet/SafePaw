@@ -57,3 +57,67 @@
 .status-pulse {
   animation: status-pulse 2s ease-in-out infinite;
 }
+
+/* Page enter animation */
+@keyframes page-enter-kf {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-enter {
+  animation: page-enter-kf 0.3s ease-out both;
+}
+
+/* Staggered card entrance */
+@keyframes card-enter-kf {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.card-enter {
+  animation: card-enter-kf 0.35s ease-out both;
+}
+
+/* Stat card number flash on update */
+@keyframes number-flash-kf {
+  0% { color: #4ade80; }
+  100% { color: inherit; }
+}
+.number-flash {
+  animation: number-flash-kf 0.6s ease-out;
+}
+
+/* Button press feedback */
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .card-enter,
+  .status-pulse,
+  .number-flash {
+    animation: none;
+  }
+  .btn-primary:active:not(:disabled),
+  .btn-secondary:active:not(:disabled) {
+    transform: none;
+  }
+}
+.number-flash {
+  animation: number-flash 0.6s ease-out;
+}

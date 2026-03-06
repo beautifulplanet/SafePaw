@@ -1,16 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, type ServiceInfo, type StatusResponse } from '../api'
+import { api, type ServiceInfo, type StatusResponse, type GatewayMetrics } from '../api'
 
 const POLL_INTERVAL = 5000 // ms
 
 interface DashboardProps {
   onOpenConfig?: () => void
+  onOpenActivity?: () => void
+  onOpenSettings?: () => void
 }
 
-export function Dashboard({ onOpenConfig }: DashboardProps) {
+export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
   const [data, setData] = useState<StatusResponse | null>(null)
+  const [metrics, setMetrics] = useState<GatewayMetrics | null>(null)
   const [error, setError] = useState('')
   const [restarting, setRestarting] = useState<string | null>(null)
+  const [openingAssistant, setOpeningAssistant] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
   const fetchStatus = useCallback(async () => {
@@ -20,6 +24,28 @@ export function Dashboard({ onOpenConfig }: DashboardProps) {
       setError('')
     } catch {
       setError('Failed to fetch service status')
+    }
+  }, [])
+
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const res = await api.gatewayMetrics()
+      setMetrics(res)
+    } catch {
+      // Metrics are non-critical, don't show error
+    }
+  }, [])
+
+  const handleOpenAssistant = useCallback(async () => {
+    setOpeningAssistant(true)
+    try {
+      const { token } = await api.gatewayToken('wizard-user', 'proxy', 1)
+      const url = `${window.location.protocol}//${window.location.hostname}:8080/?token=${encodeURIComponent(token)}`
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open AI assistant')
+    } finally {
+      setOpeningAssistant(false)
     }
   }, [])
 
@@ -38,9 +64,13 @@ export function Dashboard({ onOpenConfig }: DashboardProps) {
 
   useEffect(() => {
     void fetchStatus()
-    intervalRef.current = setInterval(() => void fetchStatus(), POLL_INTERVAL)
+    void fetchMetrics()
+    intervalRef.current = setInterval(() => {
+      void fetchStatus()
+      void fetchMetrics()
+    }, POLL_INTERVAL)
     return () => clearInterval(intervalRef.current)
-  }, [fetchStatus])
+  }, [fetchStatus, fetchMetrics])
 
   return (
     <div>
@@ -53,11 +83,14 @@ export function Dashboard({ onOpenConfig }: DashboardProps) {
         </div>
         <div className="flex items-center gap-3">
           {data && <OverallBadge overall={data.overall} />}
-          {onOpenConfig && (
-            <button onClick={onOpenConfig} className="btn-secondary text-sm py-1.5 px-3">
-              Configuration
-            </button>
-          )}
+          <button
+            onClick={handleOpenAssistant}
+            disabled={openingAssistant}
+            className="btn-primary text-sm py-1.5 px-4 flex items-center gap-2"
+          >
+            <span>🤖</span>
+            {openingAssistant ? 'Opening…' : 'Open AI Assistant'}
+          </button>
           <button onClick={fetchStatus} className="btn-secondary text-sm py-1.5 px-3">
             Refresh
           </button>
@@ -67,6 +100,16 @@ export function Dashboard({ onOpenConfig }: DashboardProps) {
       {error && (
         <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400 mb-6">
           {error}
+        </div>
+      )}
+
+      {/* Quick Stats Row */}
+      {metrics && metrics.gateway_reachable && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+          <StatCard label="Requests" value={metrics.total_requests} />
+          <StatCard label="Active Connections" value={metrics.active_connections} />
+          <StatCard label="Auth Failures" value={metrics.auth_failures} warn={metrics.auth_failures > 0} />
+          <StatCard label="Threats Blocked" value={metrics.injections_found + metrics.rate_limited} warn={metrics.injections_found > 0} />
         </div>
       )}
 
@@ -85,12 +128,13 @@ export function Dashboard({ onOpenConfig }: DashboardProps) {
         <EmptyState />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data.services.map((svc) => (
+          {data.services.map((svc, i) => (
             <ServiceCard
               key={svc.name || svc.id}
               service={svc}
               onRestart={handleRestart}
               restarting={restarting}
+              index={i}
             />
           ))}
         </div>
@@ -114,13 +158,38 @@ export function Dashboard({ onOpenConfig }: DashboardProps) {
           </div>
         </div>
       </div>
+
+      {/* Quick nav */}
+      <div className="mt-6 flex gap-3">
+        {onOpenActivity && (
+          <button onClick={onOpenActivity} className="btn-secondary text-sm py-2 px-4 flex-1">
+            📊 View Activity
+          </button>
+        )}
+        {onOpenSettings && (
+          <button onClick={onOpenSettings} className="btn-secondary text-sm py-2 px-4 flex-1">
+            ⚙️ Settings
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StatCard({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+  return (
+    <div className="card py-3 px-4 card-enter">
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className={`text-2xl font-bold tabular-nums ${warn ? 'text-yellow-400' : 'text-gray-100'}`}>
+        {value.toLocaleString()}
+      </p>
     </div>
   )
 }
 
 const RESTARTABLE_SERVICES = ['wizard', 'gateway', 'openclaw', 'redis', 'postgres']
 
-function ServiceCard({ service, onRestart, restarting }: { service: ServiceInfo; onRestart: (name: string) => void; restarting: string | null }) {
+function ServiceCard({ service, onRestart, restarting, index }: { service: ServiceInfo; onRestart: (name: string) => void; restarting: string | null; index: number }) {
   const stateColor = getStateColor(service.state)
   const healthColor = getHealthColor(service.health)
   const name = service.name || 'unknown'
@@ -128,7 +197,7 @@ function ServiceCard({ service, onRestart, restarting }: { service: ServiceInfo;
   const isRestarting = restarting === name
 
   return (
-    <div className="card group hover:border-gray-700 transition-colors">
+    <div className="card group hover:border-gray-700 transition-colors card-enter" style={{ animationDelay: `${index * 60}ms` }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-lg">{name}</h3>
