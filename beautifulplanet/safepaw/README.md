@@ -71,6 +71,8 @@ docker compose up -d
 
 First run: wizard prints an admin password once. Use `docker compose logs wizard` or set `WIZARD_ADMIN_PASSWORD` in `.env`.
 
+> **Before going to production**, read the [Production Hardening Checklist](#production-hardening-checklist) below.
+
 ---
 
 ## Architecture
@@ -223,10 +225,30 @@ Then open http://localhost:3000, sign in, and check the dashboard. Full script: 
 
 ## Limitations
 
-- **Prompt-injection and output scanning** — Heuristic only; no ML/LLM. See [SECURITY.md](SECURITY.md).
+- **Prompt-injection and output scanning** — Heuristic regex patterns only (not a security boundary). Useful as a tripwire/defense-in-depth layer, but cannot catch novel, obfuscated, or adversarial attacks. No ML/LLM-based detection. See [SECURITY.md](SECURITY.md).
+- **Output scanning** — Same caveat: heuristic regex for XSS, secret leaks, and exfil. Treat as a helpful early-warning layer, not a guarantee.
 - **Revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
-- **Wizard password** — No “forgot password”; recovery via logs or `.env` and restart.
+- **Wizard password** — No "forgot password"; recovery via logs or `.env` and restart.
+- **Wizard compromise** — If an attacker gains wizard access, they can read/write API keys and tokens via PUT `/api/v1/config`. The wizard should only be accessible from localhost or behind a VPN.
 - **Stack** — Docker-first; no generic bare-metal install path.
+
+---
+
+## Production Hardening Checklist
+
+Do this **before** exposing anything beyond localhost:
+
+- [ ] **Set a strong admin password** — `WIZARD_ADMIN_PASSWORD` in `.env` (don't rely on auto-generated)
+- [ ] **Enable MFA** — Set `WIZARD_TOTP_SECRET` for two-factor login on the wizard
+- [ ] **Enable auth on the gateway** — `AUTH_ENABLED=true` + a strong `AUTH_SECRET` (min 32 bytes)
+- [ ] **Enable TLS** — `TLS_ENABLED=true` with valid certs (`TLS_CERT_FILE`, `TLS_KEY_FILE`)
+- [ ] **Keep wizard on localhost** — The wizard binds to `127.0.0.1` by default. Never expose it to the internet without a VPN or reverse proxy with auth.
+- [ ] **Set system profile** — Choose `small`/`medium`/`large`/`very-large` in Settings to match your server's RAM
+- [ ] **Review rate limits** — Default is 60 req/min/IP. Tune `RATE_LIMIT` and `RATE_LIMIT_WINDOW_SEC` for your load.
+- [ ] **Rotate secrets on schedule** — See [RUNBOOK.md](RUNBOOK.md) for rotation playbooks
+- [ ] **Run the verification script** — `./scripts/verify-deployment.sh` after starting the stack
+- [ ] **Monitor logs** — Set `LOG_FORMAT=json` and feed to your SIEM. Alert on `[AUTH]` failures, `[SCANNER]` high-risk, `[RATELIMIT]` denials.
+- [ ] **Understand scanning limits** — Prompt-injection and output scanners are heuristic tripwires, not security boundaries. They catch many known attacks but cannot stop novel or obfuscated ones.
 
 ---
 
