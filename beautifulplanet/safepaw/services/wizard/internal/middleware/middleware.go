@@ -29,7 +29,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; "+
 				"script-src 'self'; "+
-				"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "+
+				"style-src 'self' https://fonts.googleapis.com; "+
 				"img-src 'self' data:; "+
 				"connect-src 'self' ws://localhost:* wss://localhost:*; "+
 				"font-src 'self' https://fonts.gstatic.com; "+
