@@ -25,6 +25,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"sync/atomic"
@@ -299,7 +300,24 @@ func (h *Handler) checkDockerCompose(ctx context.Context) prerequisiteCheck {
 }
 
 // checkPorts probes whether the required ports are available.
+// inContainer reports whether the process is running inside a Docker container.
+func inContainer() bool {
+	_, err := os.Stat("/.dockerenv")
+	return err == nil
+}
+
 func checkPorts(ports ...int) prerequisiteCheck {
+	// When running inside the compose stack the wizard and gateway already
+	// own these ports — a bind-test would always fail for them.
+	if inContainer() {
+		return prerequisiteCheck{
+			Name:     "Port Availability",
+			Status:   "pass",
+			Message:  fmt.Sprintf("Ports %s managed by Docker Compose", joinInts(ports)),
+			Required: true,
+		}
+	}
+
 	var busy []string
 	for _, port := range ports {
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -328,9 +346,8 @@ func checkPorts(ports ...int) prerequisiteCheck {
 
 // checkDiskSpace checks for at least 2GB free on the working directory's volume.
 func checkDiskSpace() prerequisiteCheck {
-	// Note: precise disk space check requires platform-specific syscalls.
-	// For the container environment (Linux), we use 'df'.
-	out, err := exec.Command("df", "-BG", "--output=avail", "/").Output()
+	// Use plain 'df' (busybox-compatible) and parse the Available column (KB).
+	out, err := exec.Command("df", "/").Output()
 	if err != nil {
 		return prerequisiteCheck{
 			Name:     "Disk Space",
@@ -350,15 +367,32 @@ func checkDiskSpace() prerequisiteCheck {
 		}
 	}
 
-	// Parse "42G" → 42
-	avail := strings.TrimSpace(lines[1])
-	avail = strings.TrimSuffix(avail, "G")
-	var gb int
-	if _, err := fmt.Sscanf(avail, "%d", &gb); err == nil && gb >= 2 {
+	// Busybox df output: Filesystem 1K-blocks Used Available Use% Mounted on
+	// Available is the 4th column in KB.
+	fields := strings.Fields(lines[1])
+	if len(fields) < 4 {
 		return prerequisiteCheck{
 			Name:     "Disk Space",
-			Status:   "pass",
-			Message:  fmt.Sprintf("%dGB free space available", gb),
+			Status:   "warn",
+			Message:  "Unable to parse disk space output",
+			Required: false,
+		}
+	}
+	var kb int
+	if _, err := fmt.Sscanf(fields[3], "%d", &kb); err == nil {
+		gb := kb / (1024 * 1024)
+		if gb >= 2 {
+			return prerequisiteCheck{
+				Name:     "Disk Space",
+				Status:   "pass",
+				Message:  fmt.Sprintf("%dGB free space available", gb),
+				Required: false,
+			}
+		}
+		return prerequisiteCheck{
+			Name:     "Disk Space",
+			Status:   "warn",
+			Message:  fmt.Sprintf("Low disk space: %dGB (recommend 2GB+)", gb),
 			Required: false,
 		}
 	}
@@ -366,7 +400,7 @@ func checkDiskSpace() prerequisiteCheck {
 	return prerequisiteCheck{
 		Name:     "Disk Space",
 		Status:   "warn",
-		Message:  fmt.Sprintf("Low disk space: %sGB (recommend 2GB+)", avail),
+		Message:  "Unable to parse disk space output",
 		Required: false,
 	}
 }

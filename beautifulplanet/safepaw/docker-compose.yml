@@ -44,6 +44,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    group_add:
+      - "${DOCKER_GID:-103}"  # Match host Docker socket GID
     ports:
       - "127.0.0.1:3000:3000"  # Wizard UI — localhost only
     networks:
