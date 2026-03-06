@@ -156,7 +156,7 @@ services:
   # no --allow-unconfigured in production.
   openclaw:
     build:
-      context: /workspaces/codespaces-blank/openclaw
+      context: ${OPENCLAW_BUILD_CONTEXT:-../../openclaw}
       dockerfile: Dockerfile
     container_name: safepaw-openclaw
     command: >
