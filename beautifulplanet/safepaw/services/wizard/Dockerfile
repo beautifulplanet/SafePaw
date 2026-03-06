@@ -30,8 +30,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # --- Stage 2: Run ---
 FROM alpine:3.19
 
-# Security: install CA certs (for health check HTTP calls) and create non-root user
-RUN apk --no-cache add ca-certificates \
+# Security: install CA certs (for health check HTTP calls), Docker CLI
+# (for prerequisite checks and compose version), and create non-root user
+RUN apk --no-cache add ca-certificates docker-cli docker-cli-compose \
     && adduser -D -g '' safepaw
 
 WORKDIR /app
