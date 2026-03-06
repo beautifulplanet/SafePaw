@@ -71,6 +71,19 @@ func (h *Handler) Close() {
 	log.Println("[INFO] API handler closed")
 }
 
+// clientIP extracts the client IP from the request, preferring X-Forwarded-For
+// when the wizard sits behind a reverse proxy. Only the first (leftmost) address
+// is used because that is the original client.
+func clientIP(r *http.Request) string {
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		if ip, _, ok := strings.Cut(fwd, ","); ok {
+			return strings.TrimSpace(ip)
+		}
+		return strings.TrimSpace(fwd)
+	}
+	return r.RemoteAddr
+}
+
 // SessionValidator returns a function that validates session tokens using the current admin password and session generation.
 // Pass this to middleware.AdminAuth so that when password or TOTP is changed via PUT /config, existing tokens fail validation.
 func (h *Handler) SessionValidator() middleware.SessionValidator {
@@ -185,10 +198,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if subtle.ConstantTimeCompare([]byte(req.Password), []byte(h.cfg.AdminPassword)) != 1 {
-		ip := r.RemoteAddr
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			ip = fwd
-		}
+		ip := clientIP(r)
 		log.Printf("[WARN] Failed login attempt from %s", sanitizeLog(ip))
 		h.audit.LoginFailure(ip, "invalid_password")
 		time.Sleep(500 * time.Millisecond)
@@ -203,10 +213,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !totp.Validate(h.cfg.TOTPSecret, req.TOTP) {
-			ip := r.RemoteAddr
-			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-				ip = fwd
-			}
+			ip := clientIP(r)
 			log.Printf("[WARN] Failed TOTP verification from %s", sanitizeLog(ip))
 			h.audit.LoginFailure(ip, "invalid_totp")
 			time.Sleep(500 * time.Millisecond)
@@ -224,10 +231,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := r.RemoteAddr
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ip = fwd
-	}
+	ip := clientIP(r)
 	h.audit.LoginSuccess(ip)
 
 	http.SetCookie(w, &http.Cookie{
@@ -511,10 +515,7 @@ func (h *Handler) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	restartIP := r.RemoteAddr
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		restartIP = fwd
-	}
+	restartIP := clientIP(r)
 
 	if err := h.docker.RestartContainer(ctx, containerName, 10); err != nil {
 		log.Printf("[WARN] Restart %s failed: %v", containerName, err)
@@ -607,10 +608,7 @@ func (h *Handler) handleGatewayToken(w http.ResponseWriter, r *http.Request) {
 
 	token := payloadB64 + "." + sigB64
 
-	ip := r.RemoteAddr
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ip = fwd
-	}
+	ip := clientIP(r)
 	h.audit.Log(ip, "gateway_token_created", "gateway", "success", map[string]string{
 		"subject": req.Subject, "scope": req.Scope, "ttl_hours": fmt.Sprintf("%d", req.TTLHrs),
 	})

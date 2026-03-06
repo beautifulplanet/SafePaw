@@ -1,0 +1,49 @@
+version: 2
+updates:
+  # Gateway Go modules
+  - package-ecosystem: gomod
+    directory: /beautifulplanet/safepaw/services/gateway
+    schedule:
+      interval: weekly
+    reviewers:
+      - beautifulplanet
+    labels:
+      - dependencies
+      - go
+    open-pull-requests-limit: 5
+
+  # Wizard Go modules
+  - package-ecosystem: gomod
+    directory: /beautifulplanet/safepaw/services/wizard
+    schedule:
+      interval: weekly
+    reviewers:
+      - beautifulplanet
+    labels:
+      - dependencies
+      - go
+    open-pull-requests-limit: 5
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    reviewers:
+      - beautifulplanet
+    labels:
+      - dependencies
+      - ci
+    open-pull-requests-limit: 5
+
+  # Wizard frontend npm
+  - package-ecosystem: npm
+    directory: /beautifulplanet/safepaw/services/wizard/ui
+    schedule:
+      interval: weekly
+    reviewers:
+      - beautifulplanet
+    labels:
+      - dependencies
+      - npm
+    open-pull-requests-limit: 5
