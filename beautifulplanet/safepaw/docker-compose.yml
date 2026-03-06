@@ -28,6 +28,7 @@
 #   - AI, Redis, and Postgres are unreachable from host
 #   - Images pinned by SHA256 digest (supply-chain integrity)
 #   - Non-root containers where possible
+#   - Docker socket is proxied (wizard never touches raw socket)
 # =============================================================
 
 services:
@@ -46,7 +47,7 @@ services:
       WIZARD_PORT: "3000"
       WIZARD_ADMIN_PASSWORD: ${WIZARD_ADMIN_PASSWORD:-}
       WIZARD_TOTP_SECRET: ${WIZARD_TOTP_SECRET:-}
-      DOCKER_HOST: ${DOCKER_HOST:-unix:///var/run/docker.sock}
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
       COMPOSE_FILE_PATH: "/app/docker-compose.yml"
       ENV_FILE_PATH: "/app/.env"
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
@@ -57,16 +58,15 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    group_add:
-      - "${DOCKER_GID:-103}"  # Match host Docker socket GID
     ports:
       - "127.0.0.1:3000:3000"  # Wizard UI — localhost only
     networks:
       - safepaw-internal
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Read-only Docker socket (restart, health checks, service list)
       - ./.env:/app/.env:rw
     depends_on:
+      docker-socket-proxy:
+        condition: service_healthy
       redis:
         condition: service_healthy
       postgres:
@@ -81,6 +81,43 @@ services:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/v1/health"]
       interval: 10s
       timeout: 5s
+      retries: 3
+
+  # ------------------------------------------------
+  # Docker Socket Proxy — Least-Privilege Docker Access
+  # ------------------------------------------------
+  # The wizard needs Docker API access for health checks,
+  # container listing, and service restarts. Instead of
+  # mounting the raw Docker socket (which grants root-level
+  # access to the host), we proxy through tecnativa/docker-
+  # socket-proxy which allowlists only specific API endpoints.
+  #
+  # ALLOWED: _ping, containers (list, inspect, restart)
+  # BLOCKED: exec, create, images, volumes, networks, etc.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3
+    container_name: safepaw-docker-proxy
+    environment:
+      # Allow only what the wizard needs
+      CONTAINERS: 1    # GET /containers/json, GET /containers/{id}/json
+      POST: 1          # POST /containers/{id}/restart
+      # Everything else is denied by default:
+      # IMAGES=0, NETWORKS=0, VOLUMES=0, EXEC=0, BUILD=0, etc.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - safepaw-internal
+    # NO ports exposed to host — internal only
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1"]
+      interval: 10s
+      timeout: 3s
       retries: 3
 
   # ------------------------------------------------
@@ -162,8 +199,8 @@ services:
     command: >
       sh -c '
         mkdir -p /home/node/.openclaw &&
-        echo "{\"gateway\":{\"bind\":\"localhost\",\"controlUi\":{\"enabled\":true}}}" > /home/node/.openclaw/openclaw.json &&
-        exec node openclaw.mjs gateway --port 18789 --bind localhost
+        echo "{\"gateway\":{\"bind\":\"loopback\",\"controlUi\":{\"enabled\":true}}}" > /home/node/.openclaw/openclaw.json &&
+        exec node openclaw.mjs gateway --port 18789 --bind loopback
       '
     environment:
       # OpenClaw reads config from ~/.openclaw/openclaw.json
