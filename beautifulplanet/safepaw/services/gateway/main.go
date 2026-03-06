@@ -54,6 +54,12 @@ func main() {
 	}
 	log.Printf("[CONFIG] Port=%d ProxyTarget=%s TLS=%v Auth=%v",
 		cfg.Port, cfg.ProxyTarget.String(), cfg.TLSEnabled, cfg.AuthEnabled)
+	if !cfg.AuthEnabled {
+		log.Println("[WARN] ============================================================")
+		log.Println("[WARN]  AUTH_ENABLED=false — gateway is running WITHOUT authentication!")
+		log.Println("[WARN]  Set AUTH_ENABLED=true and AUTH_SECRET in production.")
+		log.Println("[WARN] ============================================================")
+	}
 
 	// --------------------------------------------------------
 	// Step 2: Create reverse proxy to OpenClaw
