@@ -32,7 +32,7 @@ export function Prerequisites({ onContinue }: PrerequisitesProps) {
       <div className="mb-8">
         <h2 className="text-2xl font-bold tracking-tight">System Prerequisites</h2>
         <p className="text-gray-400 mt-2">
-          SafePaw needs a few things before it can deploy OpenClaw.
+          SafePaw needs a few things before it can set up your private AI.
         </p>
       </div>
 

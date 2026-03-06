@@ -1,18 +1,31 @@
 # =============================================================
-# SafePaw Docker Compose — Secure OpenClaw Deployer
+# SafePaw Docker Compose — Secure AI Deployer
 # =============================================================
-# SafePaw wraps OpenClaw in a hardened Docker environment with:
+# SafePaw wraps your AI assistant in a hardened Docker environment:
 #   1. Setup Wizard UI (Go) — guided configuration on :3000
 #   2. Security Gateway (Go) — reverse proxy with rate limiting,
 #      input sanitization, and auth on :8080
-#   3. OpenClaw (Node.js) — the actual AI assistant (internal)
+#   3. AI Assistant (Node.js) — the actual AI (internal)
 #   4. Redis + Postgres — internal state (no exposed ports)
+#
+# SYSTEM PROFILES (set SYSTEM_PROFILE in .env):
+#   small      (4-8 GB)   — lightweight, 7B models
+#   medium     (16-32 GB) — balanced, 13-30B models
+#   large      (64-128 GB)— powerful, 70B models
+#   very-large (128+ GB)  — maximum, 100B+ / multiple models
+#
+# Memory per profile:         small  medium  large  very-large
+#   Wizard                     128M   128M    256M   256M
+#   Gateway                    256M   512M    1G     2G
+#   AI Assistant               2G     8G      32G    96G
+#   Redis                      256M   512M    2G     4G
+#   Postgres                   256M   1G      4G     8G
 #
 # SECURITY NOTES:
 #   - All secrets come from .env (NEVER hardcode)
 #   - Copy .env.example → .env before first run
 #   - Only Wizard (:3000) and Gateway (:8080) are host-exposed
-#   - OpenClaw, Redis, and Postgres are unreachable from host
+#   - AI, Redis, and Postgres are unreachable from host
 #   - Images pinned by SHA256 digest (supply-chain integrity)
 #   - Non-root containers where possible
 # =============================================================
@@ -62,7 +75,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: ${WIZARD_MEM_LIMIT:-128M}
           cpus: '0.25'
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/v1/health"]
@@ -122,7 +135,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: ${GATEWAY_MEM_LIMIT:-256M}
           cpus: '0.5'
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
@@ -169,7 +182,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: ${OPENCLAW_MEM_LIMIT:-2G}
           cpus: '2.0'
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -184,7 +197,7 @@ services:
   redis:
     image: redis:7-alpine@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
     container_name: safepaw-redis
-    command: redis-server --requirepass "${REDIS_PASSWORD}" --appendonly yes --rename-command FLUSHALL "" --rename-command FLUSHDB "" --rename-command DEBUG ""
+    command: redis-server --requirepass "${REDIS_PASSWORD}" --maxmemory "${REDIS_MAXMEMORY:-128mb}" --maxmemory-policy allkeys-lru --appendonly yes --rename-command FLUSHALL "" --rename-command FLUSHDB "" --rename-command DEBUG ""
     networks:
       - safepaw-internal
     # PORTS INTENTIONALLY NOT EXPOSED TO HOST
@@ -194,7 +207,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: ${REDIS_MEM_LIMIT:-256M}
           cpus: '0.5'
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
@@ -212,6 +225,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    command: >
+      postgres
+        -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}
+        -c effective_cache_size=${POSTGRES_CACHE_SIZE:-256MB}
     networks:
       - safepaw-internal
     # PORTS INTENTIONALLY NOT EXPOSED TO HOST
@@ -222,7 +239,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: ${POSTGRES_MEM_LIMIT:-256M}
           cpus: '0.5'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]

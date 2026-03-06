@@ -199,6 +199,11 @@ func RateLimit(rl *RateLimiter, next http.Handler) http.Handler {
 // get escalating bans from the guard.
 func RateLimitWithGuard(rl *RateLimiter, guard *BruteForceGuard, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Exempt monitoring endpoints so internal probes never get rate-limited
+		if r.URL.Path == "/health" || r.URL.Path == "/metrics" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ip := extractIP(r)
 		if !rl.Allow(ip) {
 			log.Printf("[SECURITY] Rate limited IP=%s request_id=%s", SanitizeLogValue(ip), SanitizeLogValue(r.Header.Get("X-Request-ID")))

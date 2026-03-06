@@ -16,6 +16,51 @@ import (
 
 var configWriteMu sync.Mutex
 
+// systemProfiles maps SYSTEM_PROFILE values to per-service resource limits.
+// These are written as env vars that docker-compose.yml references.
+var systemProfiles = map[string]map[string]string{
+	"small": {
+		"WIZARD_MEM_LIMIT":       "128M",
+		"GATEWAY_MEM_LIMIT":      "256M",
+		"OPENCLAW_MEM_LIMIT":     "2G",
+		"REDIS_MEM_LIMIT":        "256M",
+		"REDIS_MAXMEMORY":        "128mb",
+		"POSTGRES_MEM_LIMIT":     "256M",
+		"POSTGRES_SHARED_BUFFERS": "128MB",
+		"POSTGRES_CACHE_SIZE":    "256MB",
+	},
+	"medium": {
+		"WIZARD_MEM_LIMIT":       "128M",
+		"GATEWAY_MEM_LIMIT":      "512M",
+		"OPENCLAW_MEM_LIMIT":     "8G",
+		"REDIS_MEM_LIMIT":        "512M",
+		"REDIS_MAXMEMORY":        "256mb",
+		"POSTGRES_MEM_LIMIT":     "1G",
+		"POSTGRES_SHARED_BUFFERS": "512MB",
+		"POSTGRES_CACHE_SIZE":    "1GB",
+	},
+	"large": {
+		"WIZARD_MEM_LIMIT":       "256M",
+		"GATEWAY_MEM_LIMIT":      "1G",
+		"OPENCLAW_MEM_LIMIT":     "32G",
+		"REDIS_MEM_LIMIT":        "2G",
+		"REDIS_MAXMEMORY":        "1gb",
+		"POSTGRES_MEM_LIMIT":     "4G",
+		"POSTGRES_SHARED_BUFFERS": "2GB",
+		"POSTGRES_CACHE_SIZE":    "4GB",
+	},
+	"very-large": {
+		"WIZARD_MEM_LIMIT":       "256M",
+		"GATEWAY_MEM_LIMIT":      "2G",
+		"OPENCLAW_MEM_LIMIT":     "96G",
+		"REDIS_MEM_LIMIT":        "4G",
+		"REDIS_MAXMEMORY":        "2gb",
+		"POSTGRES_MEM_LIMIT":     "8G",
+		"POSTGRES_SHARED_BUFFERS": "4GB",
+		"POSTGRES_CACHE_SIZE":    "8GB",
+	},
+}
+
 func (h *Handler) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	env, err := readEnvFile(h.cfg.EnvFilePath)
 	if err != nil {
@@ -49,6 +94,19 @@ func (h *Handler) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}
+
+	// When SYSTEM_PROFILE changes, expand the per-service memory vars
+	if profile, ok := updates["SYSTEM_PROFILE"]; ok {
+		if derived, valid := systemProfiles[profile]; valid {
+			for k, v := range derived {
+				updates[k] = v
+			}
+		} else {
+			writeJSON(w, http.StatusBadRequest, errorResponse{"invalid SYSTEM_PROFILE: must be small, medium, large, or very-large"})
+			return
+		}
+	}
+
 	configWriteMu.Lock()
 	defer configWriteMu.Unlock()
 	if err := writeEnvFile(h.cfg.EnvFilePath, updates); err != nil {

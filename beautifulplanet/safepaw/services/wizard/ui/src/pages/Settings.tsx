@@ -2,7 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { api, type ConfigResponse } from '../api'
 
 // Settings are organized into sections for clarity
-const SECTIONS: { title: string; description: string; keys: { key: string; label: string; placeholder: string; help?: string; type?: 'password' | 'text' | 'toggle' }[] }[] = [
+const SECTIONS: { title: string; description: string; keys: { key: string; label: string; placeholder: string; help?: string; type?: 'password' | 'text' | 'toggle' | 'profile' }[] }[] = [
+  {
+    title: '⚡ System Size',
+    description: 'How much RAM does this server have? This controls memory allocation for all services.',
+    keys: [
+      { key: 'SYSTEM_PROFILE', label: 'Server Profile', placeholder: 'small', type: 'profile', help: 'Pick the closest match. You can always change this later — just restart services from the Home page.' },
+    ],
+  },
   {
     title: '🤖 AI Provider',
     description: 'Which AI service powers your assistant. You need at least one key.',
@@ -183,7 +190,41 @@ export function Settings(_props: SettingsProps) {
               <div className="space-y-4">
                 {section.keys.map(({ key, label, help, type }) => (
                   <div key={key}>
-                    {type === 'toggle' ? (
+                    {type === 'profile' ? (
+                      <div>
+                        <label htmlFor={key} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+                        {help && <p className="text-xs text-gray-500 mb-2">{help}</p>}
+                        <div className="grid grid-cols-2 gap-3">
+                          {([
+                            { value: 'small', label: 'Small', ram: '4–8 GB', desc: 'Lightweight — 7B models', emoji: '🟢' },
+                            { value: 'medium', label: 'Medium', ram: '16–32 GB', desc: 'Balanced — 13-30B models', emoji: '🔵' },
+                            { value: 'large', label: 'Large', ram: '64–128 GB', desc: 'Powerful — 70B models', emoji: '🟣' },
+                            { value: 'very-large', label: 'Very Large', ram: '128+ GB', desc: 'Maximum — 100B+ models', emoji: '🔴' },
+                          ] as const).map(opt => {
+                            const selected = (getDisplayValue(key) || 'small') === opt.value
+                            return (
+                              <button
+                                key={opt.value}
+                                onClick={() => handleChange(key, opt.value)}
+                                className={`text-left rounded-lg border-2 p-3 transition-all ${
+                                  selected
+                                    ? 'border-paw-500 bg-paw-500/10'
+                                    : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span>{opt.emoji}</span>
+                                  <span className="font-medium text-sm">{opt.label}</span>
+                                  {selected && <span className="ml-auto text-paw-400 text-xs">Active</span>}
+                                </div>
+                                <div className="text-xs text-gray-400">{opt.ram} RAM</div>
+                                <div className="text-xs text-gray-500">{opt.desc}</div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : type === 'toggle' ? (
                       <div className="flex items-center justify-between">
                         <div>
                           <label className="text-sm font-medium text-gray-300">{label}</label>
