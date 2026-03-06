@@ -102,6 +102,14 @@ func wsProxy(target *url.URL) http.Handler {
 			r.URL.Scheme = "https"
 		}
 
+		// Strip auth credentials — backend uses X-Auth-Subject/X-Auth-Scope
+		r.Header.Del("Authorization")
+		q := r.URL.Query()
+		if q.Has("token") {
+			q.Del("token")
+			r.URL.RawQuery = q.Encode()
+		}
+
 		// Forward the request to the backend
 		if err := r.Write(backendConn); err != nil {
 			log.Printf("[WS] Failed to write upgrade request to backend: %v", err)
