@@ -62,6 +62,7 @@ export interface HealthResponse {
   service: string
   version: string
   uptime: string
+  needs_setup: boolean
 }
 
 export interface LoginResponse {
@@ -100,6 +101,33 @@ export interface ConfigResponse {
   config: Record<string, string>
 }
 
+export interface GatewayTokenResponse {
+  token: string
+  expires_at: string
+}
+
+export interface GatewayMetrics {
+  total_requests: number
+  auth_failures: number
+  injections_found: number
+  rate_limited: number
+  active_connections: number
+  avg_response_ms: number
+  tokens_revoked: number
+  gateway_reachable: boolean
+}
+
+export interface PathCount {
+  path: string
+  count: number
+}
+
+export interface GatewayActivity {
+  metrics: GatewayMetrics
+  top_paths: PathCount[]
+  recent_ips: string[]
+}
+
 // ─── Endpoints ───────────────────────────────────────────────
 
 export const api = {
@@ -134,4 +162,19 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(updates),
     }),
+
+  /** Generate a gateway auth token (for "Open AI Assistant" button). */
+  gatewayToken: (subject = 'wizard-proxy', scope = 'proxy', ttlHours = 24) =>
+    request<GatewayTokenResponse>('/gateway/token', {
+      method: 'POST',
+      body: JSON.stringify({ subject, scope, ttl_hours: ttlHours }),
+    }),
+
+  /** Get parsed gateway metrics summary. */
+  gatewayMetrics: () =>
+    request<GatewayMetrics>('/gateway/metrics'),
+
+  /** Get gateway activity (metrics + top paths). */
+  gatewayActivity: () =>
+    request<GatewayActivity>('/gateway/activity'),
 }

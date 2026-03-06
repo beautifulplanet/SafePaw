@@ -3,10 +3,13 @@ import { Login } from './pages/Login'
 import { Prerequisites } from './pages/Prerequisites'
 import { Dashboard } from './pages/Dashboard'
 import { Config } from './pages/Config'
+import { Activity } from './pages/Activity'
+import { Settings } from './pages/Settings'
+import { Setup } from './pages/Setup'
 import { Layout } from './components/Layout'
-import { hasToken, clearToken } from './api'
+import { hasToken, clearToken, api } from './api'
 
-type Page = 'login' | 'prerequisites' | 'dashboard' | 'config'
+type Page = 'login' | 'prerequisites' | 'dashboard' | 'config' | 'activity' | 'settings' | 'setup'
 
 export function App() {
   const [page, setPage] = useState<Page>(hasToken() ? 'prerequisites' : 'login')
@@ -15,7 +18,21 @@ export function App() {
     setPage('prerequisites')
   }, [])
 
-  const handlePrerequisitesDone = useCallback(() => {
+  const handlePrerequisitesDone = useCallback(async () => {
+    // Check if initial setup is needed before going to dashboard
+    try {
+      const health = await api.health()
+      if (health.needs_setup) {
+        setPage('setup')
+        return
+      }
+    } catch {
+      // If health check fails, proceed to dashboard anyway
+    }
+    setPage('dashboard')
+  }, [])
+
+  const handleSetupComplete = useCallback(() => {
     setPage('dashboard')
   }, [])
 
@@ -36,16 +53,30 @@ export function App() {
     setPage('dashboard')
   }, [])
 
+  const handleOpenActivity = useCallback(() => {
+    setPage('activity')
+  }, [])
+
+  const handleOpenSettings = useCallback(() => {
+    setPage('settings')
+  }, [])
+
+  const navigateTo = useCallback((p: Page) => setPage(p), [])
+
   return (
     <Layout
       page={page}
       onLogout={page !== 'login' ? handleLogout : undefined}
       onNavigate={page === 'dashboard' ? handleBackToPrereqs : page === 'config' ? handleBackToDashboard : undefined}
+      onNavigateTo={navigateTo}
     >
       {page === 'login' && <Login onSuccess={handleLogin} />}
       {page === 'prerequisites' && <Prerequisites onContinue={handlePrerequisitesDone} />}
-      {page === 'dashboard' && <Dashboard onOpenConfig={handleOpenConfig} />}
+      {page === 'setup' && <Setup onComplete={handleSetupComplete} />}
+      {page === 'dashboard' && <Dashboard onOpenConfig={handleOpenConfig} onOpenActivity={handleOpenActivity} onOpenSettings={handleOpenSettings} />}
       {page === 'config' && <Config onBack={handleBackToDashboard} />}
+      {page === 'activity' && <Activity onBack={handleBackToDashboard} />}
+      {page === 'settings' && <Settings onBack={handleBackToDashboard} />}
     </Layout>
   )
 }
