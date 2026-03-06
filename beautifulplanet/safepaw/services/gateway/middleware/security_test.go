@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,22 +10,44 @@ import (
 
 func TestSecurityHeaders(t *testing.T) {
 	handler := SecurityHeaders(okHandler())
+
+	// Plain HTTP — HSTS must NOT be set
 	req := httptest.NewRequest("GET", "/", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	checks := map[string]string{
-		"X-Frame-Options":           "DENY",
-		"X-Content-Type-Options":    "nosniff",
-		"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-		"Content-Security-Policy":   "default-src 'self'",
-		"Referrer-Policy":           "no-referrer",
+		"X-Frame-Options":         "DENY",
+		"X-Content-Type-Options":  "nosniff",
+		"Content-Security-Policy": "default-src 'self'",
+		"Referrer-Policy":         "no-referrer",
 	}
 	for header, want := range checks {
 		got := rec.Header().Get(header)
 		if got != want {
 			t.Errorf("%s = %q, want %q", header, got, want)
 		}
+	}
+	if hsts := rec.Header().Get("Strict-Transport-Security"); hsts != "" {
+		t.Errorf("HSTS should not be set over plain HTTP, got %q", hsts)
+	}
+
+	// TLS — HSTS must be set
+	reqTLS := httptest.NewRequest("GET", "/", nil)
+	reqTLS.TLS = &tls.ConnectionState{}
+	recTLS := httptest.NewRecorder()
+	handler.ServeHTTP(recTLS, reqTLS)
+	if got := recTLS.Header().Get("Strict-Transport-Security"); got != "max-age=31536000; includeSubDomains" {
+		t.Errorf("HSTS over TLS = %q, want %q", got, "max-age=31536000; includeSubDomains")
+	}
+
+	// X-Forwarded-Proto: https — HSTS must be set
+	reqFwd := httptest.NewRequest("GET", "/", nil)
+	reqFwd.Header.Set("X-Forwarded-Proto", "https")
+	recFwd := httptest.NewRecorder()
+	handler.ServeHTTP(recFwd, reqFwd)
+	if got := recFwd.Header().Get("Strict-Transport-Security"); got != "max-age=31536000; includeSubDomains" {
+		t.Errorf("HSTS over X-Forwarded-Proto=https = %q, want %q", got, "max-age=31536000; includeSubDomains")
 	}
 }
 

@@ -277,7 +277,7 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 			if guard != nil {
 				guard.RecordFailure(ip, "missing_token")
 			}
-			writeAuthError(w, "missing_token", "Authentication required. Provide token via ?token= parameter or Authorization: Bearer header.")
+			writeAuthError(w, "missing_token", "Authentication required. Provide a valid Bearer token.")
 			return
 		}
 

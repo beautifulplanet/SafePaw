@@ -519,7 +519,7 @@ func (h *Handler) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
 	if err := h.docker.RestartContainer(ctx, containerName, 10); err != nil {
 		log.Printf("[WARN] Restart %s failed: %v", containerName, err)
 		h.audit.ServiceRestart(restartIP, name, "failure")
-		writeJSON(w, http.StatusInternalServerError, errorResponse{fmt.Sprintf("restart failed: %v", err)})
+		writeJSON(w, http.StatusInternalServerError, errorResponse{"restart failed; check server logs for details"})
 		return
 	}
 
