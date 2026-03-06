@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Tour } from './Tour'
 
 type Page = 'login' | 'prerequisites' | 'dashboard' | 'config' | 'activity' | 'settings' | 'setup'
 
@@ -11,13 +12,14 @@ interface LayoutProps {
 }
 
 const mainTabs: { id: Page; label: string }[] = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'activity', label: 'Activity' },
+  { id: 'dashboard', label: 'Home' },
+  { id: 'activity', label: 'Security' },
   { id: 'settings', label: 'Settings' },
 ]
 
 export function Layout({ children, page, onLogout, onNavigate, onNavigateTo }: LayoutProps) {
   const showTabs = ['dashboard', 'activity', 'settings', 'config'].includes(page)
+  const [showTour, setShowTour] = useState(false)
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -30,7 +32,7 @@ export function Layout({ children, page, onLogout, onNavigate, onNavigateTo }: L
             </div>
             <div>
               <h1 className="text-lg font-semibold tracking-tight">SafePaw</h1>
-              <p className="text-xs text-gray-500 -mt-0.5">Setup Wizard</p>
+              <p className="text-xs text-gray-500 -mt-0.5">Your Private AI, Secured</p>
             </div>
           </div>
 
@@ -78,7 +80,16 @@ export function Layout({ children, page, onLogout, onNavigate, onNavigateTo }: L
 
             {onNavigate && (
               <button onClick={onNavigate} className="btn-secondary text-sm py-1.5 px-3">
-                {page === 'config' ? 'Dashboard' : 'Prerequisites'}
+                {page === 'config' ? 'Home' : 'Prerequisites'}
+              </button>
+            )}
+            {showTabs && (
+              <button
+                onClick={() => setShowTour(true)}
+                className="w-8 h-8 rounded-full border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 transition-colors flex items-center justify-center text-sm font-semibold"
+                title="Take a guided tour"
+              >
+                ?
               </button>
             )}
             {onLogout && (
@@ -99,9 +110,12 @@ export function Layout({ children, page, onLogout, onNavigate, onNavigateTo }: L
       <footer className="border-t border-gray-800 py-4">
         <div className="max-w-5xl mx-auto px-6 flex items-center justify-between text-xs text-gray-600">
           <span>SafePaw v0.1.0</span>
-          <span>Secure OpenClaw Deployer</span>
+          <span>Private AI · Your Servers · Your Data</span>
         </div>
       </footer>
+
+      {/* Guided Tour overlay */}
+      {showTour && <Tour onClose={() => setShowTour(false)} />}
     </div>
   )
 }

@@ -32,9 +32,9 @@ export function Activity(_props: ActivityProps) {
     <div>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Activity</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Security Monitor</h2>
           <p className="text-gray-400 mt-1">
-            Gateway traffic and security events. Auto-refreshes every 5 seconds.
+            Live view of who's using your AI and what's being blocked. Updates every 5 seconds.
           </p>
         </div>
         <button onClick={fetchActivity} className="btn-secondary text-sm py-1.5 px-3">
@@ -60,31 +60,32 @@ export function Activity(_props: ActivityProps) {
       ) : !data.metrics.gateway_reachable ? (
         <div className="card text-center py-12">
           <div className="text-4xl mb-4">🔌</div>
-          <h3 className="text-lg font-semibold mb-2">Gateway Unreachable</h3>
+          <h3 className="text-lg font-semibold mb-2">Security Shield Offline</h3>
           <p className="text-gray-400 text-sm max-w-md mx-auto">
-            Cannot connect to the gateway to retrieve metrics. Make sure the gateway service is running.
+            Can't connect to the security layer. This usually means it's still starting up or was restarted. Try refreshing in a few seconds.
           </p>
         </div>
       ) : (
         <>
           {/* Metric cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-            <MetricCard index={0} label="Total Requests" value={data.metrics.total_requests} />
-            <MetricCard index={1} label="Active Connections" value={data.metrics.active_connections} />
-            <MetricCard index={2} label="Auth Failures" value={data.metrics.auth_failures} warn={data.metrics.auth_failures > 0} />
-            <MetricCard index={3} label="Injections Blocked" value={data.metrics.injections_found} warn={data.metrics.injections_found > 0} />
+            <MetricCard index={0} label="Total Conversations" value={data.metrics.total_requests} hint="Every message sent to the AI" />
+            <MetricCard index={1} label="People Online" value={data.metrics.active_connections} hint="Users chatting right now" />
+            <MetricCard index={2} label="Failed Logins" value={data.metrics.auth_failures} warn={data.metrics.auth_failures > 0} hint="Someone tried to access without permission" />
+            <MetricCard index={3} label="Attacks Stopped" value={data.metrics.injections_found} warn={data.metrics.injections_found > 0} hint="Malicious messages caught before reaching the AI" />
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
-            <MetricCard index={4} label="Rate Limited" value={data.metrics.rate_limited} warn={data.metrics.rate_limited > 0} />
-            <MetricCard index={5} label="Tokens Revoked" value={data.metrics.tokens_revoked} />
-            <MetricCard index={6} label="Avg Response" value={`${data.metrics.avg_response_ms.toFixed(1)}ms`} />
+            <MetricCard index={4} label="Spam Blocked" value={data.metrics.rate_limited} warn={data.metrics.rate_limited > 0} hint="Requests blocked because someone sent too many too fast" />
+            <MetricCard index={5} label="Access Revoked" value={data.metrics.tokens_revoked} hint="Users whose access was manually cut off" />
+            <MetricCard index={6} label="Speed" value={`${data.metrics.avg_response_ms.toFixed(1)}ms`} hint="How fast the AI responds on average" />
           </div>
 
           {/* Top paths */}
           {data.top_paths && data.top_paths.length > 0 && (
             <div className="card">
-              <h3 className="font-semibold mb-4">Top Request Paths</h3>
+              <h3 className="font-semibold mb-1">Most Used Features</h3>
+              <p className="text-xs text-gray-500 mb-4">Which parts of the AI are getting the most traffic.</p>
               <div className="space-y-2">
                 {data.top_paths.map((p, i) => {
                   const maxCount = data.top_paths[0]?.count ?? 1
@@ -113,13 +114,14 @@ export function Activity(_props: ActivityProps) {
   )
 }
 
-function MetricCard({ index, label, value, warn }: { index: number; label: string; value: number | string; warn?: boolean }) {
+function MetricCard({ index, label, value, warn, hint }: { index: number; label: string; value: number | string; warn?: boolean; hint?: string }) {
   return (
-    <div className="card py-3 px-4 card-enter" style={{ animationDelay: `${index * 60}ms` }}>
+    <div className="card py-3 px-4 card-enter" style={{ animationDelay: `${index * 60}ms` }} title={hint}>
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className={`text-2xl font-bold tabular-nums ${warn ? 'text-yellow-400' : 'text-gray-100'}`}>
         {typeof value === 'number' ? value.toLocaleString() : value}
       </p>
+      {hint && <p className="text-[10px] text-gray-600 mt-1 leading-tight">{hint}</p>}
     </div>
   )
 }

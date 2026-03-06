@@ -4,43 +4,43 @@ import { api, type ConfigResponse } from '../api'
 // Settings are organized into sections for clarity
 const SECTIONS: { title: string; description: string; keys: { key: string; label: string; placeholder: string; help?: string; type?: 'password' | 'text' | 'toggle' }[] }[] = [
   {
-    title: 'AI Model',
-    description: 'At least one API key is required for the AI assistant to work.',
+    title: '🤖 AI Provider',
+    description: 'Which AI service powers your assistant. You need at least one key.',
     keys: [
-      { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API Key', placeholder: 'sk-ant-...', type: 'password', help: 'Required for Claude models.' },
-      { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', placeholder: 'sk-...', type: 'password', help: 'Optional. For GPT models.' },
+      { key: 'ANTHROPIC_API_KEY', label: 'Anthropic (Claude) Key', placeholder: 'sk-ant-...', type: 'password', help: 'Get this from console.anthropic.com — it\'s like a password that lets your system talk to Claude.' },
+      { key: 'OPENAI_API_KEY', label: 'OpenAI (ChatGPT) Key', placeholder: 'sk-...', type: 'password', help: 'Get this from platform.openai.com — only needed if you prefer GPT over Claude.' },
     ],
   },
   {
-    title: 'Security',
-    description: 'Authentication and access control for the gateway.',
+    title: '🔒 Security',
+    description: 'Who can access your AI and how they prove they\'re allowed.',
     keys: [
-      { key: 'AUTH_ENABLED', label: 'Gateway Auth', placeholder: 'true', type: 'toggle', help: 'Require HMAC token for all gateway requests.' },
-      { key: 'AUTH_SECRET', label: 'Auth Secret', placeholder: 'min 32 characters', type: 'password', help: 'HMAC signing key. Use: openssl rand -base64 48' },
-      { key: 'WIZARD_ADMIN_PASSWORD', label: 'Wizard Admin Password', placeholder: 'Set a fixed password', type: 'password', help: 'Password for this admin UI.' },
-      { key: 'WIZARD_TOTP_SECRET', label: 'TOTP Secret (MFA)', placeholder: 'base32 secret', type: 'password', help: 'Enable two-factor auth for wizard login.' },
+      { key: 'AUTH_ENABLED', label: 'Require Login', placeholder: 'true', type: 'toggle', help: 'When ON, users need a token (like a password) to use the AI. Strongly recommended.' },
+      { key: 'AUTH_SECRET', label: 'Secret Key', placeholder: 'min 32 characters', type: 'password', help: 'A long random string used to create login tokens. Like a master key — keep it safe.' },
+      { key: 'WIZARD_ADMIN_PASSWORD', label: 'Admin Panel Password', placeholder: 'Set a strong password', type: 'password', help: 'The password you use to log into this control panel.' },
+      { key: 'WIZARD_TOTP_SECRET', label: 'Two-Factor Code (Optional)', placeholder: 'base32 secret', type: 'password', help: 'Adds a 6-digit code from an authenticator app on top of your password.' },
     ],
   },
   {
-    title: 'Rate Limiting',
-    description: 'Protect the gateway from abuse.',
+    title: '🚦 Spam Protection',
+    description: 'Prevent anyone from flooding the AI with too many messages.',
     keys: [
-      { key: 'RATE_LIMIT', label: 'Requests per minute per IP', placeholder: '60', help: 'Default: 60 req/min.' },
-      { key: 'RATE_LIMIT_WINDOW_SEC', label: 'Window (seconds)', placeholder: '60', help: 'Default: 60 seconds.' },
+      { key: 'RATE_LIMIT', label: 'Max messages per window', placeholder: '60', help: 'How many messages one person can send before being temporarily blocked. Default: 60.' },
+      { key: 'RATE_LIMIT_WINDOW_SEC', label: 'Window (seconds)', placeholder: '60', help: 'The time period for counting messages. Default: 60 seconds.' },
     ],
   },
   {
-    title: 'TLS',
-    description: 'Enable HTTPS on the gateway.',
+    title: '🔐 Encryption (HTTPS)',
+    description: 'Encrypt traffic between users and the AI. Required if accessed over the internet.',
     keys: [
-      { key: 'TLS_ENABLED', label: 'TLS Enabled', placeholder: 'false', type: 'toggle' },
-      { key: 'TLS_CERT_FILE', label: 'Certificate File', placeholder: '/certs/cert.pem' },
-      { key: 'TLS_KEY_FILE', label: 'Key File', placeholder: '/certs/key.pem' },
+      { key: 'TLS_ENABLED', label: 'Enable HTTPS', placeholder: 'false', type: 'toggle' },
+      { key: 'TLS_CERT_FILE', label: 'Certificate File Path', placeholder: '/certs/cert.pem' },
+      { key: 'TLS_KEY_FILE', label: 'Private Key File Path', placeholder: '/certs/key.pem' },
     ],
   },
   {
-    title: 'Channels',
-    description: 'Connect OpenClaw to messaging platforms.',
+    title: '💬 Messaging Channels',
+    description: 'Connect the AI to chat platforms so your team can use it from Slack, Discord, or Telegram.',
     keys: [
       { key: 'DISCORD_BOT_TOKEN', label: 'Discord Bot Token', placeholder: '', type: 'password' },
       { key: 'TELEGRAM_BOT_TOKEN', label: 'Telegram Bot Token', placeholder: '', type: 'password' },
@@ -148,7 +148,7 @@ export function Settings(_props: SettingsProps) {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
           <p className="text-gray-400 mt-1">
-            Configure your SafePaw deployment. Restart services for changes to take effect.
+            Configure how your AI works, who can access it, and where it shows up.
           </p>
         </div>
       </div>
@@ -160,7 +160,7 @@ export function Settings(_props: SettingsProps) {
       )}
       {saved && (
         <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-3 text-sm text-green-400 mb-6">
-          Settings saved. Restart services if needed for changes to take effect.
+          Settings saved. You may need to restart services from the Home page for changes to take effect.
         </div>
       )}
 
@@ -240,7 +240,7 @@ export function Settings(_props: SettingsProps) {
       )}
 
       <p className="mt-6 text-xs text-gray-500">
-        Infrastructure keys (POSTGRES_PASSWORD, REDIS_PASSWORD) cannot be changed here to prevent accidental breakage.
+        Database and cache passwords can't be changed here to prevent accidentally breaking things.
       </p>
     </div>
   )

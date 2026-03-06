@@ -76,9 +76,9 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
     <div>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Service Dashboard</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Home</h2>
           <p className="text-gray-400 mt-1">
-            Live status of your SafePaw deployment.
+            Everything running your private AI — at a glance.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -88,8 +88,8 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
             disabled={openingAssistant}
             className="btn-primary text-sm py-1.5 px-4 flex items-center gap-2"
           >
-            <span>🤖</span>
-            {openingAssistant ? 'Opening…' : 'Open AI Assistant'}
+            <span>💬</span>
+            {openingAssistant ? 'Opening…' : 'Chat with AI'}
           </button>
           <button onClick={fetchStatus} className="btn-secondary text-sm py-1.5 px-3">
             Refresh
@@ -106,10 +106,10 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
       {/* Quick Stats Row */}
       {metrics && metrics.gateway_reachable && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Requests" value={metrics.total_requests} />
-          <StatCard label="Active Connections" value={metrics.active_connections} />
-          <StatCard label="Auth Failures" value={metrics.auth_failures} warn={metrics.auth_failures > 0} />
-          <StatCard label="Threats Blocked" value={metrics.injections_found + metrics.rate_limited} warn={metrics.injections_found > 0} />
+          <StatCard label="Conversations" value={metrics.total_requests} hint="Total messages sent to the AI" />
+          <StatCard label="People Online" value={metrics.active_connections} hint="Users chatting right now" />
+          <StatCard label="Blocked Logins" value={metrics.auth_failures} warn={metrics.auth_failures > 0} hint="Someone tried to access without permission" />
+          <StatCard label="Threats Stopped" value={metrics.injections_found + metrics.rate_limited} warn={metrics.injections_found > 0} hint="Malicious messages caught and blocked" />
         </div>
       )}
 
@@ -140,21 +140,22 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
         </div>
       )}
 
-      {/* Architecture & security */}
+      {/* How it works */}
       <div className="mt-10 card">
-        <h3 className="font-semibold mb-3">Architecture & security</h3>
+        <h3 className="font-semibold mb-1">How it works</h3>
+        <p className="text-xs text-gray-500 mb-4">Your AI runs on your own servers. No data leaves your network.</p>
         <div className="grid sm:grid-cols-3 gap-4 text-sm">
           <div className="space-y-1">
-            <p className="text-gray-500">Gateway</p>
-            <p className="text-gray-300">Reverse proxy: rate limiting, HMAC auth, prompt-injection scanning, TLS. All traffic to OpenClaw goes through here.</p>
+            <p className="text-gray-400 font-medium">🛡️ Security Layer</p>
+            <p className="text-gray-500">Every message is scanned for attacks before it reaches the AI. Spam and abuse are automatically blocked.</p>
           </div>
           <div className="space-y-1">
-            <p className="text-gray-500">OpenClaw</p>
-            <p className="text-gray-300">AI assistant (internal only). No host ports — not exposed if the gateway is down.</p>
+            <p className="text-gray-400 font-medium">🤖 Private AI</p>
+            <p className="text-gray-500">Your AI assistant lives behind the security layer. It's never directly exposed to the internet.</p>
           </div>
           <div className="space-y-1">
-            <p className="text-gray-500">Hardening</p>
-            <p className="text-gray-300">Enable <code className="px-1 rounded bg-gray-800">AUTH_ENABLED</code> and <code className="px-1 rounded bg-gray-800">TLS_ENABLED</code> in .env for production.</p>
+            <p className="text-gray-400 font-medium">🔒 Your Data</p>
+            <p className="text-gray-500">Conversations stay on your servers. Only the AI provider sees your prompts — no middlemen.</p>
           </div>
         </div>
       </div>
@@ -176,15 +177,24 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
   )
 }
 
-function StatCard({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+function StatCard({ label, value, warn, hint }: { label: string; value: number; warn?: boolean; hint?: string }) {
   return (
-    <div className="card py-3 px-4 card-enter">
+    <div className="card py-3 px-4 card-enter" title={hint}>
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className={`text-2xl font-bold tabular-nums ${warn ? 'text-yellow-400' : 'text-gray-100'}`}>
         {value.toLocaleString()}
       </p>
+      {hint && <p className="text-[10px] text-gray-600 mt-1 leading-tight">{hint}</p>}
     </div>
   )
+}
+
+const SERVICE_INFO: Record<string, { label: string; emoji: string; desc: string }> = {
+  wizard:   { label: 'Control Panel',    emoji: '🐾', desc: 'This admin interface you\'re looking at right now.' },
+  gateway:  { label: 'Security Shield',  emoji: '🛡️', desc: 'Scans every message for threats and blocks unauthorized access.' },
+  openclaw: { label: 'AI Assistant',     emoji: '🤖', desc: 'The private AI your team chats with.' },
+  redis:    { label: 'Fast Memory',      emoji: '⚡', desc: 'Temporary storage that makes everything respond quickly.' },
+  postgres: { label: 'Database',         emoji: '💾', desc: 'Stores conversation history and settings permanently.' },
 }
 
 const RESTARTABLE_SERVICES = ['wizard', 'gateway', 'openclaw', 'redis', 'postgres']
@@ -193,6 +203,7 @@ function ServiceCard({ service, onRestart, restarting, index }: { service: Servi
   const stateColor = getStateColor(service.state)
   const healthColor = getHealthColor(service.health)
   const name = service.name || 'unknown'
+  const friendly = SERVICE_INFO[name] || { label: name, emoji: '📦', desc: '' }
   const canRestart = RESTARTABLE_SERVICES.includes(name)
   const isRestarting = restarting === name
 
@@ -200,7 +211,10 @@ function ServiceCard({ service, onRestart, restarting, index }: { service: Servi
     <div className="card group hover:border-gray-700 transition-colors card-enter" style={{ animationDelay: `${index * 60}ms` }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-lg">{name}</h3>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{friendly.emoji}</span>
+          <h3 className="font-semibold text-lg">{friendly.label}</h3>
+        </div>
         <div className="flex items-center gap-2">
           {canRestart && (
             <button
@@ -215,6 +229,9 @@ function ServiceCard({ service, onRestart, restarting, index }: { service: Servi
           <div className={`w-2.5 h-2.5 rounded-full ${stateColor} ${service.state === 'running' ? 'status-pulse' : ''}`} />
         </div>
       </div>
+
+      {/* What this does */}
+      {friendly.desc && <p className="text-xs text-gray-500 mb-3">{friendly.desc}</p>}
 
       {/* Details */}
       <div className="space-y-2 text-sm">
@@ -270,11 +287,7 @@ function EmptyState() {
       <div className="text-4xl mb-4">📦</div>
       <h3 className="text-lg font-semibold mb-2">No Services Found</h3>
       <p className="text-gray-400 text-sm max-w-md mx-auto">
-        No SafePaw containers are running yet. Run{' '}
-        <code className="px-1.5 py-0.5 rounded bg-gray-800 text-paw-400 font-mono text-xs">
-          docker compose up -d
-        </code>{' '}
-        to start the deployment.
+        No services are running yet. Contact your administrator to start the system.
       </p>
     </div>
   )

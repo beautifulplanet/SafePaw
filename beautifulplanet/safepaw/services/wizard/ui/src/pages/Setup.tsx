@@ -98,10 +98,10 @@ export function Setup({ onComplete }: SetupProps) {
               </div>
               <h2 className="text-2xl font-bold tracking-tight mb-3">Welcome to SafePaw</h2>
               <p className="text-gray-400 mb-2">
-                Let's get your AI assistant up and running. This takes about 2 minutes.
+                Let's get your private AI assistant up and running. This takes about 2 minutes.
               </p>
               <p className="text-gray-500 text-sm mb-8">
-                We'll configure your API key, set up security, and you'll be ready to chat.
+                We'll connect your AI provider, turn on security, and you're done.
               </p>
               <div className="space-y-3">
                 <button onClick={() => setStep('apikey')} className="btn-primary w-full text-lg py-3">
@@ -113,9 +113,9 @@ export function Setup({ onComplete }: SetupProps) {
 
           {step === 'apikey' && (
             <div className="card">
-              <h2 className="text-xl font-bold tracking-tight mb-2">Connect your AI model</h2>
+              <h2 className="text-xl font-bold tracking-tight mb-2">Connect your AI</h2>
               <p className="text-gray-400 text-sm mb-6">
-                SafePaw needs an API key to power the AI assistant. Choose your provider:
+                SafePaw needs an API key to talk to the AI. It's like a password that connects your system to the AI provider. Pick one:
               </p>
 
               {/* Provider selector */}
@@ -157,8 +157,8 @@ export function Setup({ onComplete }: SetupProps) {
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
                   {apiProvider === 'anthropic'
-                    ? 'Get your key at console.anthropic.com'
-                    : 'Get your key at platform.openai.com'}
+                    ? 'Sign up at console.anthropic.com, go to API Keys, and create one'
+                    : 'Sign up at platform.openai.com, go to API Keys, and create one'}
                 </p>
               </div>
 
@@ -181,16 +181,16 @@ export function Setup({ onComplete }: SetupProps) {
 
           {step === 'security' && (
             <div className="card">
-              <h2 className="text-xl font-bold tracking-tight mb-2">Security settings</h2>
+              <h2 className="text-xl font-bold tracking-tight mb-2">Protect your AI</h2>
               <p className="text-gray-400 text-sm mb-6">
-                Protect your AI assistant from unauthorized access.
+                Choose who can access your AI assistant.
               </p>
 
               {/* Auth toggle */}
               <div className="flex items-center justify-between p-4 rounded-lg bg-gray-800/50 border border-gray-700 mb-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-200">Gateway Authentication</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Require tokens for all gateway requests</p>
+                  <p className="text-sm font-medium text-gray-200">Require Login</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Users will need a token to access the AI</p>
                 </div>
                 <button
                   onClick={() => setAuthEnabled(!authEnabled)}
@@ -207,7 +207,7 @@ export function Setup({ onComplete }: SetupProps) {
               {authEnabled && (
                 <div className="mb-6">
                   <label htmlFor="authsecret" className="block text-sm font-medium text-gray-300 mb-1.5">
-                    Auth Secret (optional)
+                    Secret Key (optional)
                   </label>
                   <input
                     id="authsecret"
@@ -218,14 +218,14 @@ export function Setup({ onComplete }: SetupProps) {
                     onChange={e => setAuthSecret(e.target.value)}
                   />
                   <p className="text-xs text-gray-500 mt-1.5">
-                    HMAC signing key (min 32 chars). Leave empty and we'll use the existing value or you can set it later in Settings.
+                    A long random string used as a master key. Leave blank and we'll use the existing one, or set it later in Settings.
                   </p>
                 </div>
               )}
 
               {!authEnabled && (
                 <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-4 py-3 text-sm text-yellow-400 mb-6">
-                  ⚠️ Without auth, anyone who can reach port 8080 can use your AI assistant. Only disable this for local-only use.
+                  ⚠️ Without login, anyone who finds your AI's address can use it freely. Only turn this off if the AI is on a private network.
                 </div>
               )}
 
@@ -255,10 +255,10 @@ export function Setup({ onComplete }: SetupProps) {
               </div>
               <h2 className="text-2xl font-bold tracking-tight mb-3">You're all set!</h2>
               <p className="text-gray-400 mb-2">
-                SafePaw is configured and ready. Your AI assistant is protected by the security gateway.
+                Your private AI assistant is configured and protected. You're ready to go.
               </p>
               <p className="text-gray-500 text-sm mb-8">
-                You can change any of these settings later from the Settings page.
+                You can change any of these settings later. Click the button below to see your dashboard.
               </p>
               <button onClick={onComplete} className="btn-primary w-full text-lg py-3">
                 Go to Dashboard

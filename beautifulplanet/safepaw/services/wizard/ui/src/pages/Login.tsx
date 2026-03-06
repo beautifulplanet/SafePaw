@@ -45,7 +45,7 @@ export function Login({ onSuccess }: LoginProps) {
           </div>
           <h2 className="text-2xl font-bold tracking-tight">Welcome to SafePaw</h2>
           <p className="text-gray-400 mt-2">
-            Enter your admin password to begin setup.
+            Your private AI assistant's control panel. Enter your admin password to get started.
           </p>
         </div>
 
@@ -67,7 +67,7 @@ export function Login({ onSuccess }: LoginProps) {
               disabled={loading}
             />
             <p className="text-xs text-gray-500 mt-1.5">
-              The password was shown once when the wizard started.
+              Your password was shown in the terminal when the system first started. If you set one in your configuration, use that.
             </p>
           </div>
           {(showTotp || totp) && (
