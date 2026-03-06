@@ -20,14 +20,14 @@ services:
       WIZARD_ADMIN_PASSWORD: ${WIZARD_ADMIN_PASSWORD:-DemoPassword123!}
       SECURE_COOKIES: "false"
       OPENCLAW_HEALTH_URL: "http://mockbackend:18789/health"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
+      DOCKER_HOST: "tcp://docker-socket-proxy:2375"
     ports:
       - "127.0.0.1:3000:3000"
     networks:
       - demo-net
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
+      docker-socket-proxy:
+        condition: service_healthy
       mockbackend:
         condition: service_healthy
     restart: unless-stopped
@@ -89,6 +89,28 @@ services:
       test: ["CMD", "wget", "-qO-", "http://localhost:18789/health"]
       interval: 5s
       timeout: 2s
+      retries: 3
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3
+    container_name: safepaw-demo-docker-proxy
+    environment:
+      CONTAINERS: 1
+      POST: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - demo-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1"]
+      interval: 10s
+      timeout: 3s
       retries: 3
 
 networks:

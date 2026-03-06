@@ -35,6 +35,7 @@ const apiVersion = "v1.43"
 type Client struct {
 	http    *http.Client
 	project string // Compose project name for filtering
+	baseURL string // http://docker (unix) or http://host:port (tcp)
 }
 
 // Container represents a Docker container summary from the list endpoint.
@@ -80,18 +81,31 @@ type ServiceInfo struct {
 }
 
 // New creates a Docker client connected to the daemon.
-// host is typically "unix:///var/run/docker.sock".
+// host can be "unix:///var/run/docker.sock" or "tcp://host:port".
 // project is the Compose project name used to filter containers (e.g. "safepaw").
 func New(host, project string) *Client {
-	transport := &http.Transport{
-		// Override dial to route all HTTP requests through the Unix socket.
-		// The "host" in the HTTP URL is ignored — it always connects to the socket.
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			socketPath := strings.TrimPrefix(host, "unix://")
-			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socketPath)
-		},
-		MaxIdleConns:    5,
-		IdleConnTimeout: 30 * time.Second,
+	var transport *http.Transport
+	var baseURL string
+
+	if strings.HasPrefix(host, "tcp://") {
+		// TCP connection (e.g. docker-socket-proxy)
+		addr := strings.TrimPrefix(host, "tcp://")
+		transport = &http.Transport{
+			MaxIdleConns:    5,
+			IdleConnTimeout: 30 * time.Second,
+		}
+		baseURL = "http://" + addr
+	} else {
+		// Unix socket connection
+		socketPath := strings.TrimPrefix(host, "unix://")
+		transport = &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socketPath)
+			},
+			MaxIdleConns:    5,
+			IdleConnTimeout: 30 * time.Second,
+		}
+		baseURL = "http://docker"
 	}
 
 	return &Client{
@@ -100,6 +114,7 @@ func New(host, project string) *Client {
 			Timeout:   15 * time.Second,
 		},
 		project: project,
+		baseURL: baseURL,
 	}
 }
 
@@ -229,8 +244,7 @@ func (c *Client) Close() {
 
 // do makes an HTTP request to the Docker daemon.
 func (c *Client) do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	// The hostname is ignored (Unix socket), but required for valid HTTP.
-	req, err := http.NewRequestWithContext(ctx, method, "http://docker"+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
 		return nil, err
 	}

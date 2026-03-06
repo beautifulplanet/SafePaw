@@ -8,7 +8,7 @@ Security perimeter (Go gateway + Go/React wizard) for the OpenClaw personal AI a
 
 ### Impact
 
-- **One-command deploy** — `docker compose up -d`; five services (wizard, gateway, openclaw, redis, postgres) with health checks; only wizard and gateway exposed on 127.0.0.1.
+- **One-command deploy** — `docker compose up -d`; six services (wizard, gateway, openclaw, redis, postgres, docker-socket-proxy) with health checks; only wizard and gateway exposed on 127.0.0.1.
 - **All traffic through the gateway** — OpenClaw has no host-exposed ports; auth, rate limiting, brute-force protection, and AI-defense scanning apply first.
 - **Wizard for ops** — Admin login (session tokens, optional TOTP), prerequisites, live container status, masked .env edit, audit log.
 - **258+ tests** — Go unit and integration tests, 7 fuzz targets; CI: build, test, lint, gosec, govulncheck, coverage gate (60%), Docker build.
@@ -78,13 +78,14 @@ First run: wizard prints an admin password once. Use `docker compose logs wizard
 ## Architecture
 
 ```
-docker-compose.yml (5 services, internal network)
+docker-compose.yml (6 services, internal network)
 |
 +-- wizard    (Go + React)  :3000  Setup UI + health dashboard
 +-- gateway   (Go)          :8080  Security reverse proxy
 +-- openclaw  (Node.js)     :18789 (internal only)
 +-- redis                   :6379  (internal — rate limit + revocation state)
 +-- postgres                :5432  (internal — config storage)
++-- docker-socket-proxy     :2375  (internal — scoped Docker API access)
 ```
 
 Only wizard and gateway bind to the host (127.0.0.1).
@@ -109,7 +110,7 @@ Request → Metrics → Security headers → Request ID (server UUID only)
 ### Wizard (Go + React 19 + TypeScript + Tailwind)
 
 - HMAC session tokens (jti for replay protection), optional TOTP (MFA)
-- Docker Engine API over Unix socket (read-only), prerequisite checks, live dashboard
+- Docker Engine API over Unix socket via **scoped proxy** (tecnativa/docker-socket-proxy — allows only container list, inspect, restart; blocks exec, create, images, volumes, networks), prerequisite checks, live dashboard
 - GET/PUT config (allowed keys, masked secrets), audit log, service restart
 
 ### AI defense patterns (body scanner)
@@ -229,7 +230,7 @@ Then open http://localhost:3000, sign in, and check the dashboard. Full script: 
 - **Output scanning** — Same caveat: heuristic regex for XSS, secret leaks, and exfil. Treat as a helpful early-warning layer, not a guarantee.
 - **Revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
 - **Wizard password** — No "forgot password"; recovery via logs or `.env` and restart.
-- **Wizard compromise** — If an attacker gains wizard access, they can read/write API keys and tokens via PUT `/api/v1/config`. The wizard should only be accessible from localhost or behind a VPN.
+- **Wizard compromise** — If an attacker gains wizard access, they can read/write API keys and tokens via PUT `/api/v1/config`. Docker API access is scoped via docker-socket-proxy (container list/inspect/restart only — no exec, create, images, or volumes). The wizard should only be accessible from localhost or behind a VPN.
 - **Stack** — Docker-first; no generic bare-metal install path.
 
 ---
