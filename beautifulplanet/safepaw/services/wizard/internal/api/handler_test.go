@@ -18,6 +18,7 @@ func newTestHandler(t *testing.T) *Handler {
 	cfg := &config.Config{
 		Port:          3000,
 		AdminPassword: "test-password-123",
+		SessionSecret: "test-session-secret-32bytes!!!",
 		DockerHost:    "unix:///var/run/docker.sock",
 	}
 	h, err := NewHandler(cfg, nil) // nil docker client (no Docker in tests)
@@ -74,27 +75,20 @@ func TestLoginSuccess(t *testing.T) {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	// Token should be a valid session token (not the raw password!)
-	if resp.Token == "test-password-123" {
-		t.Fatal("Token should NOT be the raw password — should be a signed session token")
-	}
-
-	// Token should validate
-	claims, err := session.Validate(resp.Token, "test-password-123", 0)
-	if err != nil {
-		t.Fatalf("Returned token is invalid: %v", err)
-	}
-	if claims.Subject != "admin" {
-		t.Errorf("Token subject = %q, want %q", claims.Subject, "admin")
+	if resp.ExpiresIn <= 0 {
+		t.Errorf("ExpiresIn = %d, want positive value", resp.ExpiresIn)
 	}
 
 	// Should set a session cookie
 	cookies := rec.Result().Cookies()
 	var sessionCookie *http.Cookie
+	var csrfCookie *http.Cookie
 	for _, c := range cookies {
 		if c.Name == "session" {
 			sessionCookie = c
-			break
+		}
+		if c.Name == "csrf" {
+			csrfCookie = c
 		}
 	}
 	if sessionCookie == nil {
@@ -107,9 +101,24 @@ func TestLoginSuccess(t *testing.T) {
 		t.Error("Session cookie should have SameSite=Strict")
 	}
 
-	// Cookie value should also be a valid token
-	if _, err := session.Validate(sessionCookie.Value, "test-password-123", 0); err != nil {
-		t.Errorf("Cookie token is invalid: %v", err)
+	// Cookie value should be a valid token signed with SessionSecret
+	claims, err := session.Validate(sessionCookie.Value, "test-session-secret-32bytes!!!", 0)
+	if err != nil {
+		t.Fatalf("Cookie token is invalid: %v", err)
+	}
+	if claims.Subject != "admin" {
+		t.Errorf("Token subject = %q, want %q", claims.Subject, "admin")
+	}
+
+	// Should set a CSRF cookie (readable by JS, NOT HttpOnly)
+	if csrfCookie == nil {
+		t.Fatal("Should set a 'csrf' cookie")
+	}
+	if csrfCookie.HttpOnly {
+		t.Error("CSRF cookie should NOT be HttpOnly (must be readable by JS)")
+	}
+	if csrfCookie.Value == "" {
+		t.Error("CSRF cookie should have a non-empty value")
 	}
 }
 
@@ -117,6 +126,7 @@ func TestLoginWithMFA_RequiresTOTP(t *testing.T) {
 	cfg := &config.Config{
 		Port:          3000,
 		AdminPassword: "test-password-123",
+		SessionSecret: "test-session-secret-32bytes!!!",
 		TOTPSecret:    "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", // RFC test vector
 		DockerHost:    "unix:///var/run/docker.sock",
 	}
@@ -143,6 +153,7 @@ func TestLoginWithMFA_RejectsInvalidTOTP(t *testing.T) {
 	cfg := &config.Config{
 		Port:          3000,
 		AdminPassword: "test-password-123",
+		SessionSecret: "test-session-secret-32bytes!!!",
 		TOTPSecret:    "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
 		DockerHost:    "unix:///var/run/docker.sock",
 	}
@@ -165,6 +176,7 @@ func TestLoginWithMFA_AcceptsValidTOTP(t *testing.T) {
 	cfg := &config.Config{
 		Port:          3000,
 		AdminPassword: "test-password-123",
+		SessionSecret: "test-session-secret-32bytes!!!",
 		TOTPSecret:    secret,
 		DockerHost:    "unix:///var/run/docker.sock",
 	}

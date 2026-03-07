@@ -84,11 +84,11 @@ func clientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-// SessionValidator returns a function that validates session tokens using the current admin password and session generation.
+// SessionValidator returns a function that validates session tokens using the server session secret and session generation.
 // Pass this to middleware.AdminAuth so that when password or TOTP is changed via PUT /config, existing tokens fail validation.
 func (h *Handler) SessionValidator() middleware.SessionValidator {
 	return func(token string) bool {
-		_, err := session.Validate(token, h.cfg.AdminPassword, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
+		_, err := session.Validate(token, h.cfg.SessionSecret, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
 		return err == nil
 	}
 }
@@ -183,8 +183,7 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	Token     string `json:"token"`
-	ExpiresIn int    `json:"expires_in"` // seconds
+	ExpiresIn int `json:"expires_in"` // seconds
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -224,7 +223,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Generate signed session token (24h TTL); include current gen so credential rotation invalidates old tokens
 	const ttl = 24 * time.Hour
-	token, err := session.Create(h.cfg.AdminPassword, ttl, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
+	token, err := session.Create(h.cfg.SessionSecret, ttl, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
 	if err != nil {
 		log.Printf("[ERROR] Failed to create session token: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})
@@ -244,8 +243,24 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int(ttl.Seconds()),
 	})
 
+	// Set CSRF cookie (readable by JS, not HttpOnly) for double-submit protection
+	csrfToken, err := middleware.GenerateCSRFToken()
+	if err != nil {
+		log.Printf("[ERROR] Failed to generate CSRF token: %v", err)
+		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "csrf",
+		Value:    csrfToken,
+		Path:     "/",
+		HttpOnly: false, // Must be readable by JavaScript
+		SameSite: http.SameSiteStrictMode,
+		Secure:   h.cfg.SecureCookies,
+		MaxAge:   int(ttl.Seconds()),
+	})
+
 	writeJSON(w, http.StatusOK, loginResponse{
-		Token:     token,
 		ExpiresIn: int(ttl.Seconds()),
 	})
 }

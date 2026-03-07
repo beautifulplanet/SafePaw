@@ -51,12 +51,14 @@ func main() {
 
 	// ── Step 4: Build middleware chain ──
 	// Order matters: outermost runs first
-	//   SecurityHeaders → CORS → AdminAuth → RateLimit → Router
+	//   SecurityHeaders → CORS → AdminAuth → CSRF → RateLimit → Router
 	chain := middleware.SecurityHeaders(
 		middleware.CORS(cfg.AllowedOrigins,
 			middleware.AdminAuth(handler.SessionValidator(),
-				middleware.RateLimit(60, time.Minute,
-					handler.Router(),
+				middleware.CSRFProtect(cfg.SecureCookies,
+					middleware.RateLimit(60, time.Minute,
+						handler.Router(),
+					),
 				),
 			),
 		),

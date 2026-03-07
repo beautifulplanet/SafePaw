@@ -288,7 +288,7 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 			if guard != nil {
 				guard.RecordFailure(ip, "invalid_token")
 			}
-			writeAuthError(w, "invalid_token", err.Error())
+			writeAuthError(w, "invalid_token", "Token is expired or invalid")
 			return
 		}
 
@@ -299,8 +299,8 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 				if guard != nil {
 					guard.RecordFailure(ip, "token_revoked")
 				}
-				writeAuthError(w, "token_revoked",
-					fmt.Sprintf("Token has been revoked (reason: %s). Please obtain a new token.", reason))
+				log.Printf("[AUTH] Revocation reason: %s", reason)
+				writeAuthError(w, "token_revoked", "Token has been revoked. Please obtain a new token.")
 				return
 			}
 		}
@@ -311,14 +311,15 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 			if guard != nil {
 				guard.RecordFailure(ip, "insufficient_scope")
 			}
-			writeAuthError(w, "insufficient_scope",
-				fmt.Sprintf("This endpoint requires scope=%q, token has scope=%q", requiredScope, claims.Scope))
+			writeAuthError(w, "insufficient_scope", "Insufficient permissions for this endpoint")
 			return
 		}
 
-		// Auth succeeded — clear any strikes for this IP
+		// Auth succeeded — decrement strikes instead of full reset
+		// to prevent an attacker with one valid token from clearing
+		// all accumulated brute-force strikes between guesses.
 		if guard != nil {
-			guard.Reset(ip)
+			guard.Decrement(ip)
 		}
 
 		r.Header.Set("X-Auth-Subject", claims.Sub)
@@ -336,6 +337,10 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 // Useful for endpoints that have different behavior for authed vs anon users.
 func AuthOptional(auth *Authenticator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Strip client-injected identity headers to prevent spoofing
+		r.Header.Del("X-Auth-Subject")
+		r.Header.Del("X-Auth-Scope")
+
 		token := extractToken(r)
 		if token != "" {
 			claims, err := auth.ValidateToken(token)

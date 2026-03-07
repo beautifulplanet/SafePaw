@@ -95,180 +95,181 @@ Only wizard and gateway bind to the host (127.0.0.1).
 ```
 Request → Metrics → Security headers → Request ID (server UUID only)
         → Origin check → Brute-force guard → Rate limit → Auth (HMAC + Redis revocation)
-        → Body scanner (prompt injection) → Output scanner (XSS/secrets)
-        → Reverse proxy → OpenClaw
-```
+                → Body scanner (prompt injection) → Output scanner (XSS/secrets)
+                        → Reverse proxy → OpenClaw
+                        ```
 
-### Gateway (Go)
+                        ### Gateway (Go)
 
-- Body scanner (14 patterns, versioned v2.0.0), output scanner (XSS, secret leaks, exfil)
-- Rate limiting (per-IP), brute-force guard (IP ban, fed by auth + rate limit)
-- HMAC auth, Redis-backed revocation, `POST /admin/revoke`
-- Security headers, origin validation, server-only request IDs, optional TLS
-- Prometheus `/metrics`, structured JSON logging (`LOG_FORMAT=json`)
+                        - Body scanner (14 patterns, versioned v2.0.0), output scanner (XSS, secret leaks, exfil)
+                        - Rate limiting (per-IP), brute-force guard (IP ban, fed by auth + rate limit)
+                        - HMAC auth, Redis-backed revocation, `POST /admin/revoke`
+                        - Security headers, origin validation, server-only request IDs, optional TLS
+                        - Prometheus `/metrics`, structured JSON logging (`LOG_FORMAT=json`)
 
-### Wizard (Go + React 19 + TypeScript + Tailwind)
+                        ### Wizard (Go + React 19 + TypeScript + Tailwind)
 
-- HMAC session tokens (jti for replay protection), optional TOTP (MFA)
-- Docker Engine API over Unix socket via **scoped proxy** (tecnativa/docker-socket-proxy — allows only container list, inspect, restart; blocks exec, create, images, volumes, networks), prerequisite checks, live dashboard
-- GET/PUT config (allowed keys, masked secrets), audit log, service restart
+                        - HMAC session tokens (jti for replay protection), optional TOTP (MFA)
+                        - Docker Engine API over Unix socket via **scoped proxy** (tecnativa/docker-socket-proxy — allows only container list, inspect, restart; blocks exec, create, images, volumes, networks), prerequisite checks, live dashboard
+                        - GET/PUT config (allowed keys, masked secrets), audit log, service restart
 
-### AI defense patterns (body scanner)
+                        ### AI defense patterns (body scanner)
 
-Instruction override, identity hijacking, system delimiter injection, secret extraction, jailbreak keywords, encoding evasion, data exfiltration, role injection. Risk levels: `none`, `low`, `medium`, `high` → `X-SafePaw-Risk` header.
+                        Instruction override, identity hijacking, system delimiter injection, secret extraction, jailbreak keywords, encoding evasion, data exfiltration, role injection. Risk levels: `none`, `low`, `medium`, `high` → `X-SafePaw-Risk` header.
 
----
+                        ---
 
-## Configuration
+                        ## Configuration
 
-All via environment variables (`.env`).
+                        All via environment variables (`.env`).
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | Anthropic API key for OpenClaw |
-| `OPENAI_API_KEY` | — | OpenAI API key (optional) |
-| `AUTH_ENABLED` | `true` (Docker) | Enable gateway auth |
-| `AUTH_SECRET` | — | HMAC signing key (min 32 bytes) |
-| `TLS_ENABLED` | `false` | Enable TLS on gateway |
-| `RATE_LIMIT` | 60 | Requests per minute per IP |
-| `LOG_FORMAT` | `text` | `json` for SIEM-style logs |
-| `WIZARD_ADMIN_PASSWORD` | auto-generated | Wizard admin password |
-| `WIZARD_TOTP_SECRET` | — | Optional base32 TOTP for wizard MFA |
+                        | Variable | Default | Description |
+                        |----------|---------|-------------|
+                        | `ANTHROPIC_API_KEY` | — | Anthropic API key for OpenClaw |
+                        | `OPENAI_API_KEY` | — | OpenAI API key (optional) |
+                        | `AUTH_ENABLED` | `true` (Docker) | Enable gateway auth |
+                        | `AUTH_SECRET` | — | HMAC signing key (min 32 bytes) |
+                        | `TLS_ENABLED` | `false` | Enable TLS on gateway |
+                        | `RATE_LIMIT` | 60 | Requests per minute per IP |
+                        | `LOG_FORMAT` | `text` | `json` for SIEM-style logs |
+                        | `WIZARD_ADMIN_PASSWORD` | auto-generated | Wizard admin password |
+                        | `WIZARD_TOTP_SECRET` | — | Optional base32 TOTP for wizard MFA |
 
-Channel tokens: `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`. See [.env.example](.env.example) for the full list.
+                        Channel tokens: `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`. See [.env.example](.env.example) for the full list.
 
----
+                        ---
 
-## Development
+                        ## Development
 
-```bash
-# Gateway
-cd services/gateway
-go build -o gateway .
-PROXY_TARGET=http://localhost:18789 ./gateway
+                        ```bash
+                        # Gateway
+                        cd services/gateway
+                        go build -o gateway .
+                        PROXY_TARGET=http://localhost:18789 ./gateway
 
-# Token (when auth enabled)
-export AUTH_SECRET=$(openssl rand -base64 48)
-go run tools/tokengen/main.go -sub admin -scope proxy -ttl 24h
+                        # Token (when auth enabled)
+                        export AUTH_SECRET=$(openssl rand -base64 48)
+                        go run tools/tokengen/main.go -sub admin -scope proxy -ttl 24h
 
-# Wizard
-cd services/wizard
-go build -o wizard ./cmd/wizard
-WIZARD_ADMIN_PASSWORD=dev ./wizard
+                        # Wizard
+                        cd services/wizard
+                        go build -o wizard ./cmd/wizard
+                        WIZARD_ADMIN_PASSWORD=dev ./wizard
 
-# Wizard UI (hot reload)
-cd services/wizard/ui && npm install && npm run dev
-```
+                        # Wizard UI (hot reload)
+                        cd services/wizard/ui && npm install && npm run dev
+                        ```
 
-From this directory: `make lint`, `make vulncheck`, `make fuzz`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+                        From this directory: `make lint`, `make vulncheck`, `make fuzz`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
----
+                        ---
 
-## Testing
+                        ## Testing
 
-| Suite | Command |
-|-------|---------|
-| Gateway | `cd services/gateway && go test ./... -race` |
-| Wizard | `cd services/wizard && go test ./... -race` |
-| Fuzz | `make fuzz` |
-| Vuln check | `make vulncheck` |
-| E2E (live stack) | `./scripts/verify-deployment.sh` after `docker compose up -d` |
+                        | Suite | Command |
+                        |-------|---------|
+                        | Gateway | `cd services/gateway && go test ./... -race` |
+                        | Wizard | `cd services/wizard && go test ./... -race` |
+                        | Fuzz | `make fuzz` |
+                        | Vuln check | `make vulncheck` |
+                        | E2E (live stack) | `./scripts/verify-deployment.sh` after `docker compose up -d` |
 
-CI runs build, test with coverage gate (60%), lint, gosec, govulncheck, Docker build.
+                        CI runs build, test with coverage gate (60%), lint, gosec, govulncheck, Docker build.
 
----
+                        ---
 
-## Project structure
+                        ## Project structure
 
-```
-safepaw/
-├── docker-compose.yml       # 6 services, health checks, resource limits
-├── Makefile                 # build, test, lint, vulncheck, fuzz, Docker
-├── .env.example
-├── SECURITY.md              # Incident response, logging, hardening, MFA
-├── RUNBOOK.md               # 6 playbooks, secret rotation
-├── THREAT-MODEL.md          # STRIDE (27 threats)
-├── BACKUP-RECOVERY.md       # Postgres, Redis, volumes, .env
-├── CONTRIBUTING.md
-├── monitoring/              # Prometheus, Grafana, alerts
-├── services/
-│   ├── gateway/             # Go reverse proxy, middleware, tools/tokengen
-│   ├── wizard/              # Go + React (cmd, internal, ui)
-│   └── postgres/init/
-├── _archived/               # Legacy / previous architecture
-└── shared/proto/
-```
+                        ```
+                        safepaw/
+                        ├── docker-compose.yml       # 6 services, health checks, resource limits
+                        ├── Makefile                 # build, test, lint, vulncheck, fuzz, Docker
+                        ├── .env.example
+                        ├── SECURITY.md              # Incident response, logging, hardening, MFA
+                        ├── RUNBOOK.md               # 6 playbooks, secret rotation
+                        ├── THREAT-MODEL.md          # STRIDE (27 threats)
+                        ├── BACKUP-RECOVERY.md       # Postgres, Redis, volumes, .env
+                        ├── CONTRIBUTING.md
+                        ├── monitoring/              # Prometheus, Grafana, alerts
+                        ├── services/
+                        │   ├── gateway/             # Go reverse proxy, middleware, tools/tokengen
+                        │   ├── wizard/              # Go + React (cmd, internal, ui)
+                        │   └── postgres/init/
+                        ├── _archived/               # Legacy / previous architecture
+                        └── shared/proto/
+                        ```
 
----
+                        ---
 
-## Troubleshooting
+                        ## Troubleshooting
 
-| Issue | What to do |
-|-------|------------|
-| Lost wizard admin password | `docker compose logs wizard` or set `WIZARD_ADMIN_PASSWORD` in `.env` and restart. [SECURITY.md](SECURITY.md) § Recovery. |
-| Prerequisites fail | Install Docker and Compose; ensure 3000 and 8080 are free. |
-| Dashboard shows no services | Check Docker socket mount (`/var/run/docker.sock` or npipe on Windows). |
-| Gateway 502 | `docker compose logs openclaw`; `curl http://localhost:8080/health`. |
-| Auth required | Set `AUTH_ENABLED=true` and `AUTH_SECRET`; use `tools/tokengen` for tokens. |
+                        | Issue | What to do |
+                        |-------|------------|
+                        | Lost wizard admin password | `docker compose logs wizard` or set `WIZARD_ADMIN_PASSWORD` in `.env` and restart. [SECURITY.md](SECURITY.md) § Recovery. |
+                        | Prerequisites fail | Install Docker and Compose; ensure 3000 and 8080 are free. |
+                        | Dashboard shows no services | Check Docker socket mount (`/var/run/docker.sock` or npipe on Windows). |
+                        | Gateway 502 | `docker compose logs openclaw`; `curl http://localhost:8080/health`. |
+                        | Auth required | Set `AUTH_ENABLED=true` and `AUTH_SECRET`; use `tools/tokengen` for tokens. |
 
----
+                        ---
 
-## Verify deployment
+                        ## Verify deployment
 
-```bash
-curl -s http://localhost:3000/api/v1/health | jq .
-curl -s http://localhost:8080/health | jq .
-```
+                        ```bash
+                        curl -s http://localhost:3000/api/v1/health | jq .
+                        curl -s http://localhost:8080/health | jq .
+                        ```
 
-Then open http://localhost:3000, sign in, and check the dashboard. Full script: `./scripts/verify-deployment.sh`.
+                        Then open http://localhost:3000, sign in, and check the dashboard. Full script: `./scripts/verify-deployment.sh`.
 
----
+                        ---
 
-## Limitations
+                        ## Limitations
 
-- **Prompt-injection and output scanning** — Heuristic regex patterns only (not a security boundary). Useful as a tripwire/defense-in-depth layer, but cannot catch novel, obfuscated, or adversarial attacks. No ML/LLM-based detection. See [SECURITY.md](SECURITY.md).
-- **Output scanning** — Same caveat: heuristic regex for XSS, secret leaks, and exfil. Treat as a helpful early-warning layer, not a guarantee.
-- **Revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
-- **Wizard password** — No "forgot password"; recovery via logs or `.env` and restart.
-- **Wizard compromise** — If an attacker gains wizard access, they can read/write API keys and tokens via PUT `/api/v1/config`. Docker API access is scoped via docker-socket-proxy (container list/inspect/restart only — no exec, create, images, or volumes). The wizard should only be accessible from localhost or behind a VPN.
-- **Stack** — Docker-first; no generic bare-metal install path.
+                        - **Prompt-injection and output scanning** — Heuristic regex patterns only (not a security boundary). Useful as a tripwire/defense-in-depth layer, but cannot catch novel, obfuscated, or adversarial attacks. No ML/LLM-based detection. See [SECURITY.md](SECURITY.md).
+                        - **Output scanning** — Same caveat: heuristic regex for XSS, secret leaks, and exfil. Treat as a helpful early-warning layer, not a guarantee.
+                        - **Revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
+                        - **Wizard password** — No "forgot password"; recovery via logs or `.env` and restart.
+                        - **Wizard compromise** — If an attacker gains wizard access, they can read/write API keys and tokens via PUT `/api/v1/config`. Docker API access is scoped via docker-socket-proxy (container list/inspect/restart only — no exec, create, images, or volumes). The wizard should only be accessible from localhost or behind a VPN.
+                        - **Stack** — Docker-first; no generic bare-metal install path.
 
----
+                        ---
 
-## Production Hardening Checklist
+                        ## Production Hardening Checklist
 
-Do this **before** exposing anything beyond localhost:
+                        Do this **before** exposing anything beyond localhost:
 
-- [ ] **Set a strong admin password** — `WIZARD_ADMIN_PASSWORD` in `.env` (don't rely on auto-generated)
-- [ ] **Enable MFA** — Set `WIZARD_TOTP_SECRET` for two-factor login on the wizard
-- [ ] **Enable auth on the gateway** — `AUTH_ENABLED=true` + a strong `AUTH_SECRET` (min 32 bytes)
-- [ ] **Enable TLS** — `TLS_ENABLED=true` with valid certs (`TLS_CERT_FILE`, `TLS_KEY_FILE`)
-- [ ] **Keep wizard on localhost** — The wizard binds to `127.0.0.1` by default. Never expose it to the internet without a VPN or reverse proxy with auth.
-- [ ] **Set system profile** — Choose `small`/`medium`/`large`/`very-large` in Settings to match your server's RAM
-- [ ] **Review rate limits** — Default is 60 req/min/IP. Tune `RATE_LIMIT` and `RATE_LIMIT_WINDOW_SEC` for your load.
-- [ ] **Rotate secrets on schedule** — See [RUNBOOK.md](RUNBOOK.md) for rotation playbooks
-- [ ] **Run the verification script** — `./scripts/verify-deployment.sh` after starting the stack
-- [ ] **Monitor logs** — Set `LOG_FORMAT=json` and feed to your SIEM. Alert on `[AUTH]` failures, `[SCANNER]` high-risk, `[RATELIMIT]` denials.
-- [ ] **Understand scanning limits** — Prompt-injection and output scanners are heuristic tripwires, not security boundaries. They catch many known attacks but cannot stop novel or obfuscated ones.
+                        - [ ] **Set a strong admin password** — `WIZARD_ADMIN_PASSWORD` in `.env` (don't rely on auto-generated)
+                        - [ ] **Enable MFA** — Set `WIZARD_TOTP_SECRET` for two-factor login on the wizard
+                        - [ ] **Enable auth on the gateway** — `AUTH_ENABLED=true` + a strong `AUTH_SECRET` (min 32 bytes)
+                        - [ ] **Enable TLS** — `TLS_ENABLED=true` with valid certs (`TLS_CERT_FILE`, `TLS_KEY_FILE`)
+                        - [ ] **Keep wizard on localhost** — The wizard binds to `127.0.0.1` by default. Never expose it to the internet without a VPN or reverse proxy with auth.
+                        - [ ] **Set system profile** — Choose `small`/`medium`/`large`/`very-large` in Settings to match your server's RAM
+                        - [ ] **Review rate limits** — Default is 60 req/min/IP. Tune `RATE_LIMIT` and `RATE_LIMIT_WINDOW_SEC` for your load.
+                        - [ ] **Rotate secrets on schedule** — See [RUNBOOK.md](RUNBOOK.md) for rotation playbooks
+                        - [ ] **Run the verification script** — `./scripts/verify-deployment.sh` after starting the stack
+                        - [ ] **Monitor logs** — Set `LOG_FORMAT=json` and feed to your SIEM. Alert on `[AUTH]` failures, `[SCANNER]` high-risk, `[RATELIMIT]` denials.
+                        - [ ] **Understand scanning limits** — Prompt-injection and output scanners are heuristic tripwires, not security boundaries. They catch many known attacks but cannot stop novel or obfuscated ones.
 
----
+                        ---
 
-## Documentation index
+                        ## Documentation index
 
-| Document | Purpose |
-|----------|---------|
-| [README.md](README.md) | This file |
-| [SECURITY.md](SECURITY.md) | Incident response, logging, defense-in-depth, MFA, recovery |
-| [RUNBOOK.md](RUNBOOK.md) | 6 playbooks, secret rotation |
-| [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) | Backup/restore procedures |
-| [THREAT-MODEL.md](THREAT-MODEL.md) | STRIDE, residual risks |
-| [SCOPE-IMPROVEMENTS.md](SCOPE-IMPROVEMENTS.md) | Review feedback triage and improvement backlog |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev workflow, PR process |
-| [RELEASE.md](RELEASE.md) | Going public: timestamp, checklist, positioning, licensing |
-| [.env.example](.env.example) | Configuration reference |
+                        | Document | Purpose |
+                        |----------|---------|
+                        | [README.md](README.md) | This file |
+                        | [SECURITY.md](SECURITY.md) | Incident response, logging, defense-in-depth, MFA, recovery |
+                        | [RUNBOOK.md](RUNBOOK.md) | 6 playbooks, secret rotation |
+                        | [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) | Backup/restore procedures |
+                        | [THREAT-MODEL.md](THREAT-MODEL.md) | STRIDE, residual risks |
+                        | [SCOPE-IMPROVEMENTS.md](SCOPE-IMPROVEMENTS.md) | Review feedback triage and improvement backlog |
+                        | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev workflow, PR process |
+                        | [RELEASE.md](RELEASE.md) | Going public: timestamp, checklist, positioning, licensing |
+                        | [.env.example](.env.example) | Configuration reference |
 
----
+                        ---
 
-## License
+                        ## License
 
-MIT
+                        MIT
+                        

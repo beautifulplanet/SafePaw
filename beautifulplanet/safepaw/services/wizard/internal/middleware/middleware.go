@@ -11,6 +11,8 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net"
 	"net/http"
 	"strings"
@@ -52,7 +54,7 @@ func CORS(allowedOrigins []string, next http.Handler) http.Handler {
 		if origin != "" && originSet[strings.ToLower(origin)] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}
@@ -117,6 +119,55 @@ func isPublicPath(path string) bool {
 		return true
 	}
 	return false
+}
+
+// ─── CSRF Protection (Double-Submit Cookie) ──────────────────
+
+// CSRFProtect validates CSRF tokens on state-mutating requests.
+// On login, the handler sets a "csrf" cookie (readable by JS).
+// For POST/PUT/DELETE requests to API endpoints, the client must
+// send the cookie value back as the X-CSRF-Token header.
+func CSRFProtect(secureCookies bool, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip CSRF for safe methods, public paths, and non-API paths
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if isPublicPath(r.URL.Path) || !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// If the request uses Bearer token auth (not cookies), CSRF is not applicable
+		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Cookie-based auth: require X-CSRF-Token header matching csrf cookie
+		cookie, err := r.Cookie("csrf")
+		if err != nil || cookie.Value == "" {
+			http.Error(w, `{"error":"csrf_token_missing"}`, http.StatusForbidden)
+			return
+		}
+		headerToken := r.Header.Get("X-CSRF-Token")
+		if headerToken == "" || headerToken != cookie.Value {
+			http.Error(w, `{"error":"csrf_token_invalid"}`, http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// GenerateCSRFToken creates a random CSRF token string.
+func GenerateCSRFToken() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // ─── Rate Limiter ────────────────────────────────────────────
