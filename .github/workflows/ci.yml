@@ -187,10 +187,61 @@ jobs:
           docker images safepaw-gateway:ci
           docker images safepaw-wizard:ci
 
+  # ── OpenClaw Compatibility ─────────────────────────────
+  openclaw-compat:
+    name: OpenClaw Compatibility
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build OpenClaw image (npm)
+        run: |
+          docker build \
+            --build-arg OPENCLAW_VERSION=$(npm view openclaw version) \
+            -t openclaw-compat:ci \
+            ./beautifulplanet/safepaw/services/openclaw
+
+      - name: Start with SafePaw config
+        run: |
+          docker run -d --name openclaw-test \
+            -e NODE_ENV=production \
+            openclaw-compat:ci \
+            sh -c '
+              mkdir -p /home/node/.openclaw &&
+              echo "{\"gateway\":{\"bind\":\"loopback\",\"mode\":\"local\",\"controlUi\":{\"enabled\":true}}}" > /home/node/.openclaw/openclaw.json &&
+              exec openclaw gateway --port 18789 --bind loopback
+            '
+
+      - name: Wait for healthy (60s timeout)
+        run: |
+          for i in $(seq 1 30); do
+            if ! docker inspect --format='{{.State.Running}}' openclaw-test 2>/dev/null | grep -q true; then
+              echo "FAIL: container exited"
+              docker logs openclaw-test 2>&1 | tail -20
+              exit 1
+            fi
+            HEALTH=$(docker exec openclaw-test node -e \
+              "fetch('http://127.0.0.1:18789/healthz').then(r=>{console.log(r.status);process.exit(r.ok?0:1)}).catch(()=>process.exit(1))" \
+              2>/dev/null) || true
+            if [ "$HEALTH" = "200" ]; then
+              echo "PASS: OpenClaw healthy after $((i*2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "FAIL: not healthy within 60s"
+          docker logs openclaw-test 2>&1 | tail -20
+          exit 1
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f openclaw-test 2>/dev/null || true
+
   # ── Summary ──────────────────────────────────────────
   ci-pass:
     name: CI Pass
-    needs: [gateway, wizard, lint, security, docker]
+    needs: [gateway, wizard, lint, security, docker, openclaw-compat]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -200,7 +251,8 @@ jobs:
              [[ "${{ needs.wizard.result }}" != "success" ]] || \
              [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.security.result }}" != "success" ]] || \
-             [[ "${{ needs.docker.result }}" != "success" ]]; then
+             [[ "${{ needs.docker.result }}" != "success" ]] || \
+             [[ "${{ needs.openclaw-compat.result }}" != "success" ]]; then
             echo "One or more CI jobs failed"
             exit 1
           fi
