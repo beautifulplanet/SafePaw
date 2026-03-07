@@ -128,6 +128,22 @@ func (g *BruteForceGuard) Reset(ip string) {
 	delete(g.strikes, ip)
 }
 
+// Decrement reduces the strike counter for an IP by one on successful auth.
+// Unlike Reset, this prevents an attacker with one valid token from clearing
+// all accumulated strikes between brute-force guesses.
+func (g *BruteForceGuard) Decrement(ip string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	entry, exists := g.strikes[ip]
+	if !exists {
+		return
+	}
+	entry.strikes--
+	if entry.strikes <= 0 {
+		delete(g.strikes, ip)
+	}
+}
+
 func (g *BruteForceGuard) escalatedDuration(strikes int) time.Duration {
 	bans := strikes / g.threshold
 	switch {

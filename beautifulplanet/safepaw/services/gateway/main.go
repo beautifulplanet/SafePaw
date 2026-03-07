@@ -76,7 +76,8 @@ func main() {
 			}
 
 			// Strip hop-by-hop headers that shouldn't be forwarded
-			req.Header.Del("X-SafePaw-Risk") // Don't let clients spoof risk headers
+			req.Header.Del("X-SafePaw-Risk")    // Don't let clients spoof risk headers
+			req.Header.Del("X-SafePaw-Triggers") // Don't let clients spoof trigger headers
 
 			// Strip original auth credentials — backend uses X-Auth-Subject/X-Auth-Scope
 			req.Header.Del("Authorization")
@@ -125,7 +126,6 @@ func main() {
 		status := map[string]interface{}{
 			"status":          "ok",
 			"service":         "safepaw-gateway",
-			"proxy":           cfg.ProxyTarget.String(),
 			"pattern_version": middleware.PatternVersion,
 			"timestamp":       time.Now().UTC().Format(time.RFC3339),
 		}

@@ -110,6 +110,10 @@ func wsProxy(target *url.URL) http.Handler {
 			r.URL.RawQuery = q.Encode()
 		}
 
+		// Strip internal headers that clients could spoof
+		r.Header.Del("X-SafePaw-Risk")
+		r.Header.Del("X-SafePaw-Triggers")
+
 		// Forward the request to the backend
 		if err := r.Write(backendConn); err != nil {
 			log.Printf("[WS] Failed to write upgrade request to backend: %v", err)
