@@ -199,7 +199,7 @@ services:
     command: >
       sh -c '
         mkdir -p /home/node/.openclaw &&
-        echo "{\"gateway\":{\"bind\":\"loopback\",\"controlUi\":{\"enabled\":true}}}" > /home/node/.openclaw/openclaw.json &&
+        echo "{\"gateway\":{\"bind\":\"loopback\",\"mode\":\"local\",\"controlUi\":{\"enabled\":true}}}" > /home/node/.openclaw/openclaw.json &&
         exec node openclaw.mjs gateway --port 18789 --bind loopback
       '
     environment:

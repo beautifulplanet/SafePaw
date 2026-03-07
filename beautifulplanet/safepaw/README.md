@@ -182,7 +182,7 @@ CI runs build, test with coverage gate (60%), lint, gosec, govulncheck, Docker b
 
 ```
 safepaw/
-├── docker-compose.yml       # 5 services, health checks, resource limits
+├── docker-compose.yml       # 6 services, health checks, resource limits
 ├── Makefile                 # build, test, lint, vulncheck, fuzz, Docker
 ├── .env.example
 ├── SECURITY.md              # Incident response, logging, hardening, MFA
