@@ -22,7 +22,9 @@
 package middleware
 
 import (
+	"bufio"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -264,6 +266,15 @@ func (sw *statusWriter) WriteHeader(code int) {
 		sw.wrote = true
 	}
 	sw.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack passes through to the underlying ResponseWriter so WebSocket
+// upgrades work through the metrics middleware.
+func (sw *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := sw.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("underlying ResponseWriter does not support hijacking")
 }
 
 // normalizePath reduces cardinality by collapsing path parameters.
