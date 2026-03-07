@@ -77,7 +77,8 @@ jobs:
       - name: Check go.mod tidy
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum
+          git diff --exit-code go.mod
+          if [ -f go.sum ]; then git diff --exit-code go.sum; fi
 
       - name: Test
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
@@ -139,16 +140,12 @@ jobs:
 
       - name: Install security tools
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4
           go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Fetch modules (gateway)
         run: go mod download
         working-directory: beautifulplanet/safepaw/services/gateway
-
-      - name: Fetch modules (wizard)
-        run: go mod download
-        working-directory: beautifulplanet/safepaw/services/wizard
 
       - name: gosec (gateway)
         run: gosec -exclude=G104,G706 -exclude-dir=tools ./...

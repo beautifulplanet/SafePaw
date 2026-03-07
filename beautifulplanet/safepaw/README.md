@@ -253,7 +253,61 @@ Request → Metrics → Security headers → Request ID (server UUID only)
 
                         ---
 
-                        ## Documentation index
+## OpenClaw compatibility
+
+### Supported version
+
+SafePaw is tested against **OpenClaw 2026.3.3** (commit [`809f951`](https://github.com/openclaw/openclaw/commit/809f9513acf0c4d8670164a1485834f959f484d9)). This is the version built into the Docker image when you run `docker compose up`.
+
+The OpenClaw source is a **clone** of [openclaw/openclaw](https://github.com/openclaw/openclaw) at that commit. It is currently **401 commits behind** upstream `main`.
+
+### How version pinning works
+
+The `OPENCLAW_VERSION` build arg in `docker-compose.yml` controls which version gets installed. The Dockerfile runs `npm install -g openclaw@${OPENCLAW_VERSION}` at build time. To upgrade:
+
+```bash
+# Rebuild with a specific version
+docker compose build --build-arg OPENCLAW_VERSION=2026.4.0 openclaw
+docker compose up -d
+```
+
+Or set `OPENCLAW_VERSION=2026.4.0` in your `.env` file (if the compose passes it as a build arg).
+
+### Update policy
+
+SafePaw is a **community project**. Updates to track newer OpenClaw releases will happen **on a best-effort basis driven by usage**:
+
+- **If people use this, it will be maintained.** Stars, issues, and pull requests are the signal.
+- There is **no scheduled release cadence**. When OpenClaw ships breaking changes to its gateway mode, WebSocket protocol, or configuration format, SafePaw will be updated to match.
+- **Minor OpenClaw releases** (patch/feature) are generally safe to upgrade via the build arg above — the gateway proxies HTTP/WebSocket traffic and is not tightly coupled to OpenClaw internals.
+- **Major OpenClaw changes** (new auth model, different port binding, config schema changes) require SafePaw gateway/wizard updates and will be tagged as new SafePaw releases.
+
+### Fork plan
+
+The current setup uses a direct clone of `openclaw/openclaw`. The long-term plan:
+
+1. **Fork** `openclaw/openclaw` under `beautifulplanet/openclaw` to have a stable reference point.
+2. **Tag** the known-good commit as `v0.1.0-safepaw` in the fork.
+3. **Pin** the Docker build to that tag (not `latest`, not a floating branch).
+4. **Upstream sync** — When a SafePaw update is needed, merge upstream `openclaw/main` into the fork, test the full stack, and cut a new SafePaw-tagged release.
+
+Until the fork is created, the current clone at commit `809f951` is the source of truth. If you're running SafePaw today, you are running exactly that commit.
+
+### Breaking-change risks
+
+OpenClaw is under active development. These changes in upstream would require SafePaw updates:
+
+| Risk | What would break |
+|------|-----------------|
+| Gateway port change (currently 18789) | Compose `PROXY_TARGET`, health checks |
+| Config schema change (`openclaw.json`) | The `command:` block in docker-compose |
+| WebSocket protocol change | Gateway's `ws_proxy.go` |
+| Health endpoint removal | Gateway and Wizard health checks |
+| New auth/token model | Gateway auth middleware |
+
+---
+
+## Documentation index
 
                         | Document | Purpose |
                         |----------|---------|
