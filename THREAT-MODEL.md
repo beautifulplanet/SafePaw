@@ -146,7 +146,7 @@ WebSocket streams are scanned in real-time via `ScanningReader`.
 | G6 | No MFA for Wizard admin | Low | **Mitigated** | Optional TOTP via `WIZARD_TOTP_SECRET` env var. |
 | G7 | Docker socket access grants container management | Medium | **Mitigated** | Replaced raw socket with tecnativa/docker-socket-proxy (read-only, allowlisted endpoints). |
 | G8 | No request/response logging of full bodies | Low | **Accepted** | Logging full bodies would store PII/secrets. Structured metadata logging (request ID, risk score, path) considered sufficient. |
-| G9 | Supply chain: govulncheck not in CI | Low | **Open** | Tracked in GitHub issue. Add `govulncheck ./...` to CI when stable in Go toolchain. |
+| G9 | Supply chain: govulncheck not enforced in CI | Low | **Mitigated** | govulncheck runs in CI (advisory mode, `continue-on-error`). Tracked in [#13](https://github.com/beautifulplanet/SafePaw/issues/13) to promote to hard-fail. |
 
 ---
 

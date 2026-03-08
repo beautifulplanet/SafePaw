@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 permissions:
   contents: read
@@ -158,12 +158,12 @@ jobs:
       - name: govulncheck (gateway)
         run: govulncheck ./...
         working-directory: services/gateway
-        continue-on-error: true  # advisory-only — tracked in #TODO: create tracking issue
+        continue-on-error: true  # advisory-only until stabilized — see #13
 
       - name: govulncheck (wizard)
         run: govulncheck ./...
         working-directory: services/wizard
-        continue-on-error: true  # advisory-only — tracked in #TODO: create tracking issue
+        continue-on-error: true  # advisory-only until stabilized — see #13
 
   # ── Docker Build ─────────────────────────────────────
   docker:
