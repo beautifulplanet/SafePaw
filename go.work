@@ -4,4 +4,5 @@ use (
 	./services/gateway
 	./services/wizard
 	./services/mockbackend
+	./shared/secrets
 )
