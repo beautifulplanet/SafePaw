@@ -130,6 +130,23 @@ func main() {
 
 	// Prometheus metrics
 	metrics := middleware.NewMetrics()
+	metrics.CostSnapshotFn = func() *middleware.CostSnapshot {
+		snap := usageCollector.Snapshot()
+		if snap.Status != "ok" {
+			return nil
+		}
+		cs := &middleware.CostSnapshot{
+			TotalCostUSD: snap.PeriodCost,
+			TodayCostUSD: snap.TodayCost,
+		}
+		if snap.Totals != nil {
+			cs.InputTokens = snap.Totals.Input
+			cs.OutputTokens = snap.Totals.Output
+			cs.CacheReadTokens = snap.Totals.CacheRead
+			cs.CacheWriteTokens = snap.Totals.CacheWrite
+		}
+		return cs
+	}
 	mux.Handle("/metrics", metrics.Handler())
 
 	// Health check  no auth, no middleware (used by Docker/k8s)
