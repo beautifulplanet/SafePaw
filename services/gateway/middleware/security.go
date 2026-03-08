@@ -208,11 +208,17 @@ func RateLimitWithGuard(rl *RateLimiter, guard *BruteForceGuard, next http.Handl
 		ip := extractIP(r)
 		if !rl.Allow(ip) {
 			log.Printf("[SECURITY] Rate limited IP=%s request_id=%s", SanitizeLogValue(ip), SanitizeLogValue(r.Header.Get("X-Request-ID")))
+			if sc := GetSecurityContext(r); sc != nil {
+				sc.RateLimit = &RateLimitDecision{Allowed: false}
+			}
 			if guard != nil {
 				guard.RecordFailure(ip, "rate_limit_exceeded")
 			}
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
+		}
+		if sc := GetSecurityContext(r); sc != nil {
+			sc.RateLimit = &RateLimitDecision{Allowed: true}
 		}
 		next.ServeHTTP(w, r)
 	})

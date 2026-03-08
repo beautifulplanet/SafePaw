@@ -275,6 +275,9 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 		if token == "" {
 			log.Printf("[AUTH] Rejected: no token provided (remote=%s path=%s request_id=%s)",
 				ip, r.URL.Path, reqID)
+			if sc := GetSecurityContext(r); sc != nil {
+				sc.Auth = &AuthDecision{Outcome: "reject_missing"}
+			}
 			if guard != nil {
 				guard.RecordFailure(ip, "missing_token")
 			}
@@ -285,6 +288,9 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 		claims, err := auth.ValidateToken(token)
 		if err != nil {
 			log.Printf("[AUTH] Rejected: %v (remote=%s request_id=%s)", err, ip, reqID)
+			if sc := GetSecurityContext(r); sc != nil {
+				sc.Auth = &AuthDecision{Outcome: "reject_invalid", Reason: err.Error()}
+			}
 			if guard != nil {
 				guard.RecordFailure(ip, "invalid_token")
 			}
@@ -296,6 +302,9 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 			if revoked, reason := revocations.IsRevoked(claims.Sub, claims.Iat); revoked {
 				log.Printf("[AUTH] Rejected: token revoked for sub=%s reason=%s (remote=%s request_id=%s)",
 					claims.Sub, reason, ip, reqID)
+				if sc := GetSecurityContext(r); sc != nil {
+					sc.Auth = &AuthDecision{Outcome: "reject_revoked", Sub: claims.Sub, Reason: reason}
+				}
 				if guard != nil {
 					guard.RecordFailure(ip, "token_revoked")
 				}
@@ -308,6 +317,9 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 		if requiredScope != "" && claims.Scope != requiredScope && claims.Scope != "admin" {
 			log.Printf("[AUTH] Rejected: scope=%q required=%q (sub=%s remote=%s request_id=%s)",
 				claims.Scope, requiredScope, claims.Sub, ip, reqID)
+			if sc := GetSecurityContext(r); sc != nil {
+				sc.Auth = &AuthDecision{Outcome: "reject_scope", Sub: claims.Sub, Scope: claims.Scope, Reason: requiredScope}
+			}
 			if guard != nil {
 				guard.RecordFailure(ip, "insufficient_scope")
 			}
@@ -324,6 +336,10 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 
 		r.Header.Set("X-Auth-Subject", claims.Sub)
 		r.Header.Set("X-Auth-Scope", claims.Scope)
+
+		if sc := GetSecurityContext(r); sc != nil {
+			sc.Auth = &AuthDecision{Outcome: "allow", Sub: claims.Sub, Scope: claims.Scope}
+		}
 
 		log.Printf("[AUTH] Authenticated: sub=%s scope=%s ttl=%v (remote=%s request_id=%s)",
 			claims.Sub, claims.Scope, claims.RemainingTTL().Round(time.Second), ip, reqID)
