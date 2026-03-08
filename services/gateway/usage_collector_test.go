@@ -290,3 +290,69 @@ func TestCollectorStatus_String(t *testing.T) {
 		}
 	}
 }
+
+func TestProcessUsageResponse_CriticalAlert(t *testing.T) {
+	uc := NewUsageCollector("", "", 1.0, 5.0)
+	defer uc.Stop()
+
+	today := time.Now().UTC().Format("2006-01-02")
+	payload, _ := json.Marshal(map[string]interface{}{
+		"updatedAt": float64(time.Now().UnixMilli()),
+		"days":      1,
+		"daily": []map[string]interface{}{
+			{"date": today, "totalCost": 10.0, "totalTokens": 1000},
+		},
+		"totals": map[string]interface{}{
+			"totalCost":   10.0,
+			"totalTokens": 1000,
+		},
+	})
+
+	resp := wsResponse{Type: "res", ID: "crit-test", OK: true, Payload: json.RawMessage(payload)}
+	if err := uc.processUsageResponse(resp); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProcessUsageResponse_WarningAlert(t *testing.T) {
+	uc := NewUsageCollector("", "", 1.0, 5.0)
+	defer uc.Stop()
+
+	today := time.Now().UTC().Format("2006-01-02")
+	payload, _ := json.Marshal(map[string]interface{}{
+		"updatedAt": float64(time.Now().UnixMilli()),
+		"days":      1,
+		"daily": []map[string]interface{}{
+			{"date": today, "totalCost": 2.0, "totalTokens": 500},
+		},
+		"totals": map[string]interface{}{
+			"totalCost":   2.0,
+			"totalTokens": 500,
+		},
+	})
+
+	resp := wsResponse{Type: "res", ID: "warn-test", OK: true, Payload: json.RawMessage(payload)}
+	if err := uc.processUsageResponse(resp); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProcessUsageResponse_NoDailyData(t *testing.T) {
+	uc := NewUsageCollector("", "", 1.0, 5.0)
+	defer uc.Stop()
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"updatedAt": float64(time.Now().UnixMilli()),
+		"days":      0,
+		"daily":     []map[string]interface{}{},
+		"totals": map[string]interface{}{
+			"totalCost":   0.0,
+			"totalTokens": 0,
+		},
+	})
+
+	resp := wsResponse{Type: "res", ID: "empty-test", OK: true, Payload: json.RawMessage(payload)}
+	if err := uc.processUsageResponse(resp); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

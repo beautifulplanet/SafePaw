@@ -104,3 +104,75 @@ func TestNormalizePath(t *testing.T) {
 		}
 	}
 }
+
+func TestMetrics_ConcurrentCounter(t *testing.T) {
+	m := NewMetrics()
+	done := make(chan struct{})
+
+	// Hammer the same key from multiple goroutines
+	for i := 0; i < 10; i++ {
+		go func() {
+			m.RecordRequest("GET", 200, "/ws", time.Millisecond)
+			done <- struct{}{}
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+
+	// Just verify no panic and handler works
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "safepaw_requests_total") {
+		t.Error("expected safepaw_requests_total in output")
+	}
+}
+
+func TestMetrics_DurationBuckets(t *testing.T) {
+	m := NewMetrics()
+
+	// Record a request with a duration that hits multiple buckets
+	m.RecordRequest("POST", 201, "/api/chat", 500*time.Millisecond)
+	m.RecordRequest("POST", 201, "/api/chat", 2*time.Second)
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "safepaw_request_duration_seconds_bucket") {
+		t.Error("expected duration bucket metrics")
+	}
+}
+
+func TestMetrics_Handler_MalformedDurationKey(t *testing.T) {
+	m := NewMetrics()
+
+	// Inject a malformed key (no colon) directly into durations map
+	// to cover the len(parts)!=2 continue branch in Handler().
+	m.durations["badkey"] = newHistogram(m.durationBuckets)
+
+	// Also add a valid entry so we confirm it still renders.
+	m.RecordRequest("GET", 200, "/health", 5*time.Millisecond)
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "safepaw_request_duration_seconds_bucket") {
+		t.Error("expected valid duration bucket metrics despite malformed key")
+	}
+	// The malformed key should be silently skipped.
+	if strings.Contains(body, "badkey") {
+		t.Error("malformed key should not appear in output")
+	}
+}
