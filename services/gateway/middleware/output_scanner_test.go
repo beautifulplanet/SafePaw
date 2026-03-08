@@ -202,6 +202,9 @@ func TestOutputRisk_String(t *testing.T) {
 	if OutputRiskHigh.String() != "high" {
 		t.Error("high")
 	}
+	if OutputRisk(99).String() != "unknown" {
+		t.Error("unknown case should return 'unknown'")
+	}
 }
 
 func containsStr(ss []string, s string) bool {
@@ -311,5 +314,26 @@ func TestOutputScanner_MultiWriteExceedsMax(t *testing.T) {
 	}
 	if rr.Body.Len() != 100 {
 		t.Errorf("expected 100 bytes, got %d", rr.Body.Len())
+	}
+}
+
+func TestNormalizeForScan_Base64NoPadding(t *testing.T) {
+	// Encode "<script>alert(1)</script>" in base64 without padding (RawStdEncoding)
+	payload := base64.RawStdEncoding.EncodeToString([]byte(`<script>alert(1)</script>`))
+	result := normalizeForScan(payload)
+	if !strings.Contains(result, "<script>") {
+		t.Errorf("expected decoded script tag in result, got %q", result)
+	}
+}
+
+func TestScanningReader_MaliciousContent(t *testing.T) {
+	malicious := `<script>alert("xss")</script>`
+	reader := NewScanningReader(strings.NewReader(malicious), "req1", "/chat")
+	buf := make([]byte, 1024)
+	n, _ := reader.Read(buf)
+	// Content should be sanitized (script tags removed)
+	result := string(buf[:n])
+	if strings.Contains(result, "<script>") {
+		t.Errorf("expected script tags to be sanitized, got %q", result)
 	}
 }

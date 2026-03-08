@@ -255,3 +255,114 @@ func TestSanitizeLogValue(t *testing.T) {
 		}
 	}
 }
+
+func TestRateLimitWithGuard_StrikeOnDeny(t *testing.T) {
+	rl := NewRateLimiter(1, time.Minute) // 1 req/min
+	defer rl.Stop()
+	guard := NewBruteForceGuard(2, time.Minute)
+	defer guard.Stop()
+
+	handler := RateLimitWithGuard(rl, guard, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// First request passes
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("1st request: got %d, want 200", rr.Code)
+	}
+
+	// Second request exceeds rate limit → 429 + strike
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Errorf("2nd request: got %d, want 429", rr.Code)
+	}
+}
+
+func TestRateLimitWithGuard_ExemptsHealth(t *testing.T) {
+	rl := NewRateLimiter(1, time.Minute)
+	defer rl.Stop()
+
+	handler := RateLimitWithGuard(rl, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Health should always pass
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/health", nil)
+		req.RemoteAddr = "10.0.0.1:1234"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("health request %d: got %d, want 200", i, rr.Code)
+		}
+	}
+}
+
+func TestExtractIP_NoPort(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1" // no port
+	ip := extractIP(req)
+	if ip != "10.0.0.1" {
+		t.Errorf("got %q, want 10.0.0.1", ip)
+	}
+}
+
+func TestIsLoopback(t *testing.T) {
+	tests := []struct {
+		ip   string
+		want bool
+	}{
+		{"127.0.0.1", true},
+		{"::1", true},
+		{"10.0.0.1", false},
+		{"not-an-ip", false},
+	}
+	for _, tt := range tests {
+		if got := isLoopback(tt.ip); got != tt.want {
+			t.Errorf("isLoopback(%q) = %v, want %v", tt.ip, got, tt.want)
+		}
+	}
+}
+
+func TestRateLimiter_Cleanup(t *testing.T) {
+	rl := NewRateLimiter(10, 50*time.Millisecond)
+	defer rl.Stop()
+
+	rl.Allow("10.0.0.1")
+	rl.Allow("10.0.0.2")
+
+	// Wait for window to expire
+	time.Sleep(100 * time.Millisecond)
+
+	// Directly call cleanup
+	rl.cleanup()
+
+	// After cleanup, entries should be gone — new window starts
+	rl.Allow("10.0.0.1")
+	// Should succeed (fresh window)
+}
+
+func TestRateLimiter_WindowExpiry(t *testing.T) {
+	rl := NewRateLimiter(1, 50*time.Millisecond)
+	defer rl.Stop()
+
+	if !rl.Allow("10.0.0.1") {
+		t.Error("first request should be allowed")
+	}
+	if rl.Allow("10.0.0.1") {
+		t.Error("second request should be denied (limit=1)")
+	}
+
+	// Wait for window to expire
+	time.Sleep(100 * time.Millisecond)
+
+	// Should be allowed again (window expired)
+	if !rl.Allow("10.0.0.1") {
+		t.Error("request should be allowed after window expiry")
+	}
+}

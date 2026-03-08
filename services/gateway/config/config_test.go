@@ -179,3 +179,49 @@ func TestHelpers_SplitAndTrim(t *testing.T) {
 		t.Errorf("empty string should return empty slice, got %v", empty)
 	}
 }
+
+func TestHelpers_EnvFloat(t *testing.T) {
+	os.Setenv("TEST_KEY_FLOAT", "3.14")
+	defer os.Unsetenv("TEST_KEY_FLOAT")
+
+	if got := envFloat("TEST_KEY_FLOAT", 0); got != 3.14 {
+		t.Errorf("envFloat = %f, want 3.14", got)
+	}
+	if got := envFloat("NONEXISTENT_FLOAT", 9.9); got != 9.9 {
+		t.Errorf("expected fallback 9.9, got %f", got)
+	}
+
+	// Invalid float falls back
+	os.Setenv("TEST_KEY_FLOAT", "not-a-float")
+	if got := envFloat("TEST_KEY_FLOAT", 1.5); got != 1.5 {
+		t.Errorf("expected fallback 1.5 for invalid float, got %f", got)
+	}
+}
+
+func TestLoad_CostAlertThresholds(t *testing.T) {
+	os.Setenv("COST_ALERT_DAILY_WARN", "5.0")
+	os.Setenv("COST_ALERT_DAILY_CRIT", "50.0")
+	defer func() {
+		os.Unsetenv("COST_ALERT_DAILY_WARN")
+		os.Unsetenv("COST_ALERT_DAILY_CRIT")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CostAlertDailyWarn != 5.0 {
+		t.Errorf("CostAlertDailyWarn = %f, want 5.0", cfg.CostAlertDailyWarn)
+	}
+	if cfg.CostAlertDailyCrit != 50.0 {
+		t.Errorf("CostAlertDailyCrit = %f, want 50.0", cfg.CostAlertDailyCrit)
+	}
+}
+
+func TestLoad_ProxyTargetNoScheme(t *testing.T) {
+	t.Setenv("PROXY_TARGET", "just-a-host")
+	_, err := Load()
+	if err == nil {
+		t.Error("expected error for PROXY_TARGET without scheme")
+	}
+}

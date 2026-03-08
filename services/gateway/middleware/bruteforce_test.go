@@ -199,3 +199,76 @@ func TestBruteForceMiddleware_BlocksBannedIP(t *testing.T) {
 		t.Error("expected Retry-After header")
 	}
 }
+
+func TestBruteForceMiddleware_ExemptsHealth(t *testing.T) {
+	g := NewBruteForceGuard(1, time.Minute)
+	defer g.Stop()
+
+	// Ban the IP
+	g.RecordFailure("10.0.0.1", "test")
+
+	handler := BruteForceMiddleware(g, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// /health should still be accessible even when banned
+	req := httptest.NewRequest("GET", "/health", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("/health should be exempt, got %d", rr.Code)
+	}
+
+	// /metrics should also be exempt
+	req = httptest.NewRequest("GET", "/metrics", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("/metrics should be exempt, got %d", rr.Code)
+	}
+}
+
+func TestBruteForceGuard_Cleanup(t *testing.T) {
+	g := NewBruteForceGuard(1, 50*time.Millisecond)
+	defer g.Stop()
+
+	g.RecordFailure("10.0.0.1", "test")
+	banned, _, _ := g.IsBanned("10.0.0.1")
+	if !banned {
+		t.Error("should be banned")
+	}
+
+	// Wait for ban to expire
+	time.Sleep(100 * time.Millisecond)
+
+	// Directly call cleanup
+	g.cleanup()
+
+	// After cleanup, IP should be removed
+	banned, _, _ = g.IsBanned("10.0.0.1")
+	if banned {
+		t.Error("should not be banned after cleanup")
+	}
+}
+
+func TestBruteForceGuard_IsBanned_ExpiredBan(t *testing.T) {
+	g := NewBruteForceGuard(1, 50*time.Millisecond)
+	defer g.Stop()
+
+	g.RecordFailure("10.0.0.1", "test")
+	banned, _, _ := g.IsBanned("10.0.0.1")
+	if !banned {
+		t.Error("should be banned immediately")
+	}
+
+	// Wait for ban to expire
+	time.Sleep(100 * time.Millisecond)
+
+	// IsBanned should return false for expired ban
+	banned, _, _ = g.IsBanned("10.0.0.1")
+	if banned {
+		t.Error("should not be banned after expiry")
+	}
+}

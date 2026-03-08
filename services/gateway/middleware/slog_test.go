@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"log"
 	"strings"
 	"testing"
 )
@@ -272,5 +273,73 @@ func TestLogLevel_String(t *testing.T) {
 		if got := tt.level.String(); got != tt.want {
 			t.Errorf("LogLevel(%d).String() = %q, want %q", tt.level, got, tt.want)
 		}
+	}
+}
+
+func TestInstallJSONLogger_Disabled(t *testing.T) {
+	// When LOG_FORMAT is not "json", InstallJSONLogger should return false
+	t.Setenv("LOG_FORMAT", "text")
+	if InstallJSONLogger() {
+		t.Error("expected false when LOG_FORMAT != json")
+	}
+}
+
+func TestInstallJSONLogger_Enabled(t *testing.T) {
+	// Save and restore global log state
+	origFlags := log.Flags()
+	origOutput := log.Writer()
+	defer func() {
+		log.SetFlags(origFlags)
+		log.SetOutput(origOutput)
+	}()
+
+	t.Setenv("LOG_FORMAT", "json")
+	if !InstallJSONLogger() {
+		t.Error("expected true when LOG_FORMAT=json")
+	}
+}
+
+func TestLogger_ErrorLevel(t *testing.T) {
+	var buf bytes.Buffer
+	l := &Logger{out: &buf, jsonMode: true, component: "TEST"}
+
+	l.Error("something broke", F("code", 500))
+
+	var entry map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+	if entry["level"] != "error" {
+		t.Errorf("expected level=error, got %v", entry["level"])
+	}
+	if entry["msg"] != "something broke" {
+		t.Errorf("expected msg='something broke', got %v", entry["msg"])
+	}
+}
+
+func TestLogger_DebugLevel(t *testing.T) {
+	var buf bytes.Buffer
+	l := &Logger{out: &buf, jsonMode: false, minLevel: LevelDebug}
+
+	l.Debug("trace info", F("detail", "abc"))
+
+	output := buf.String()
+	if !strings.Contains(output, "trace info") {
+		t.Errorf("expected debug message in output, got %q", output)
+	}
+}
+
+func TestLogger_TextMode_NoComponent(t *testing.T) {
+	var buf bytes.Buffer
+	l := &Logger{out: &buf, jsonMode: false}
+
+	l.Info("startup complete")
+
+	output := buf.String()
+	if strings.Contains(output, "[") {
+		t.Errorf("expected no component prefix, got %q", output)
+	}
+	if !strings.Contains(output, "startup complete") {
+		t.Errorf("expected message in output, got %q", output)
 	}
 }

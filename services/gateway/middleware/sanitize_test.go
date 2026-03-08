@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -194,6 +196,81 @@ func TestPromptInjectionRisk_String(t *testing.T) {
 	if RiskHigh.String() != "high" {
 		t.Errorf("RiskHigh.String() = %q", RiskHigh.String())
 	}
+	if PromptInjectionRisk(42).String() != "unknown" {
+		t.Error("unknown risk should return 'unknown'")
+	}
+}
+
+func TestSanitizeMetadata_ReservedKeyPrefixes(t *testing.T) {
+	meta := map[string]string{
+		"system_prompt": "secret",
+		"prompt_inject": "hack",
+		"instruction":   "override",
+		"role":          "admin",
+		"admin_access":  "true",
+		"internal_flag": "yes",
+		"safe_key":      "allowed",
+	}
+	result := SanitizeMetadata(meta)
+	if _, ok := result["system_prompt"]; ok {
+		t.Error("system prefix should be rejected")
+	}
+	if _, ok := result["safe_key"]; !ok {
+		t.Error("safe_key should be allowed")
+	}
+	if len(result) != 1 {
+		t.Errorf("expected 1 allowed key, got %d", len(result))
+	}
+}
+
+func TestSanitizeMetadata_NilInput(t *testing.T) {
+	if result := SanitizeMetadata(nil); result != nil {
+		t.Errorf("nil input should return nil, got %v", result)
+	}
+}
+
+func TestSanitizeMetadata_EmptyKey(t *testing.T) {
+	meta := map[string]string{
+		"":      "value",
+		"valid": "ok",
+	}
+	result := SanitizeMetadata(meta)
+	if _, ok := result[""]; ok {
+		t.Error("empty key should be dropped")
+	}
+	if _, ok := result["valid"]; !ok {
+		t.Error("valid key should be kept")
+	}
+}
+
+func TestSanitizeMetadata_KeyLimit(t *testing.T) {
+	meta := make(map[string]string, 20)
+	for i := 0; i < 20; i++ {
+		meta[fmt.Sprintf("key%d", i)] = "value"
+	}
+	result := SanitizeMetadata(meta)
+	if len(result) > MaxMetadataKeys {
+		t.Errorf("expected at most %d keys, got %d", MaxMetadataKeys, len(result))
+	}
+}
+
+func TestSanitizeMetadata_ValueTruncation(t *testing.T) {
+	longVal := strings.Repeat("x", MaxMetadataValueLen+100)
+	meta := map[string]string{"key": longVal}
+	result := SanitizeMetadata(meta)
+	if len(result["key"]) != MaxMetadataValueLen {
+		t.Errorf("expected value truncated to %d, got %d", MaxMetadataValueLen, len(result["key"]))
+	}
+}
+
+func TestSanitizeMetadata_KeyTruncation(t *testing.T) {
+	longKey := strings.Repeat("k", MaxMetadataKeyLen+50)
+	meta := map[string]string{longKey: "value"}
+	result := SanitizeMetadata(meta)
+	truncKey := longKey[:MaxMetadataKeyLen]
+	if _, ok := result[truncKey]; !ok {
+		t.Errorf("expected key truncated to %d chars", MaxMetadataKeyLen)
+	}
 }
 
 func TestValidateContentType(t *testing.T) {
@@ -368,5 +445,12 @@ func TestValidateSenderPlatform(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("ValidateSenderPlatform(%q) = %q, want %q", tc.input, got, tc.want)
 		}
+	}
+}
+
+func TestValidateSenderPlatform_AllSpecialChars(t *testing.T) {
+	result := ValidateSenderPlatform("@#$%^&*()")
+	if result != "unknown" {
+		t.Errorf("expected 'unknown' for all-special input, got %q", result)
 	}
 }

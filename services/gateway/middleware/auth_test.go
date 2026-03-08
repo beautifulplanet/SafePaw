@@ -1,7 +1,11 @@
 package middleware
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -379,6 +383,52 @@ func TestRevocationList_Count(t *testing.T) {
 	}
 }
 
+func TestRevocationList_ReRevoke(t *testing.T) {
+	rl := NewRevocationList(time.Hour)
+	defer rl.Stop()
+
+	rl.Revoke("user1", "first reason")
+	rl.Revoke("user1", "second reason") // re-revoke same subject
+
+	if rl.Count() != 1 {
+		t.Errorf("count = %d, want 1 (same subject)", rl.Count())
+	}
+}
+
+func TestRevocationList_IsRevoked_TokenAfterRevocation(t *testing.T) {
+	rl := NewRevocationList(time.Hour)
+	defer rl.Stop()
+
+	rl.Revoke("user1", "compromised")
+
+	// Token issued in the future should NOT be revoked
+	futureIat := time.Now().Unix() + 3600
+	revoked, _ := rl.IsRevoked("user1", futureIat)
+	if revoked {
+		t.Error("token issued after revocation should not be revoked")
+	}
+
+	// Token issued before revocation SHOULD be revoked
+	pastIat := time.Now().Unix() - 3600
+	revoked, reason := rl.IsRevoked("user1", pastIat)
+	if !revoked {
+		t.Error("token issued before revocation should be revoked")
+	}
+	if reason != "compromised" {
+		t.Errorf("reason = %q, want 'compromised'", reason)
+	}
+}
+
+func TestRevocationList_IsRevoked_UnknownSubject(t *testing.T) {
+	rl := NewRevocationList(time.Hour)
+	defer rl.Stop()
+
+	revoked, _ := rl.IsRevoked("nobody", time.Now().Unix())
+	if revoked {
+		t.Error("unknown subject should not be revoked")
+	}
+}
+
 func TestAuthRequiredWithGuard_HealthExempt(t *testing.T) {
 	auth := newTestAuth(t)
 	handler := AuthRequiredWithGuard(auth, "proxy", nil, nil, okHandler())
@@ -409,5 +459,280 @@ func TestAuthRequiredWithGuard_OtherPathsRequireAuth(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("/api/chat without token should be 401, got %d", rec.Code)
+	}
+}
+
+func TestValidateToken_BadBase64Signature(t *testing.T) {
+	auth := newTestAuth(t)
+	token, _ := auth.CreateToken("user1", "ws", nil)
+	// Corrupt the signature part with invalid base64
+	parts := splitTokenForTest(token)
+	badToken := parts[0] + ".!!!invalid-base64!!!"
+	_, err := auth.ValidateToken(badToken)
+	if err == nil {
+		t.Error("expected error for bad base64 signature")
+	}
+}
+
+func TestValidateToken_BadBase64Payload(t *testing.T) {
+	_, err := newTestAuth(t).ValidateToken("!!!invalid.validbase64")
+	if err == nil {
+		t.Error("expected error for bad base64 payload")
+	}
+}
+
+func TestNewAuthenticator_DefaultTTLs(t *testing.T) {
+	secret := make([]byte, 32)
+	for i := range secret {
+		secret[i] = byte(i)
+	}
+	// Zero TTLs should use defaults
+	auth, err := NewAuthenticator(secret, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth.defaultTTL != 24*time.Hour {
+		t.Errorf("defaultTTL = %v, want 24h", auth.defaultTTL)
+	}
+	if auth.maxTTL != 7*24*time.Hour {
+		t.Errorf("maxTTL = %v, want 168h", auth.maxTTL)
+	}
+}
+
+func TestCreateToken_EmptySubject(t *testing.T) {
+	auth := newTestAuth(t)
+	_, err := auth.CreateToken("", "ws", nil)
+	if err == nil {
+		t.Error("expected error for empty subject")
+	}
+}
+
+func TestAuthRequiredWithGuard_InvalidToken_Strike(t *testing.T) {
+	auth := newTestAuth(t)
+	guard := NewBruteForceGuard(5, time.Minute)
+	defer guard.Stop()
+
+	handler := AuthRequiredWithGuard(auth, "ws", nil, guard, okHandler())
+
+	req := httptest.NewRequest("GET", "/ws", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer invalid-token-here")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func splitTokenForTest(token string) [2]string {
+	for i, c := range token {
+		if c == '.' {
+			return [2]string{token[:i], token[i+1:]}
+		}
+	}
+	return [2]string{token, ""}
+}
+
+// craftToken creates a validly-signed token with arbitrary claims for testing.
+func craftToken(claims TokenClaims) string {
+	payloadBytes, _ := json.Marshal(claims)
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadBytes)
+	mac := hmac.New(sha256.New, []byte(testSecret))
+	mac.Write(payloadBytes)
+	sigB64 := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return fmt.Sprintf("%s.%s", payloadB64, sigB64)
+}
+
+func TestValidateToken_EmptySub(t *testing.T) {
+	auth := newTestAuth(t)
+	token := craftToken(TokenClaims{
+		Sub:   "",
+		Scope: "ws",
+		Exp:   time.Now().Add(time.Hour).Unix(),
+		Iat:   time.Now().Unix(),
+	})
+	_, err := auth.ValidateToken(token)
+	if err == nil || err.Error() != "invalid token: missing subject (sub)" {
+		t.Errorf("expected missing subject error, got %v", err)
+	}
+}
+
+func TestValidateToken_EmptyScope(t *testing.T) {
+	auth := newTestAuth(t)
+	token := craftToken(TokenClaims{
+		Sub:   "user1",
+		Scope: "",
+		Exp:   time.Now().Add(time.Hour).Unix(),
+		Iat:   time.Now().Unix(),
+	})
+	_, err := auth.ValidateToken(token)
+	if err == nil || err.Error() != "invalid token: missing scope" {
+		t.Errorf("expected missing scope error, got %v", err)
+	}
+}
+
+func TestAuthRequiredWithGuard_WrongScope_Strike(t *testing.T) {
+	auth := newTestAuth(t)
+	guard := NewBruteForceGuard(5, time.Minute)
+	defer guard.Stop()
+
+	handler := AuthRequiredWithGuard(auth, "admin", nil, guard, okHandler())
+
+	token, _ := auth.CreateTokenWithTTL("user1", "ws", nil, time.Hour)
+	req := httptest.NewRequest("GET", "/admin", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestAuthRequiredWithGuard_RevokedToken_Strike(t *testing.T) {
+	auth := newTestAuth(t)
+	guard := NewBruteForceGuard(5, time.Minute)
+	defer guard.Stop()
+	rl := NewRevocationList(time.Hour)
+	defer rl.Stop()
+
+	token, _ := auth.CreateTokenWithTTL("user1", "ws", nil, time.Hour)
+	rl.Revoke("user1", "test")
+
+	handler := AuthRequiredWithGuard(auth, "ws", rl, guard, okHandler())
+
+	req := httptest.NewRequest("GET", "/ws", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestAuthRequiredWithGuard_Success_Decrement(t *testing.T) {
+	auth := newTestAuth(t)
+	guard := NewBruteForceGuard(5, time.Minute)
+	defer guard.Stop()
+
+	guard.RecordFailure("10.0.0.1", "test")
+	guard.RecordFailure("10.0.0.1", "test")
+
+	handler := AuthRequiredWithGuard(auth, "ws", nil, guard, okHandler())
+
+	token, _ := auth.CreateTokenWithTTL("user1", "ws", nil, time.Hour)
+	req := httptest.NewRequest("GET", "/ws", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAuthRequiredWithGuard_MissingToken_Strike(t *testing.T) {
+	auth := newTestAuth(t)
+	guard := NewBruteForceGuard(5, time.Minute)
+	defer guard.Stop()
+
+	handler := AuthRequiredWithGuard(auth, "ws", nil, guard, okHandler())
+
+	req := httptest.NewRequest("GET", "/ws", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestRevocationList_Cleanup(t *testing.T) {
+	rl := NewRevocationList(50 * time.Millisecond)
+	defer rl.Stop()
+
+	rl.Revoke("user1", "test")
+	rl.Revoke("user2", "test")
+
+	if rl.Count() != 2 {
+		t.Fatalf("expected 2 entries, got %d", rl.Count())
+	}
+
+	// Wait for entries to expire
+	time.Sleep(100 * time.Millisecond)
+
+	// Directly call cleanup
+	rl.cleanup()
+
+	if rl.Count() != 0 {
+		t.Errorf("expected 0 entries after cleanup, got %d", rl.Count())
+	}
+}
+
+func TestRevocationList_CleanupPartial(t *testing.T) {
+	rl := NewRevocationList(time.Hour)
+	defer rl.Stop()
+
+	// Manually insert an expired entry
+	rl.mu.Lock()
+	rl.entries["expired-user"] = &RevocationEntry{
+		RevokedAt: time.Now().Add(-2 * time.Hour),
+		ExpiresAt: time.Now().Add(-time.Hour),
+		Reason:    "old",
+	}
+	rl.entries["active-user"] = &RevocationEntry{
+		RevokedAt: time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+		Reason:    "fresh",
+	}
+	rl.mu.Unlock()
+
+	rl.cleanup()
+
+	if rl.Count() != 1 {
+		t.Errorf("expected 1 entry after partial cleanup, got %d", rl.Count())
+	}
+}
+
+func TestRevocationList_NewWithRedisNil(t *testing.T) {
+	rl := NewRevocationListWithRedis(time.Hour, nil)
+	defer rl.Stop()
+
+	// Should still work, just without persistence
+	rl.Revoke("user1", "test")
+	revoked, reason := rl.IsRevoked("user1", time.Now().Add(-time.Minute).Unix())
+	if !revoked {
+		t.Error("expected revoked")
+	}
+	if reason != "test" {
+		t.Errorf("expected reason 'test', got %q", reason)
+	}
+}
+
+func TestRevocationList_StopWithoutRedis(t *testing.T) {
+	rl := NewRevocationList(time.Hour)
+	// Should not panic
+	rl.Stop()
+}
+
+func TestValidateToken_MalformedJSON(t *testing.T) {
+	auth := newTestAuth(t)
+	// Create a validly-signed token whose payload is not valid JSON
+	payloadBytes := []byte("this is not json")
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadBytes)
+	mac := hmac.New(sha256.New, []byte(testSecret))
+	mac.Write(payloadBytes)
+	sigB64 := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	token := payloadB64 + "." + sigB64
+
+	_, err := auth.ValidateToken(token)
+	if err == nil {
+		t.Error("expected error for malformed JSON payload")
 	}
 }
