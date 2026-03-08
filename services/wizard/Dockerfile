@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /build/wizard ./cmd/wizard
 
 # --- Stage 2: Run ---
-FROM alpine:3.19
+FROM alpine:3.21
 
 # Security: install CA certs (for health check HTTP calls), Docker CLI
 # (for prerequisite checks and compose version), and create non-root user
