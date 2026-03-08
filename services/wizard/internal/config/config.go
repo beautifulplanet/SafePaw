@@ -53,19 +53,19 @@ type Config struct {
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
 	cfg := &Config{
-		Port:            getEnvInt("WIZARD_PORT", 3000),
-		AllowedOrigins:  []string{"http://localhost:3000"},
-		SecureCookies:   getEnv("SECURE_COOKIES", "false") == "true",
-		DockerHost:      getEnv("DOCKER_HOST", defaultDockerHost()),
-		ComposeFilePath: getEnv("COMPOSE_FILE_PATH", "/app/docker-compose.yml"),
-		EnvFilePath:     getEnv("ENV_FILE_PATH", "/app/.env"),
-		TOTPSecret:      getEnv("WIZARD_TOTP_SECRET", ""),
-		PostgresHost:    getEnv("POSTGRES_HOST", ""),
-		PostgresPort:    getEnvInt("POSTGRES_PORT", 5432),
-		PostgresUser:    getEnv("POSTGRES_USER", ""),
+		Port:             getEnvInt("WIZARD_PORT", 3000),
+		AllowedOrigins:   []string{"http://localhost:3000"},
+		SecureCookies:    getEnv("SECURE_COOKIES", "false") == "true",
+		DockerHost:       getEnv("DOCKER_HOST", defaultDockerHost()),
+		ComposeFilePath:  getEnv("COMPOSE_FILE_PATH", "/app/docker-compose.yml"),
+		EnvFilePath:      getEnv("ENV_FILE_PATH", "/app/.env"),
+		TOTPSecret:       getEnv("WIZARD_TOTP_SECRET", ""),
+		PostgresHost:     getEnv("POSTGRES_HOST", ""),
+		PostgresPort:     getEnvInt("POSTGRES_PORT", 5432),
+		PostgresUser:     getEnv("POSTGRES_USER", ""),
 		PostgresPassword: getEnv("POSTGRES_PASSWORD", ""),
-		PostgresDB:      getEnv("POSTGRES_DB", ""),
-		GatewayURL:      getEnv("GATEWAY_URL", "http://safepaw-gateway:8080"),
+		PostgresDB:       getEnv("POSTGRES_DB", ""),
+		GatewayURL:       getEnv("GATEWAY_URL", "http://safepaw-gateway:8080"),
 	}
 
 	// Admin password: use provided or generate a secure random one

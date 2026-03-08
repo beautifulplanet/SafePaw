@@ -23,19 +23,26 @@ type Poller struct {
 	interval   time.Duration
 	client     *http.Client
 
-	mu     sync.RWMutex
-	lastOK time.Time
+	mu      sync.RWMutex
+	lastOK  time.Time
 	lastErr error
 
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-// Persister abstracts the database operations for cost history.
+// Persister abstracts the database write operations for cost history.
 type Persister interface {
 	UpsertDailySnapshot(ctx context.Context, snap DailySnapshot) error
 	UpsertModelSnapshot(ctx context.Context, snap ModelSnapshot) error
 	Close() error
+}
+
+// Querier abstracts database read operations for cost history.
+type Querier interface {
+	ListDailySnapshots(ctx context.Context, days int) ([]DailyRow, error)
+	ListModelSnapshots(ctx context.Context, days int) ([]ModelRow, error)
+	GetTrend(ctx context.Context, days int) (*TrendResult, error)
 }
 
 // EnvReader provides AUTH_SECRET from the .env file.

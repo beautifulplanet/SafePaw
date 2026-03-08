@@ -13,12 +13,12 @@ import (
 // ── Mock Persister ──────────────────────────────────────────────────
 
 type mockPersister struct {
-	mu             sync.Mutex
-	dailyUpserts   []DailySnapshot
-	modelUpserts   []ModelSnapshot
-	closed         bool
-	dailyErr       error
-	modelErr       error
+	mu           sync.Mutex
+	dailyUpserts []DailySnapshot
+	modelUpserts []ModelSnapshot
+	closed       bool
+	dailyErr     error
+	modelErr     error
 }
 
 func (m *mockPersister) UpsertDailySnapshot(_ context.Context, snap DailySnapshot) error {

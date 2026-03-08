@@ -50,7 +50,7 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close() // #nosec G104 -- best-effort cleanup on failed ping
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
@@ -136,4 +136,173 @@ func (s *Store) Cleanup(ctx context.Context, retentionDays int) (int64, error) {
 		"SELECT gateway.cleanup_old_cost_snapshots($1)", retentionDays,
 	).Scan(&deleted)
 	return deleted, err
+}
+
+// DailyRow is a daily snapshot returned from a history query.
+type DailyRow struct {
+	Date         string  `json:"date"`
+	TotalTokens  int64   `json:"totalTokens"`
+	TotalCostUSD float64 `json:"totalCost"`
+	PromptTokens int64   `json:"promptTokens"`
+	CompletionTk int64   `json:"completionTokens"`
+	Messages     int     `json:"messages"`
+	ToolCalls    int     `json:"toolCalls"`
+}
+
+// ModelRow is a per-model snapshot returned from a history query.
+type ModelRow struct {
+	Date         string  `json:"date"`
+	Provider     string  `json:"provider"`
+	Model        string  `json:"model"`
+	RequestCount int     `json:"requestCount"`
+	TotalTokens  int64   `json:"totalTokens"`
+	TotalCostUSD float64 `json:"totalCost"`
+	PromptTokens int64   `json:"promptTokens"`
+	CompletionTk int64   `json:"completionTokens"`
+}
+
+// ListDailySnapshots returns daily snapshots for the last N days, ordered by date descending.
+func (s *Store) ListDailySnapshots(ctx context.Context, days int) ([]DailyRow, error) {
+	if days <= 0 {
+		days = 30
+	}
+	const query = `
+		SELECT date::text, COALESCE(total_tokens,0), COALESCE(total_cost_usd,0),
+		       COALESCE(input_tokens,0), COALESCE(output_tokens,0),
+		       COALESCE(messages_total,0), COALESCE(tool_calls,0)
+		FROM gateway.cost_daily_snapshots
+		WHERE date >= CURRENT_DATE - $1
+		ORDER BY date DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, days)
+	if err != nil {
+		return nil, fmt.Errorf("query daily snapshots: %w", err)
+	}
+	defer rows.Close()
+
+	var out []DailyRow
+	for rows.Next() {
+		var r DailyRow
+		if err := rows.Scan(&r.Date, &r.TotalTokens, &r.TotalCostUSD,
+			&r.PromptTokens, &r.CompletionTk, &r.Messages, &r.ToolCalls); err != nil {
+			return nil, fmt.Errorf("scan daily row: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ListModelSnapshots returns per-model snapshots for the last N days, ordered by cost descending.
+func (s *Store) ListModelSnapshots(ctx context.Context, days int) ([]ModelRow, error) {
+	if days <= 0 {
+		days = 30
+	}
+	const query = `
+		SELECT date::text, provider, model, COALESCE(request_count,0),
+		       COALESCE(total_tokens,0), COALESCE(total_cost_usd,0),
+		       COALESCE(input_tokens,0), COALESCE(output_tokens,0)
+		FROM gateway.cost_model_snapshots
+		WHERE date >= CURRENT_DATE - $1
+		ORDER BY total_cost_usd DESC, date DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, days)
+	if err != nil {
+		return nil, fmt.Errorf("query model snapshots: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ModelRow
+	for rows.Next() {
+		var r ModelRow
+		if err := rows.Scan(&r.Date, &r.Provider, &r.Model, &r.RequestCount,
+			&r.TotalTokens, &r.TotalCostUSD, &r.PromptTokens, &r.CompletionTk); err != nil {
+			return nil, fmt.Errorf("scan model row: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// TrendResult holds trend analysis comparing recent vs prior period.
+type TrendResult struct {
+	RecentDays     int     `json:"recentDays"`
+	RecentCost     float64 `json:"recentCost"`
+	RecentTokens   int64   `json:"recentTokens"`
+	PriorCost      float64 `json:"priorCost"`
+	PriorTokens    int64   `json:"priorTokens"`
+	CostChangeP    float64 `json:"costChangePct"`  // % change
+	TokenChangeP   float64 `json:"tokenChangePct"` // % change
+	DailyAvgRecent float64 `json:"dailyAvgRecent"`
+	DailyAvgPrior  float64 `json:"dailyAvgPrior"`
+	AnomalyScore   float64 `json:"anomalyScore"` // 0-1, >0.7 = alert
+}
+
+// GetTrend compares the last `days` vs the prior `days` period.
+func (s *Store) GetTrend(ctx context.Context, days int) (*TrendResult, error) {
+	if days <= 0 {
+		days = 7
+	}
+	const query = `
+		WITH recent AS (
+			SELECT COALESCE(SUM(total_cost_usd),0) AS cost,
+			       COALESCE(SUM(total_tokens),0) AS tokens,
+			       COUNT(*) AS n
+			FROM gateway.cost_daily_snapshots
+			WHERE date >= CURRENT_DATE - $1 AND date < CURRENT_DATE
+		),
+		prior AS (
+			SELECT COALESCE(SUM(total_cost_usd),0) AS cost,
+			       COALESCE(SUM(total_tokens),0) AS tokens,
+			       COUNT(*) AS n
+			FROM gateway.cost_daily_snapshots
+			WHERE date >= CURRENT_DATE - ($1 * 2) AND date < CURRENT_DATE - $1
+		)
+		SELECT recent.cost, recent.tokens, recent.n,
+		       prior.cost, prior.tokens, prior.n
+		FROM recent, prior`
+
+	var rc, pc float64
+	var rt, pt int64
+	var rn, pn int
+	if err := s.db.QueryRowContext(ctx, query, days).Scan(&rc, &rt, &rn, &pc, &pt, &pn); err != nil {
+		return nil, fmt.Errorf("query trend: %w", err)
+	}
+
+	tr := &TrendResult{
+		RecentDays:   days,
+		RecentCost:   rc,
+		RecentTokens: rt,
+		PriorCost:    pc,
+		PriorTokens:  pt,
+	}
+
+	// Cost change %
+	if pc > 0 {
+		tr.CostChangeP = ((rc - pc) / pc) * 100
+	}
+	// Token change %
+	if pt > 0 {
+		tr.TokenChangeP = ((float64(rt) - float64(pt)) / float64(pt)) * 100
+	}
+
+	// Daily averages
+	if rn > 0 {
+		tr.DailyAvgRecent = rc / float64(rn)
+	}
+	if pn > 0 {
+		tr.DailyAvgPrior = pc / float64(pn)
+	}
+
+	// Anomaly score: 0-1 based on how much recent deviates from prior
+	// Simple ratio-based: if recent is 2x+ prior, score approaches 1.0
+	if tr.DailyAvgPrior > 0 {
+		ratio := tr.DailyAvgRecent / tr.DailyAvgPrior
+		if ratio > 1 {
+			tr.AnomalyScore = 1 - (1 / ratio) // 2x→0.5, 3x→0.67, 5x→0.8, 10x→0.9
+		}
+	} else if tr.DailyAvgRecent > 0 {
+		tr.AnomalyScore = 1.0 // spending appeared from nothing — max anomaly
+	}
+
+	return tr, nil
 }
