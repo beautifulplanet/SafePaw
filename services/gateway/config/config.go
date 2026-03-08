@@ -54,10 +54,10 @@ type Config struct {
 	RedisPassword string
 
 	// Cost monitoring — OpenClaw usage collector
-	OpenClawWSURL         string  // WebSocket endpoint for OpenClaw control plane
-	OpenClawGatewayToken  string  // Auth token for OpenClaw WS API
-	CostAlertDailyWarn    float64 // Daily cost warning threshold (USD)
-	CostAlertDailyCrit    float64 // Daily cost critical threshold (USD)
+	OpenClawWSURL        string  // WebSocket endpoint for OpenClaw control plane
+	OpenClawGatewayToken string  // Auth token for OpenClaw WS API
+	CostAlertDailyWarn   float64 // Daily cost warning threshold (USD)
+	CostAlertDailyCrit   float64 // Daily cost critical threshold (USD)
 }
 
 // Load reads config from environment variables with safe defaults.
