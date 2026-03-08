@@ -1,7 +1,7 @@
 # SafePaw — Threat Model (STRIDE)
 
-> **Version**: 1.0  
-> **Last reviewed**: 2026-02-28  
+> **Version**: 1.1  
+> **Last reviewed**: 2026-03-08  
 > **Methodology**: [Microsoft STRIDE](https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats)  
 > **Scope**: SafePaw Gateway + Wizard + OpenClaw orchestration
 
@@ -132,15 +132,21 @@ WebSocket streams are scanned in real-time via `ScanningReader`.
 
 ---
 
-## 4. Residual Risks
+## 4. Residual Risks & Known Gaps
 
-| Risk | Severity | Mitigation Path |
-|------|----------|----------------|
-| Prompt injection is heuristic (bypassable by novel techniques) | Medium | Upgrade to ML-based classifier when available |
-| In-memory state (bans, revocations, rate limits) lost on restart | Low | Acceptable for single-node; use Redis for multi-node |
-| Output scanner uses regex (can be evaded with encoding) | Medium | Add encoding-aware scanning (base64, unicode) |
-| No MFA for Wizard admin | Low | **Mitigated:** Optional TOTP (WIZARD_TOTP_SECRET); set in .env for production |
-| Docker socket access grants container management | Medium | Use Docker API proxy with RBAC for fine-grained control |
+> **Last updated**: 2026-03-08 (post security-gap review)
+
+| # | Risk | Severity | Status | Notes |
+|---|------|----------|--------|-------|
+| G1 | Prompt injection is heuristic (bypassable by novel techniques) | Medium | **Open** | Regex + heuristic only. Upgrade to ML-based classifier when available. Accepts residual bypass risk. |
+| G2 | Output scanner encoding evasion | Medium | **Mitigated** | Added 2-round nested base64 decode + fullwidth unicode normalization (U+FF01–U+FF5E → ASCII). Scan-raw-first optimization skips expensive path when raw scan already triggers. |
+| G3 | WebSocket size limits | Low | **Mitigated** | `io.LimitReader` caps client→backend at 100MB total connection bytes. Backend→client scanned by `ScanningReader`. |
+| G4 | Unicode confusable character evasion (e.g. ꜱ U+A731 for 's', Cyrillic а U+0430 for 'a') | Low | **Accepted** | Full ICU confusable mapping would require large tables and risks false positives on legitimate multilingual content. Documented as residual risk. |
+| G5 | In-memory state (bans, revocations, rate limits) lost on restart | Low | **Accepted** | Acceptable for single-node deployment; use Redis for multi-node. |
+| G6 | No MFA for Wizard admin | Low | **Mitigated** | Optional TOTP via `WIZARD_TOTP_SECRET` env var. |
+| G7 | Docker socket access grants container management | Medium | **Mitigated** | Replaced raw socket with tecnativa/docker-socket-proxy (read-only, allowlisted endpoints). |
+| G8 | No request/response logging of full bodies | Low | **Accepted** | Logging full bodies would store PII/secrets. Structured metadata logging (request ID, risk score, path) considered sufficient. |
+| G9 | Supply chain: govulncheck not in CI | Low | **Open** | Tracked in GitHub issue. Add `govulncheck ./...` to CI when stable in Go toolchain. |
 
 ---
 
