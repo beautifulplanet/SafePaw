@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, type ServiceInfo, type StatusResponse, type GatewayMetrics } from '../api'
+import { api, type ServiceInfo, type StatusResponse, type GatewayMetrics, type UsageResponse } from '../api'
 
 const POLL_INTERVAL = 5000 // ms
 
@@ -12,10 +12,12 @@ interface DashboardProps {
 export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
   const [data, setData] = useState<StatusResponse | null>(null)
   const [metrics, setMetrics] = useState<GatewayMetrics | null>(null)
+  const [usage, setUsage] = useState<UsageResponse | null>(null)
   const [error, setError] = useState('')
   const [restarting, setRestarting] = useState<string | null>(null)
   const [openingAssistant, setOpeningAssistant] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
+  const usageIntervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -33,6 +35,15 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
       setMetrics(res)
     } catch {
       // Metrics are non-critical, don't show error
+    }
+  }, [])
+
+  const fetchUsage = useCallback(async () => {
+    try {
+      const res = await api.gatewayUsage()
+      setUsage(res)
+    } catch {
+      // Usage is non-critical, don't show error
     }
   }, [])
 
@@ -65,12 +76,19 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
   useEffect(() => {
     void fetchStatus()
     void fetchMetrics()
+    void fetchUsage()
     intervalRef.current = setInterval(() => {
       void fetchStatus()
       void fetchMetrics()
     }, POLL_INTERVAL)
-    return () => clearInterval(intervalRef.current)
-  }, [fetchStatus, fetchMetrics])
+    usageIntervalRef.current = setInterval(() => {
+      void fetchUsage()
+    }, 60000)
+    return () => {
+      clearInterval(intervalRef.current)
+      clearInterval(usageIntervalRef.current)
+    }
+  }, [fetchStatus, fetchMetrics, fetchUsage])
 
   return (
     <div>
@@ -112,6 +130,9 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
           <StatCard label="Threats Stopped" value={metrics.injections_found + metrics.rate_limited} warn={metrics.injections_found > 0} hint="Malicious messages caught and blocked" />
         </div>
       )}
+
+      {/* LLM Usage & Cost */}
+      {usage && usage.status === 'ok' && <CostPanel usage={usage} />}
 
       {!data ? (
         // Loading skeleton
@@ -311,4 +332,111 @@ function getHealthColor(health: string): string {
     case 'starting': return 'text-yellow-400'
     default: return 'text-gray-400'
   }
+}
+
+// ─── Cost Panel ──────────────────────────────────────────────
+
+function costColor(usd: number): string {
+  if (usd >= 10) return 'text-red-400'
+  if (usd >= 1) return 'text-yellow-400'
+  return 'text-green-400'
+}
+
+function costBarColor(usd: number): string {
+  if (usd >= 10) return 'bg-red-500'
+  if (usd >= 1) return 'bg-yellow-500'
+  return 'bg-green-500'
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
+function CostPanel({ usage }: { usage: UsageResponse }) {
+  const todayCost = usage.todayCostUsd ?? 0
+  const periodCost = usage.periodCostUsd ?? 0
+  const totals = usage.totals
+  const daily = usage.daily ?? []
+
+  // Find max daily cost for bar scaling
+  const maxDailyCost = daily.reduce((max, d) => Math.max(max, d.totalCost), 0.01)
+
+  return (
+    <div className="card mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-lg">💰 LLM Usage & Cost</h3>
+        {usage.alert && usage.alert !== 'ok' && (
+          <span className={`text-xs px-2 py-0.5 rounded-full border ${
+            usage.alert === 'critical'
+              ? 'border-red-500/30 bg-red-500/10 text-red-400'
+              : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400'
+          }`}>
+            {usage.alert === 'critical' ? '🔴 High Spend' : '🟡 Elevated'}
+          </span>
+        )}
+      </div>
+
+      {/* Cost summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Today</p>
+          <p className={`text-xl font-bold tabular-nums ${costColor(todayCost)}`}>
+            ${todayCost.toFixed(2)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 mb-1">30-Day Total</p>
+          <p className="text-xl font-bold tabular-nums text-gray-100">
+            ${periodCost.toFixed(2)}
+          </p>
+        </div>
+        {totals && (
+          <>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Tokens In</p>
+              <p className="text-xl font-bold tabular-nums text-gray-100">
+                {formatTokens(totals.input)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Tokens Out</p>
+              <p className="text-xl font-bold tabular-nums text-gray-100">
+                {formatTokens(totals.output)}
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Token breakdown */}
+      {totals && (totals.cacheRead > 0 || totals.cacheWrite > 0) && (
+        <div className="flex gap-4 mb-6 text-xs text-gray-500">
+          <span>Cache Read: {formatTokens(totals.cacheRead)}</span>
+          <span>Cache Write: {formatTokens(totals.cacheWrite)}</span>
+        </div>
+      )}
+
+      {/* Daily cost bars */}
+      {daily.length > 0 && (
+        <div>
+          <p className="text-xs text-gray-500 mb-2">Daily Cost (last {daily.length} days)</p>
+          <div className="flex items-end gap-px h-16">
+            {daily.slice(-30).map((d) => {
+              const pct = Math.max((d.totalCost / maxDailyCost) * 100, 2)
+              return (
+                <div
+                  key={d.date}
+                  className={`flex-1 rounded-t-sm ${costBarColor(d.totalCost)} opacity-80 hover:opacity-100 transition-opacity`}
+                  style={{ height: `${pct}%` }}
+                  title={`${d.date}: $${d.totalCost.toFixed(2)}`}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
