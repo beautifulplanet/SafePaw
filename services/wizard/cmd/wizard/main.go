@@ -27,6 +27,7 @@ import (
 
 	"safepaw/wizard/internal/api"
 	"safepaw/wizard/internal/config"
+	"safepaw/wizard/internal/costhistory"
 	"safepaw/wizard/internal/docker"
 	"safepaw/wizard/internal/middleware"
 )
@@ -42,6 +43,33 @@ func main() {
 
 	// ── Step 2: Initialize Docker client ──
 	dc := docker.New(cfg.DockerHost, "safepaw")
+
+	// ── Step 2b: Initialize cost history persistence (optional) ──
+	var costPoller *costhistory.Poller
+	if cfg.PostgresHost != "" && cfg.PostgresUser != "" && cfg.PostgresPassword != "" {
+		store, err := costhistory.NewStore(costhistory.StoreConfig{
+			Host:     cfg.PostgresHost,
+			Port:     cfg.PostgresPort,
+			User:     cfg.PostgresUser,
+			Password: cfg.PostgresPassword,
+			DBName:   cfg.PostgresDB,
+		})
+		if err != nil {
+			log.Printf("[WARN] Cost history disabled — Postgres unavailable: %v", err)
+		} else {
+			envReader := func() (map[string]string, error) {
+				return api.ReadEnvFile(cfg.EnvFilePath)
+			}
+			costPoller = costhistory.NewPoller(costhistory.PollerConfig{
+				Store:      store,
+				GatewayURL: cfg.GatewayURL,
+				EnvReader:  envReader,
+				Interval:   5 * time.Minute,
+			})
+		}
+	} else {
+		log.Println("[INFO] Cost history disabled (POSTGRES_HOST/USER/PASSWORD not set)")
+	}
 
 	// ── Step 3: Initialize API handler ──
 	handler, err := api.NewHandler(cfg, dc)
@@ -107,5 +135,8 @@ func main() {
 	}
 
 	handler.Close()
+	if costPoller != nil {
+		costPoller.Stop()
+	}
 	log.Println("[INFO] Wizard stopped")
 }

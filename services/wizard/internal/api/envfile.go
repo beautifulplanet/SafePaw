@@ -22,9 +22,9 @@ var secretKeys = map[string]bool{
 	"SLACK_APP_TOKEN": true,
 }
 
-// readEnvFile reads path and returns a map of key -> value.
+// ReadEnvFile reads path and returns a map of key -> value.
 // Comment lines and empty lines are skipped. Invalid lines are skipped.
-func readEnvFile(path string) (map[string]string, error) {
+func ReadEnvFile(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is from internal config, not user input
 	if err != nil {
 		return nil, err

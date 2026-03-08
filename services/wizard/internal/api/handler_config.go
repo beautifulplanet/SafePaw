@@ -62,7 +62,7 @@ var systemProfiles = map[string]map[string]string{
 }
 
 func (h *Handler) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	env, err := readEnvFile(h.cfg.EnvFilePath)
+	env, err := ReadEnvFile(h.cfg.EnvFilePath)
 	if err != nil {
 		log.Printf("[WARN] Config read failed: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{"failed to read config"})
