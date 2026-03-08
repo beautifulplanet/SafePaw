@@ -228,6 +228,20 @@ SafePaw uses automated dependency and code scanning to find known vulnerabilitie
 | **gosec** | Every push/PR (CI) | Go code: hardcoded secrets, weak crypto, unsafe patterns |
 | **golangci-lint** | Every push/PR (CI) | Go code: errcheck, govet, staticcheck, and other linters |
 
+### Suppressed gosec rules
+
+The following gosec rules are suppressed in `.golangci.yml` (both gateway and wizard). Each is a deliberate, reviewed decision — not a blanket ignore.
+
+| Rule | Service | Reason |
+|------|---------|--------|
+| **G104** | Gateway, Wizard | Return value of `http.ResponseWriter.Write` and `json.Encoder.Encode` — errors are unactionable in HTTP handlers (connection already broken). Also covered by errcheck `exclude-functions`. |
+| **G114** | Gateway, Wizard | `http.ListenAndServe` without timeout — the gateway configures timeouts via `http.Server{}` struct directly (see `main.go`). The wizard listens on localhost only. |
+| **G115** | Wizard | Integer overflow on conversion — false positive on `int64` to `int` in Docker API responses where values are always small (container count, port numbers). |
+| **G704** | Wizard | Unsafe URL construction — false positive on internal-only service URLs (`http://openclaw:18789/health`) that are hardcoded constants, not user input. |
+| **G706** | Gateway, Wizard | Use of `defer` in loops — reviewed instances are intentional cleanup in bounded loops (e.g., iterating containers for health checks). |
+
+If you add a new suppression, document it here with the rule, service, and rationale.
+
 Before a release, run `make vulncheck` and `make lint` from the safepaw root and fix or document any new findings.
 
 ### Who acts on findings

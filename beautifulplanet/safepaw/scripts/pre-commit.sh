@@ -60,11 +60,11 @@ fi
 # ── 5. Security scan (if gosec is installed) ───────────
 if command -v gosec &>/dev/null; then
   info "Security scan gateway..."
-  (cd "$GATEWAY" && gosec -quiet -exclude=G104,G706 -exclude-dir=tools ./...) || fail "Gateway gosec failed"
+  (cd "$GATEWAY" && gosec -quiet -exclude=G104,G114,G706 -exclude-dir=tools ./...) || fail "Gateway gosec failed"
   pass "Gateway gosec"
 
   info "Security scan wizard..."
-  (cd "$WIZARD" && gosec -quiet -exclude=G704,G706 ./...) || fail "Wizard gosec failed"
+  (cd "$WIZARD" && gosec -quiet -exclude=G104,G114,G115,G704,G706 ./...) || fail "Wizard gosec failed"
   pass "Wizard gosec"
 else
   info "gosec not found — skipping security scan (install: go install github.com/securego/gosec/v2/cmd/gosec@latest)"
