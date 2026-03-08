@@ -33,6 +33,17 @@ import (
 	"time"
 )
 
+// CostSnapshot holds LLM cost data for Prometheus rendering.
+// Populated by a callback from the UsageCollector in main.
+type CostSnapshot struct {
+	TotalCostUSD     float64
+	TodayCostUSD     float64
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+}
+
 // Metrics collects gateway telemetry in a thread-safe manner.
 type Metrics struct {
 	mu sync.RWMutex
@@ -47,6 +58,9 @@ type Metrics struct {
 	// Duration histogram buckets (seconds)
 	durationBuckets []float64
 	durations       map[string]*histogram // "method:path" → histogram
+
+	// Optional callback to get LLM cost data for /metrics
+	CostSnapshotFn func() *CostSnapshot
 }
 
 type histogram struct {
@@ -237,6 +251,26 @@ func (m *Metrics) Handler() http.Handler {
 			h.mu.Unlock()
 		}
 		m.mu.RUnlock()
+
+		// LLM cost metrics (from UsageCollector, if configured)
+		if m.CostSnapshotFn != nil {
+			if cs := m.CostSnapshotFn(); cs != nil {
+				b.WriteString("# HELP safepaw_llm_cost_dollars_total Total LLM cost in USD (30-day period).\n")
+				b.WriteString("# TYPE safepaw_llm_cost_dollars_total gauge\n")
+				fmt.Fprintf(&b, "safepaw_llm_cost_dollars_total %f\n", cs.TotalCostUSD)
+
+				b.WriteString("# HELP safepaw_llm_cost_today_dollars Today's LLM cost in USD.\n")
+				b.WriteString("# TYPE safepaw_llm_cost_today_dollars gauge\n")
+				fmt.Fprintf(&b, "safepaw_llm_cost_today_dollars %f\n", cs.TodayCostUSD)
+
+				b.WriteString("# HELP safepaw_llm_tokens_total LLM token count by type.\n")
+				b.WriteString("# TYPE safepaw_llm_tokens_total gauge\n")
+				fmt.Fprintf(&b, "safepaw_llm_tokens_total{type=\"input\"} %d\n", cs.InputTokens)
+				fmt.Fprintf(&b, "safepaw_llm_tokens_total{type=\"output\"} %d\n", cs.OutputTokens)
+				fmt.Fprintf(&b, "safepaw_llm_tokens_total{type=\"cache_read\"} %d\n", cs.CacheReadTokens)
+				fmt.Fprintf(&b, "safepaw_llm_tokens_total{type=\"cache_write\"} %d\n", cs.CacheWriteTokens)
+			}
+		}
 
 		w.Write([]byte(b.String()))
 	})
