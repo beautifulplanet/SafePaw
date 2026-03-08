@@ -410,8 +410,8 @@ func TestProcessSessionsUsageResponse_Success(t *testing.T) {
 				{"date": "2026-03-07", "tokens": 50000, "cost": 5.0, "messages": 20, "toolCalls": 10, "errors": 0},
 				{"date": "2026-03-08", "tokens": 60000, "cost": 6.0, "messages": 25, "toolCalls": 15, "errors": 1},
 			},
-			"messages":   map[string]interface{}{"total": 200, "user": 80, "assistant": 80, "toolCalls": 30, "toolResults": 10, "errors": 0},
-			"tools":      map[string]interface{}{"totalCalls": 30, "uniqueTools": 3, "tools": []map[string]interface{}{{"name": "read_file", "count": 15}, {"name": "write_file", "count": 10}, {"name": "search", "count": 5}}},
+			"messages": map[string]interface{}{"total": 200, "user": 80, "assistant": 80, "toolCalls": 30, "toolResults": 10, "errors": 0},
+			"tools":    map[string]interface{}{"totalCalls": 30, "uniqueTools": 3, "tools": []map[string]interface{}{{"name": "read_file", "count": 15}, {"name": "write_file", "count": 10}, {"name": "search", "count": 5}}},
 		},
 	})
 
@@ -503,11 +503,11 @@ func TestProcessSessionsUsageResponse_EmptyAggregates(t *testing.T) {
 	defer uc.Stop()
 
 	payload, _ := json.Marshal(map[string]interface{}{
-		"updatedAt":  float64(time.Now().UnixMilli()),
-		"startDate":  "2026-03-08",
-		"endDate":    "2026-03-08",
-		"sessions":   []interface{}{},
-		"totals":     map[string]interface{}{"totalCost": 0.0, "totalTokens": 0},
+		"updatedAt": float64(time.Now().UnixMilli()),
+		"startDate": "2026-03-08",
+		"endDate":   "2026-03-08",
+		"sessions":  []interface{}{},
+		"totals":    map[string]interface{}{"totalCost": 0.0, "totalTokens": 0},
 		"aggregates": map[string]interface{}{
 			"messages": map[string]interface{}{"total": 0},
 			"tools":    map[string]interface{}{"totalCalls": 0, "uniqueTools": 0},
@@ -547,11 +547,11 @@ func TestProcessSessionsUsageResponse_NilDailyAndTools(t *testing.T) {
 
 	// Aggregates with NO daily, NO tools.tools — test nil guard paths
 	payload, _ := json.Marshal(map[string]interface{}{
-		"updatedAt":  float64(time.Now().UnixMilli()),
-		"startDate":  "2026-03-08",
-		"endDate":    "2026-03-08",
-		"sessions":   []interface{}{},
-		"totals":     map[string]interface{}{"totalCost": 0.0},
+		"updatedAt": float64(time.Now().UnixMilli()),
+		"startDate": "2026-03-08",
+		"endDate":   "2026-03-08",
+		"sessions":  []interface{}{},
+		"totals":    map[string]interface{}{"totalCost": 0.0},
 		"aggregates": map[string]interface{}{
 			"messages": map[string]interface{}{"total": 0},
 			"tools":    map[string]interface{}{"totalCalls": 0, "uniqueTools": 0},
@@ -1040,9 +1040,12 @@ func TestUsageCollector_ReadFrame(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	conn, resp, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
+	}
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
 	}
 	defer conn.CloseNow() //nolint:errcheck
 
@@ -1081,9 +1084,12 @@ func TestUsageCollector_WriteFrame(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	conn, resp, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
+	}
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
 	}
 	defer conn.CloseNow() //nolint:errcheck
 

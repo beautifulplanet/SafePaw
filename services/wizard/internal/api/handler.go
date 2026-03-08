@@ -17,6 +17,9 @@
 //   GET  /api/v1/gateway/metrics — Proxy Prometheus metrics from gateway
 //   GET  /api/v1/gateway/activity — Parsed gateway activity summary
 //   GET  /api/v1/gateway/usage   — Proxy OpenClaw cost/usage data from gateway
+//   GET  /api/v1/cost/history    — Historical daily cost snapshots from Postgres
+//   GET  /api/v1/cost/models     — Per-model cost breakdown from Postgres
+//   GET  /api/v1/cost/trends     — Trend analysis (recent vs prior period)
 // =============================================================
 
 package api
@@ -43,6 +46,7 @@ import (
 
 	"safepaw/wizard/internal/audit"
 	"safepaw/wizard/internal/config"
+	"safepaw/wizard/internal/costhistory"
 	"safepaw/wizard/internal/docker"
 	"safepaw/wizard/internal/middleware"
 	"safepaw/wizard/internal/session"
@@ -53,15 +57,22 @@ import (
 // Handler holds all API dependencies.
 // sessionGen is bumped when admin password or TOTP secret is changed via PUT /config so existing sessions are invalidated.
 type Handler struct {
-	cfg        *config.Config
-	docker     *docker.Client
-	audit      *audit.Logger
-	sessionGen atomic.Uint64
+	cfg         *config.Config
+	docker      *docker.Client
+	audit       *audit.Logger
+	sessionGen  atomic.Uint64
+	costQuerier costhistory.Querier // nil when Postgres unavailable
 }
 
 // NewHandler creates a new API handler.
 func NewHandler(cfg *config.Config, dc *docker.Client) (*Handler, error) {
 	return &Handler{cfg: cfg, docker: dc, audit: audit.New()}, nil
+}
+
+// SetCostQuerier sets the cost history query interface.
+// Call after NewHandler when Postgres is available.
+func (h *Handler) SetCostQuerier(q costhistory.Querier) {
+	h.costQuerier = q
 }
 
 // Close cleans up resources.
@@ -150,6 +161,9 @@ func (h *Handler) Router() http.Handler {
 	mux.HandleFunc("GET /api/v1/gateway/metrics", middleware.RequireRole(anyRole, h.handleGatewayMetrics))
 	mux.HandleFunc("GET /api/v1/gateway/activity", middleware.RequireRole(anyRole, h.handleGatewayActivity))
 	mux.HandleFunc("GET /api/v1/gateway/usage", middleware.RequireRole(anyRole, h.handleGatewayUsage))
+	mux.HandleFunc("GET /api/v1/cost/history", middleware.RequireRole(anyRole, h.handleCostHistory))
+	mux.HandleFunc("GET /api/v1/cost/models", middleware.RequireRole(anyRole, h.handleCostModels))
+	mux.HandleFunc("GET /api/v1/cost/trends", middleware.RequireRole(anyRole, h.handleCostTrends))
 
 	// ── SPA Fallback ──
 	// Serve React app for all non-API routes

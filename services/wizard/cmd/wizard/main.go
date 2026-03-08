@@ -46,8 +46,9 @@ func main() {
 
 	// ── Step 2b: Initialize cost history persistence (optional) ──
 	var costPoller *costhistory.Poller
+	var costStore *costhistory.Store
 	if cfg.PostgresHost != "" && cfg.PostgresUser != "" && cfg.PostgresPassword != "" {
-		store, err := costhistory.NewStore(costhistory.StoreConfig{
+		s, err := costhistory.NewStore(costhistory.StoreConfig{
 			Host:     cfg.PostgresHost,
 			Port:     cfg.PostgresPort,
 			User:     cfg.PostgresUser,
@@ -57,11 +58,12 @@ func main() {
 		if err != nil {
 			log.Printf("[WARN] Cost history disabled — Postgres unavailable: %v", err)
 		} else {
+			costStore = s
 			envReader := func() (map[string]string, error) {
 				return api.ReadEnvFile(cfg.EnvFilePath)
 			}
 			costPoller = costhistory.NewPoller(costhistory.PollerConfig{
-				Store:      store,
+				Store:      costStore,
 				GatewayURL: cfg.GatewayURL,
 				EnvReader:  envReader,
 				Interval:   5 * time.Minute,
@@ -75,6 +77,9 @@ func main() {
 	handler, err := api.NewHandler(cfg, dc)
 	if err != nil {
 		log.Fatalf("[FATAL] Failed to initialize API: %v", err)
+	}
+	if costStore != nil {
+		handler.SetCostQuerier(costStore)
 	}
 
 	// ── Step 4: Build middleware chain ──

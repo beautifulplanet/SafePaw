@@ -105,15 +105,15 @@ type UsageResponse struct {
 
 // SessionsUsageData holds parsed sessions.usage aggregates.
 type SessionsUsageData struct {
-	UpdatedAt  time.Time            `json:"updatedAt"`
-	StartDate  string               `json:"startDate"`
-	EndDate    string               `json:"endDate"`
-	ByModel    []ModelUsageEntry    `json:"byModel"`
-	ByProvider []ModelUsageEntry    `json:"byProvider"`
-	Daily      []SessionDailyEntry  `json:"daily"`
-	ModelDaily []ModelDailyEntry    `json:"modelDaily,omitempty"`
-	Messages   MessageCounts        `json:"messages"`
-	Tools      ToolUsage            `json:"tools"`
+	UpdatedAt  time.Time           `json:"updatedAt"`
+	StartDate  string              `json:"startDate"`
+	EndDate    string              `json:"endDate"`
+	ByModel    []ModelUsageEntry   `json:"byModel"`
+	ByProvider []ModelUsageEntry   `json:"byProvider"`
+	Daily      []SessionDailyEntry `json:"daily"`
+	ModelDaily []ModelDailyEntry   `json:"modelDaily,omitempty"`
+	Messages   MessageCounts       `json:"messages"`
+	Tools      ToolUsage           `json:"tools"`
 }
 
 // ModelUsageEntry represents per-model or per-provider cost breakdown.
@@ -560,7 +560,7 @@ func (uc *UsageCollector) fetchUsage(conn *websocket.Conn) error {
 	// Read frames until we get both responses (skip events)
 	gotCost, gotSess := false, false
 	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) && !(gotCost && gotSess) {
+	for time.Now().Before(deadline) && (!gotCost || !gotSess) {
 		frame, err := uc.readFrame(conn)
 		if err != nil {
 			return fmt.Errorf("read usage response: %w", err)
