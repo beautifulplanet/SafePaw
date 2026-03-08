@@ -3,13 +3,14 @@
 // =============================================================
 // WebSocket client that connects to OpenClaw's control plane,
 // authenticates with a shared gateway token, and periodically
-// polls usage.cost to build a cost summary for the dashboard.
+// polls usage.cost and sessions.usage to build cost summaries
+// with per-model breakdowns for the dashboard.
 //
 // Protocol: OpenClaw WS v3 (JSON frames)
 //   1. Open WS to openclaw:18789
 //   2. Receive connect.challenge event (nonce)
 //   3. Send connect request with token auth
-//   4. Send usage.cost request every pollInterval
+//   4. Send usage.cost + sessions.usage every pollInterval
 //   5. Handle tick keepalives; reconnect on failure
 // =============================================================
 
@@ -35,10 +36,11 @@ type UsageCollector struct {
 	critUSD  float64
 	interval time.Duration
 
-	mu     sync.RWMutex
-	data   *CostUsageSummary
-	status CollectorStatus
-	lastOK time.Time
+	mu           sync.RWMutex
+	data         *CostUsageSummary
+	sessionsData *SessionsUsageData
+	status       CollectorStatus
+	lastOK       time.Time
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -97,6 +99,72 @@ type UsageResponse struct {
 	Days       int                   `json:"days"`
 	Daily      []CostUsageDailyEntry `json:"daily,omitempty"`
 	Totals     *CostUsageTotals      `json:"totals,omitempty"`
+	Models     []ModelUsageEntry     `json:"models,omitempty"`
+	Sessions   *SessionsUsageData    `json:"sessions,omitempty"`
+}
+
+// SessionsUsageData holds parsed sessions.usage aggregates.
+type SessionsUsageData struct {
+	UpdatedAt  time.Time            `json:"updatedAt"`
+	StartDate  string               `json:"startDate"`
+	EndDate    string               `json:"endDate"`
+	ByModel    []ModelUsageEntry    `json:"byModel"`
+	ByProvider []ModelUsageEntry    `json:"byProvider"`
+	Daily      []SessionDailyEntry  `json:"daily"`
+	ModelDaily []ModelDailyEntry    `json:"modelDaily,omitempty"`
+	Messages   MessageCounts        `json:"messages"`
+	Tools      ToolUsage            `json:"tools"`
+}
+
+// ModelUsageEntry represents per-model or per-provider cost breakdown.
+type ModelUsageEntry struct {
+	Provider string          `json:"provider,omitempty"`
+	Model    string          `json:"model,omitempty"`
+	Count    int             `json:"count"`
+	Totals   CostUsageTotals `json:"totals"`
+}
+
+// SessionDailyEntry is a daily aggregate from sessions.usage.
+type SessionDailyEntry struct {
+	Date      string  `json:"date"`
+	Tokens    int64   `json:"tokens"`
+	Cost      float64 `json:"cost"`
+	Messages  int     `json:"messages"`
+	ToolCalls int     `json:"toolCalls"`
+	Errors    int     `json:"errors"`
+}
+
+// ModelDailyEntry is a per-model-per-day breakdown from sessions.usage.
+type ModelDailyEntry struct {
+	Date     string  `json:"date"`
+	Provider string  `json:"provider,omitempty"`
+	Model    string  `json:"model,omitempty"`
+	Tokens   int64   `json:"tokens"`
+	Cost     float64 `json:"cost"`
+	Count    int     `json:"count"`
+}
+
+// MessageCounts holds message count breakdown.
+type MessageCounts struct {
+	Total       int `json:"total"`
+	User        int `json:"user"`
+	Assistant   int `json:"assistant"`
+	ToolCalls   int `json:"toolCalls"`
+	ToolResults int `json:"toolResults"`
+	Errors      int `json:"errors"`
+}
+
+// ToolUsage holds tool usage data.
+type ToolUsage struct {
+	TotalCalls  int         `json:"totalCalls"`
+	UniqueTools int         `json:"uniqueTools"`
+	Tools       []ToolEntry `json:"tools"`
+}
+
+// ToolEntry is an individual tool's usage count.
+type ToolEntry struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 // WS protocol frame types
@@ -205,6 +273,12 @@ func (uc *UsageCollector) Snapshot() UsageResponse {
 		resp.Alert = "warning"
 	default:
 		resp.Alert = "ok"
+	}
+
+	// Attach sessions data (model breakdown etc.)
+	if uc.sessionsData != nil {
+		resp.Models = uc.sessionsData.ByModel
+		resp.Sessions = uc.sessionsData
 	}
 
 	return resp
@@ -376,6 +450,7 @@ func (uc *UsageCollector) pollLoop(conn *websocket.Conn) error {
 			// tick events are ignored (they just keep the connection alive)
 
 		case <-ticker.C:
+			// Send usage.cost
 			reqID := uuid.NewString()
 			req := wsRequest{
 				Type:   "req",
@@ -408,37 +483,111 @@ func (uc *UsageCollector) pollLoop(conn *websocket.Conn) error {
 				conn.Close(websocket.StatusNormalClosure, "shutdown")
 				return nil
 			}
+
+			// Send sessions.usage
+			startDate, endDate := sessionsUsageDateRange()
+			sessID := uuid.NewString()
+			sessReq := wsRequest{
+				Type:   "req",
+				ID:     sessID,
+				Method: "sessions.usage",
+				Params: map[string]interface{}{
+					"startDate": startDate,
+					"endDate":   endDate,
+					"limit":     1,
+				},
+			}
+
+			sessCh := make(chan wsResponse, 1)
+			pendingMu.Lock()
+			pending[sessID] = sessCh
+			pendingMu.Unlock()
+
+			if err := uc.writeFrame(conn, sessReq); err != nil {
+				return fmt.Errorf("write sessions.usage: %w", err)
+			}
+
+			select {
+			case resp := <-sessCh:
+				if err := uc.processSessionsUsageResponse(resp); err != nil {
+					log.Printf("[COST] Failed to process sessions.usage: %v", err)
+				}
+			case <-time.After(15 * time.Second):
+				log.Println("[COST] sessions.usage request timed out")
+				pendingMu.Lock()
+				delete(pending, sessID)
+				pendingMu.Unlock()
+			case <-uc.ctx.Done():
+				conn.Close(websocket.StatusNormalClosure, "shutdown")
+				return nil
+			}
 		}
 	}
 }
 
-// fetchUsage sends a single usage.cost request and blocks until it gets a response.
+// fetchUsage sends usage.cost + sessions.usage requests and blocks until
+// both responses are received.
 func (uc *UsageCollector) fetchUsage(conn *websocket.Conn) error {
-	reqID := uuid.NewString()
-	req := wsRequest{
+	// Send usage.cost
+	costID := uuid.NewString()
+	costReq := wsRequest{
 		Type:   "req",
-		ID:     reqID,
+		ID:     costID,
 		Method: "usage.cost",
 		Params: map[string]interface{}{"days": 30},
 	}
-
-	if err := uc.writeFrame(conn, req); err != nil {
+	if err := uc.writeFrame(conn, costReq); err != nil {
 		return fmt.Errorf("write usage.cost: %w", err)
 	}
 
-	// Read frames until we get our response (skip events)
+	// Send sessions.usage
+	startDate, endDate := sessionsUsageDateRange()
+	sessID := uuid.NewString()
+	sessReq := wsRequest{
+		Type:   "req",
+		ID:     sessID,
+		Method: "sessions.usage",
+		Params: map[string]interface{}{
+			"startDate": startDate,
+			"endDate":   endDate,
+			"limit":     1,
+		},
+	}
+	if err := uc.writeFrame(conn, sessReq); err != nil {
+		return fmt.Errorf("write sessions.usage: %w", err)
+	}
+
+	// Read frames until we get both responses (skip events)
+	gotCost, gotSess := false, false
 	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
+	for time.Now().Before(deadline) && !(gotCost && gotSess) {
 		frame, err := uc.readFrame(conn)
 		if err != nil {
 			return fmt.Errorf("read usage response: %w", err)
 		}
-		if frame.Type == "res" && frame.ID == reqID {
-			return uc.processUsageResponse(frame)
+		if frame.Type != "res" {
+			continue // skip events
 		}
-		// Skip events (tick, etc.)
+		switch frame.ID {
+		case costID:
+			if err := uc.processUsageResponse(frame); err != nil {
+				return err
+			}
+			gotCost = true
+		case sessID:
+			if err := uc.processSessionsUsageResponse(frame); err != nil {
+				log.Printf("[COST] Failed to process sessions.usage: %v", err)
+			}
+			gotSess = true
+		}
 	}
-	return fmt.Errorf("usage.cost response timed out")
+	if !gotCost {
+		return fmt.Errorf("usage.cost response timed out")
+	}
+	if !gotSess {
+		log.Println("[COST] sessions.usage response timed out (non-fatal)")
+	}
+	return nil
 }
 
 // processUsageResponse parses the usage.cost response and updates the cache.
@@ -490,6 +639,77 @@ func (uc *UsageCollector) processUsageResponse(resp wsResponse) error {
 		log.Printf("[COST] WARNING: today's cost $%.2f exceeds warning threshold $%.2f", todayCost, uc.warnUSD)
 	}
 
+	return nil
+}
+
+// sessionsUsageDateRange returns the start/end dates for sessions.usage requests
+// (30-day rolling window matching usage.cost).
+func sessionsUsageDateRange() (string, string) {
+	now := time.Now().UTC()
+	start := now.AddDate(0, 0, -29).Format("2006-01-02")
+	end := now.Format("2006-01-02")
+	return start, end
+}
+
+// processSessionsUsageResponse parses the sessions.usage response and updates the cache.
+func (uc *UsageCollector) processSessionsUsageResponse(resp wsResponse) error {
+	if !resp.OK {
+		errMsg := "unknown"
+		if resp.Error != nil {
+			errMsg = resp.Error.Message
+		}
+		return fmt.Errorf("sessions.usage error: %s", errMsg)
+	}
+
+	var raw struct {
+		UpdatedAt  float64 `json:"updatedAt"`
+		StartDate  string  `json:"startDate"`
+		EndDate    string  `json:"endDate"`
+		Aggregates struct {
+			ByModel    []ModelUsageEntry   `json:"byModel"`
+			ByProvider []ModelUsageEntry   `json:"byProvider"`
+			Daily      []SessionDailyEntry `json:"daily"`
+			ModelDaily []ModelDailyEntry   `json:"modelDaily"`
+			Messages   MessageCounts       `json:"messages"`
+			Tools      ToolUsage           `json:"tools"`
+		} `json:"aggregates"`
+	}
+	if err := json.Unmarshal(resp.Payload, &raw); err != nil {
+		return fmt.Errorf("unmarshal sessions.usage: %w", err)
+	}
+
+	data := &SessionsUsageData{
+		UpdatedAt:  time.UnixMilli(int64(raw.UpdatedAt)),
+		StartDate:  raw.StartDate,
+		EndDate:    raw.EndDate,
+		ByModel:    raw.Aggregates.ByModel,
+		ByProvider: raw.Aggregates.ByProvider,
+		Daily:      raw.Aggregates.Daily,
+		ModelDaily: raw.Aggregates.ModelDaily,
+		Messages:   raw.Aggregates.Messages,
+		Tools:      raw.Aggregates.Tools,
+	}
+
+	// Ensure slices are non-nil for clean JSON serialization
+	if data.ByModel == nil {
+		data.ByModel = []ModelUsageEntry{}
+	}
+	if data.ByProvider == nil {
+		data.ByProvider = []ModelUsageEntry{}
+	}
+	if data.Daily == nil {
+		data.Daily = []SessionDailyEntry{}
+	}
+	if data.Tools.Tools == nil {
+		data.Tools.Tools = []ToolEntry{}
+	}
+
+	uc.mu.Lock()
+	uc.sessionsData = data
+	uc.mu.Unlock()
+
+	log.Printf("[COST] sessions.usage: %d models, %d providers, %d daily entries",
+		len(data.ByModel), len(data.ByProvider), len(data.Daily))
 	return nil
 }
 
