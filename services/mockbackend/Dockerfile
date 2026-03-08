@@ -4,7 +4,7 @@ COPY go.mod ./
 COPY main.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /build/mockbackend .
 
-FROM alpine:3.19
+FROM alpine:3.21
 RUN adduser -D -g '' safepaw
 WORKDIR /app
 COPY --from=builder /build/mockbackend /app/mockbackend
