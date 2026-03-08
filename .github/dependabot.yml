@@ -2,7 +2,7 @@ version: 2
 updates:
   # Gateway Go modules
   - package-ecosystem: gomod
-    directory: /beautifulplanet/safepaw/services/gateway
+    directory: /services/gateway
     schedule:
       interval: weekly
     reviewers:
@@ -14,7 +14,7 @@ updates:
 
   # Wizard Go modules
   - package-ecosystem: gomod
-    directory: /beautifulplanet/safepaw/services/wizard
+    directory: /services/wizard
     schedule:
       interval: weekly
     reviewers:
@@ -38,7 +38,7 @@ updates:
 
   # Wizard frontend npm
   - package-ecosystem: npm
-    directory: /beautifulplanet/safepaw/services/wizard/ui
+    directory: /services/wizard/ui
     schedule:
       interval: weekly
     reviewers:

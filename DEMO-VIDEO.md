@@ -14,7 +14,7 @@ Use this script to record a short, professional demo showing **InstallerClaw** (
 - **Demo env (recommended):** Use the demo-prep script so you have a known login and no real secrets on screen:
 
   ```bash
-  cd NOPEnclaw/beautifulplanet/safepaw
+  cd SafePaw
   ./scripts/demo-prep.sh
   # Then: cp .env.demo .env   (only for recording; use your real .env otherwise)
   ```
@@ -25,7 +25,7 @@ Use this script to record a short, professional demo showing **InstallerClaw** (
 ### 2. Start the stack (before hitting Record)
 
 ```bash
-cd NOPEnclaw/beautifulplanet/safepaw
+cd SafePaw
 docker compose up -d
 ```
 
@@ -57,7 +57,7 @@ Leave this terminal available to show `docker compose ps` or `docker compose log
 
 **Do:**
 
-1. Show the directory: `cd NOPEnclaw/beautifulplanet/safepaw` (or already there).
+1. Show the directory: `cd SafePaw` (or already there).
 2. Run: `docker compose up -d`
 3. Optional: `docker compose ps` to show 5 services (wizard, gateway, openclaw, redis, postgres).
 

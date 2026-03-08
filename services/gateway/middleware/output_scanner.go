@@ -22,12 +22,15 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"log"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // OutputRisk indicates the assessed risk level of a response.
@@ -75,10 +78,14 @@ var outputPatterns = []struct {
 }
 
 // ScanOutput assesses the risk level of response content.
+// Performance: scans raw content first. Only if the raw scan is clean
+// does it pay the cost of normalizing (base64 decode + unicode) as a
+// second-chance pass to catch encoding-based evasion.
 func ScanOutput(content string) (OutputRisk, []string) {
 	maxRisk := OutputRiskNone
 	var triggered []string
 
+	// Fast path: scan the original content
 	for _, p := range outputPatterns {
 		if p.pattern.MatchString(content) {
 			if p.risk > maxRisk {
@@ -88,7 +95,91 @@ func ScanOutput(content string) (OutputRisk, []string) {
 		}
 	}
 
+	// If raw scan already found something, skip expensive normalization
+	if maxRisk > OutputRiskNone {
+		return maxRisk, triggered
+	}
+
+	// Slow path: decode/normalize, then re-scan for encoded evasion
+	normalized := normalizeForScan(content)
+	if normalized != content {
+		for _, p := range outputPatterns {
+			if p.pattern.MatchString(normalized) {
+				if p.risk > maxRisk {
+					maxRisk = p.risk
+				}
+				triggered = append(triggered, p.name+"_encoded")
+			}
+		}
+	}
+
 	return maxRisk, triggered
+}
+
+// normalizeForScan decodes base64 segments (up to 2 rounds for nested
+// encoding) and normalizes unicode confusables so regex patterns can
+// catch encoding-based evasion attempts.
+//
+// Residual risk: visually-confusable Unicode characters (e.g. ꜱ U+A731
+// for 's', or Cyrillic а U+0430 for Latin 'a') are NOT normalized here.
+// A full confusable mapping would require ICU/unicode confusable tables
+// and risks false positives on legitimate multilingual content.
+func normalizeForScan(s string) string {
+	// 1. Attempt base64 decode on segments that look like base64.
+	//    Run up to 2 rounds to catch nested encoding (e.g. base64(base64(payload))).
+	normalized := s
+	for round := 0; round < 2; round++ {
+		prev := normalized
+		normalized = b64Pattern.ReplaceAllStringFunc(normalized, func(match string) string {
+			decoded, err := base64.StdEncoding.DecodeString(match)
+			if err != nil {
+				decoded, err = base64.RawStdEncoding.DecodeString(match)
+			}
+			if err == nil && utf8.Valid(decoded) {
+				return string(decoded)
+			}
+			return match
+		})
+		if normalized == prev {
+			break // nothing changed, stop early
+		}
+	}
+
+	// 2. Normalize unicode confusables (fullwidth chars → ASCII)
+	normalized = normalizeUnicode(normalized)
+
+	return normalized
+}
+
+// b64Pattern matches potential base64-encoded segments (20+ chars, valid alphabet).
+var b64Pattern = regexp.MustCompile(`[A-Za-z0-9+/]{20,}={0,2}`)
+
+// normalizeUnicode replaces fullwidth and other unicode confusable
+// characters with their ASCII equivalents.
+func normalizeUnicode(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r >= 0xFF01 && r <= 0xFF5E {
+			// Fullwidth ASCII variants (！to～) → normal ASCII
+			b.WriteRune(r - 0xFEE0)
+		} else if unicode.Is(unicode.Zs, r) {
+			// All unicode space chars → ASCII space
+			b.WriteByte(' ')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func containsString(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // SanitizeOutput strips dangerous patterns from output content.

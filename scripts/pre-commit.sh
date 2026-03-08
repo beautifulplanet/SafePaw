@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Pre-commit hook for SafePaw — mirrors CI checks locally.
-# Install:  make install-hooks   (or:  ln -sf ../../beautifulplanet/safepaw/scripts/pre-commit.sh .git/hooks/pre-commit)
+# Install:  make install-hooks   (or:  ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit)
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-SP="$ROOT/beautifulplanet/safepaw"
-GATEWAY="$SP/services/gateway"
-WIZARD="$SP/services/wizard"
+GATEWAY="$ROOT/services/gateway"
+WIZARD="$ROOT/services/wizard"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
