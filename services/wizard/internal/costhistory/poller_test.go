@@ -107,7 +107,7 @@ func TestPoller_fetchUsage_OK(t *testing.T) {
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
 			t.Error("missing Authorization header")
-			http.Error(w, "unauthorized", 401)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
