@@ -76,3 +76,4 @@ openclaw-reference/
 # 9. Local artifacts
 _internal_artifacts/
 services/wizard/wizard
+coverage.out

@@ -173,15 +173,6 @@ func normalizeUnicode(s string) string {
 	return b.String()
 }
 
-func containsString(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
 // SanitizeOutput strips dangerous patterns from output content.
 func SanitizeOutput(content string) string {
 	s := content

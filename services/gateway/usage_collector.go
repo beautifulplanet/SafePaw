@@ -121,11 +121,6 @@ type wsError struct {
 	Message string `json:"message"`
 }
 
-type challengePayload struct {
-	Nonce string `json:"nonce"`
-	Ts    int64  `json:"ts"`
-}
-
 type connectParams struct {
 	MinProtocol int           `json:"minProtocol"`
 	MaxProtocol int           `json:"maxProtocol"`

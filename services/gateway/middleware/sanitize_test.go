@@ -348,3 +348,25 @@ func TestPatternCount(t *testing.T) {
 		t.Errorf("expected at least 10 prompt injection patterns, got %d", count)
 	}
 }
+
+func TestValidateSenderPlatform(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"", "unknown"},
+		{"  ", "unknown"},
+		{"linux", "linux"},
+		{"  windows  ", "windows"},
+		{"mac-os_x", "mac-os_x"},
+		{"<script>alert(1)</script>", "scriptalert1script"},
+		{"a!@#b$%^c", "abc"},
+		{"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXXXXXXXX", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+	}
+	for _, tc := range tests {
+		got := ValidateSenderPlatform(tc.input)
+		if got != tc.want {
+			t.Errorf("ValidateSenderPlatform(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
