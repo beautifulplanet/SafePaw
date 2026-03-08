@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: beautifulplanet/safepaw/services/gateway
+        working-directory: services/gateway
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: "1.24"
-          cache-dependency-path: beautifulplanet/safepaw/services/gateway/go.sum
+          cache-dependency-path: services/gateway/go.sum
 
       - name: Build
         run: go build -v ./...
@@ -53,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: gateway-coverage
-          path: beautifulplanet/safepaw/services/gateway/coverage.out
+          path: services/gateway/coverage.out
 
   # ── Wizard ───────────────────────────────────────────
   wizard:
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: beautifulplanet/safepaw/services/wizard
+        working-directory: services/wizard
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -96,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: wizard-coverage
-          path: beautifulplanet/safepaw/services/wizard/coverage.out
+          path: services/wizard/coverage.out
 
   # ── Lint ─────────────────────────────────────────────
   lint:
@@ -109,20 +109,20 @@ jobs:
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: "1.24"
-          cache-dependency-path: beautifulplanet/safepaw/services/gateway/go.sum
+          cache-dependency-path: services/gateway/go.sum
 
       - name: golangci-lint (gateway)
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
           version: latest
-          working-directory: beautifulplanet/safepaw/services/gateway
+          working-directory: services/gateway
           args: --timeout=5m
 
       - name: golangci-lint (wizard)
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
           version: latest
-          working-directory: beautifulplanet/safepaw/services/wizard
+          working-directory: services/wizard
           args: --timeout=5m
 
   # ── Security Scan ────────────────────────────────────
@@ -136,7 +136,7 @@ jobs:
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: "1.24"
-          cache-dependency-path: beautifulplanet/safepaw/services/gateway/go.sum
+          cache-dependency-path: services/gateway/go.sum
 
       - name: Install security tools
         run: |
@@ -145,25 +145,25 @@ jobs:
 
       - name: Fetch modules (gateway)
         run: go mod download
-        working-directory: beautifulplanet/safepaw/services/gateway
+        working-directory: services/gateway
 
       - name: gosec (gateway)
         run: gosec -exclude=G104,G706 -exclude-dir=tools ./...
-        working-directory: beautifulplanet/safepaw/services/gateway
+        working-directory: services/gateway
 
       - name: gosec (wizard)
         run: gosec -exclude=G115,G704,G706 ./...
-        working-directory: beautifulplanet/safepaw/services/wizard
+        working-directory: services/wizard
 
       - name: govulncheck (gateway)
         run: govulncheck ./...
-        working-directory: beautifulplanet/safepaw/services/gateway
-        continue-on-error: true  # advisory-only until Go patches all stdlib CVEs
+        working-directory: services/gateway
+        continue-on-error: true  # advisory-only — tracked in #TODO: create tracking issue
 
       - name: govulncheck (wizard)
         run: govulncheck ./...
-        working-directory: beautifulplanet/safepaw/services/wizard
-        continue-on-error: true  # advisory-only until Go patches all stdlib CVEs
+        working-directory: services/wizard
+        continue-on-error: true  # advisory-only — tracked in #TODO: create tracking issue
 
   # ── Docker Build ─────────────────────────────────────
   docker:
@@ -174,10 +174,10 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Build gateway image
-        run: docker build -t safepaw-gateway:ci ./beautifulplanet/safepaw/services/gateway
+        run: docker build -t safepaw-gateway:ci ./services/gateway
 
       - name: Build wizard image
-        run: docker build -t safepaw-wizard:ci ./beautifulplanet/safepaw/services/wizard
+        run: docker build -t safepaw-wizard:ci ./services/wizard
 
       - name: Verify images
         run: |
@@ -197,7 +197,7 @@ jobs:
           docker build \
             --build-arg OPENCLAW_VERSION=$(npm view openclaw version) \
             -t openclaw-compat:ci \
-            ./beautifulplanet/safepaw/services/openclaw
+            ./services/openclaw
 
       - name: Start with SafePaw config
         run: |

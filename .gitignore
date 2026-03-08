@@ -1,21 +1,78 @@
-# NOPEnclaw Root .gitignore
-# ===========================
-# This file protects the TOP-LEVEL repo from accidentally committing
-# reference code, OS junk, or anything outside the NOPEnclaw project.
+# SafePaw .gitignore
 
-# 1. Third-party reference repos (READ-ONLY, never commit)
-openclaw-reference/
+# 1. Secrets & Environment Variables
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+secrets.json
+credentials.json
 
-# 2. OS files
+# 2. OS Files
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# 3. IDE workspace files at root level
+# 3. IDE & Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 *.code-workspace
-.vscode/
 
-# 4. Temp/junk
+# 4. Logs
 *.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 5. Dependencies & Build Artifacts
+node_modules/
+dist/
+!services/wizard/ui/dist/
+build/
+target/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.pytest_cache/
+coverage/
+
+# 5a. Go build artifacts
+*.exe
+*.exe~
+services/gateway/gateway
+services/mockbackend/mockbackend
+*.dll
+*.so
+*.dylib
+
+# 6. Database & State
+*.sqlite
+*.sqlite3
+*.db
+postgres-data/
+redis-data/
+
+# 7. Temp
 *.tmp
 *.bak
+
+# 8. Reference repos (read-only, never commit)
+openclaw-reference/
+
+# 9. Local artifacts
+_internal_artifacts/
+services/wizard/wizard

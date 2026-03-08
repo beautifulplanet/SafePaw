@@ -7,8 +7,8 @@
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
   <a href="#part-2-tech-stack--architecture"><strong>Architecture</strong></a> &middot;
   <a href="https://github.com/beautifulplanet/SafePaw"><strong>GitHub</strong></a> &middot;
-  <a href="beautifulplanet/safepaw/SECURITY.md"><strong>Security</strong></a> &middot;
-  <a href="beautifulplanet/safepaw/RUNBOOK.md"><strong>Runbook</strong></a>
+  <a href="SECURITY.md"><strong>Security</strong></a> &middot;
+  <a href="RUNBOOK.md"><strong>Runbook</strong></a>
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 InstallerClaw is a Go gateway and React wizard that wraps [OpenClaw](https://github.com/nicepkg/openclaw) in a hardened Docker environment. Auth, rate limiting, prompt-injection scanning, TLS, and guided setup — one command to deploy, one UI to manage.
 
-We call it **InstallerClaw** because it is the install and deploy layer around OpenClaw. The repo and paths still use **SafePaw** / `safepaw` for historical reasons; treat "InstallerClaw" as the product name and "SafePaw" as the codebase/organizational name.
+We call it **InstallerClaw** because it is the install and deploy layer around OpenClaw. The repo is named **SafePaw** for historical reasons; treat "InstallerClaw" as the product name and "SafePaw" as the codebase name.
 
 **The trend:** Self-hosted AI assistants (OpenClaw, and similar local/private LLM front-ends) are growing fast. InstallerClaw is a safe, deployable perimeter — auth, scanning, and ops in one place — so you never expose the assistant without a guardrail layer.
 
@@ -113,7 +113,7 @@ STRIDE analysis with 27 documented threats, mitigations, and residual risks. Def
 | | |
 |---|---|
 | **Not the AI itself.** | OpenClaw handles the assistant, channels, and LLM integration. InstallerClaw handles the perimeter. |
-| **Not a guarantee.** | Scanning is heuristic-only (regex/patterns). It **reduces risk** but does not prevent all attacks. See [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md). |
+| **Not a guarantee.** | Scanning is heuristic-only (regex/patterns). It **reduces risk** but does not prevent all attacks. See [THREAT-MODEL.md](THREAT-MODEL.md). |
 | **Not enterprise-grade (yet).** | Suited for indie/small-team use. Enterprise deployments may need additional controls (WAF, external IdP, etc.). |
 | **Not a cloud service.** | Fully self-hosted. No accounts, no telemetry, no external dependencies at runtime. |
 | **Not a workflow builder.** | No drag-and-drop pipelines. InstallerClaw secures and operates a single AI stack. |
@@ -140,7 +140,7 @@ STRIDE analysis with 27 documented threats, mitigations, and residual risks. Def
 
 ### Impact
 
-- **Deploy in one command** — `docker compose up -d` from the [safepaw](beautifulplanet/safepaw) directory; five services (wizard, gateway, openclaw, redis, postgres) with health checks and internal-only backends.
+- **Deploy in one command** — `docker compose up -d` from the repo root; six services (wizard, gateway, openclaw, redis, postgres, docker-socket-proxy) with health checks and internal-only backends.
 - **All traffic through the gateway** — OpenClaw has no host-exposed ports. Auth, rate limiting, brute-force protection, and AI-defense scanning apply before any request reaches the assistant.
 - **Wizard for ops** — React UI for admin login (session tokens, optional TOTP), prerequisites, live container status, and masked .env editing. Audit log for all admin actions.
 - **258+ tests across gateway and wizard** — Go unit and integration tests, 7 fuzz targets, coverage gate (60%) in CI. Lint, gosec, govulncheck, Docker build on every push.
@@ -154,21 +154,21 @@ STRIDE analysis with 27 documented threats, mitigations, and residual risks. Def
 
 | Claim | Proof |
 |-------|--------|
-| Stack runs locally | `cd beautifulplanet/safepaw && docker compose up -d` — wizard :3000, gateway :8080 |
+| Stack runs locally | `docker compose up -d` — wizard :3000, gateway :8080 |
 | Gateway health | `curl -s http://localhost:8080/health` — returns status + backend reachability |
 | Prometheus metrics | `curl -s http://localhost:8080/metrics` — counters, histograms, gauges |
-| 258+ Go tests | `cd beautifulplanet/safepaw/services/gateway && go test ./... -race`; same under `services/wizard` |
-| 7 fuzz targets | `cd beautifulplanet/safepaw && make fuzz` (gateway middleware) |
-| Vulnerability scan | `cd beautifulplanet/safepaw && make vulncheck` — govulncheck on both services |
-| Incident runbooks | [RUNBOOK.md](beautifulplanet/safepaw/RUNBOOK.md) — token compromise, injection, gateway down, brute force, rotation, disk |
-| Backup & recovery | [BACKUP-RECOVERY.md](beautifulplanet/safepaw/BACKUP-RECOVERY.md) — Postgres, Redis, volumes, .env |
-| Threat model | [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md) — STRIDE, 27 threats, mitigations |
+| 258+ Go tests | `cd services/gateway && go test ./... -race`; same under `services/wizard` |
+| 7 fuzz targets | `make fuzz` (gateway middleware) |
+| Vulnerability scan | `make vulncheck` — govulncheck on both services |
+| Incident runbooks | [RUNBOOK.md](RUNBOOK.md) — token compromise, injection, gateway down, brute force, rotation, disk |
+| Backup & recovery | [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) — Postgres, Redis, volumes, .env |
+| Threat model | [THREAT-MODEL.md](THREAT-MODEL.md) — STRIDE, 27 threats, mitigations |
 
 ---
 
 ### Quality bar
 
-- **Defense in depth** — Request path: metrics → headers → request ID → origin check → brute-force guard → rate limit → auth (HMAC + Redis revocation) → body scanner → output scanner → proxy. Each layer documented in [SECURITY.md](beautifulplanet/safepaw/SECURITY.md).
+- **Defense in depth** — Request path: metrics → headers → request ID → origin check → brute-force guard → rate limit → auth (HMAC + Redis revocation) → body scanner → output scanner → proxy. Each layer documented in [SECURITY.md](SECURITY.md).
 - **STRIDE threat model** — Documented threats and mitigations; residual risks called out (e.g. heuristic-only scanning, in-memory brute-force bans).
 - **Backup and secret rotation** — Procedures for Postgres, Redis, volumes, and .env; RUNBOOK includes ordered secret rotation and one-shot rotation block.
 - **CI pipeline** — Build, test (`-race`), lint (golangci-lint), gosec, govulncheck, coverage gate (60%), fuzz seed corpus, Docker build.
@@ -192,8 +192,8 @@ STRIDE analysis with 27 documented threats, mitigations, and residual risks. Def
 | What you want | Where to find it | Time |
 |---------------|------------------|------|
 | Request flow and boundaries | [Architecture](#architecture), [Request flow](#request-flow) | 1 min |
-| Threat model and mitigations | [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md), [Security posture](#security-posture) | 3 min |
-| Incident and backup procedures | [RUNBOOK.md](beautifulplanet/safepaw/RUNBOOK.md), [BACKUP-RECOVERY.md](beautifulplanet/safepaw/BACKUP-RECOVERY.md) | 2 min |
+| Threat model and mitigations | [THREAT-MODEL.md](THREAT-MODEL.md), [Security posture](#security-posture) | 3 min |
+| Incident and backup procedures | [RUNBOOK.md](RUNBOOK.md), [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) | 2 min |
 | Config and env vars | [Configuration](#configuration) | 1 min |
 
 **If you want to run it**
@@ -319,7 +319,7 @@ Request → Metrics → Security headers → Request ID (server UUID only)
 | Config | Secret leak in UI | .env keys masked in GET; PUT restricted to allowed list | ✅ |
 | Operations | Data loss | BACKUP-RECOVERY.md; RUNBOOK secret rotation | ✅ Documented |
 
-Full threat model: [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md). Incident response: [RUNBOOK.md](beautifulplanet/safepaw/RUNBOOK.md).
+Full threat model: [THREAT-MODEL.md](THREAT-MODEL.md). Incident response: [RUNBOOK.md](RUNBOOK.md).
 
 ---
 
@@ -336,7 +336,7 @@ Full threat model: [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md). I
 ```bash
 # Clone
 git clone https://github.com/beautifulplanet/SafePaw.git
-cd SafePaw/beautifulplanet/safepaw
+cd SafePaw
 
 # Configure
 cp .env.example .env
@@ -358,7 +358,7 @@ First run: wizard prints an admin password once to stdout. Use `docker compose l
 
 ## Configuration
 
-All configuration via environment variables (e.g. `.env` in the safepaw directory).
+All configuration via environment variables (`.env` in the repo root).
 
 ### Essential
 
@@ -386,13 +386,13 @@ All configuration via environment variables (e.g. `.env` in the safepaw director
 | `WIZARD_ADMIN_PASSWORD` | auto-generated | Wizard admin password |
 | `WIZARD_TOTP_SECRET` | — | Optional base32 TOTP for wizard MFA |
 
-See [.env.example](beautifulplanet/safepaw/.env.example) for the full list.
+See [.env.example](.env.example) for the full list.
 
 ## Development
 
 ```bash
 # Gateway
-cd beautifulplanet/safepaw/services/gateway
+cd services/gateway
 go build -o gateway .
 PROXY_TARGET=http://localhost:18789 ./gateway
 
@@ -401,16 +401,16 @@ export AUTH_SECRET=$(openssl rand -base64 48)
 go run tools/tokengen/main.go -sub admin -scope proxy -ttl 24h
 
 # Wizard
-cd beautifulplanet/safepaw/services/wizard
+cd services/wizard
 go build -o wizard ./cmd/wizard
 WIZARD_ADMIN_PASSWORD=dev ./wizard
 
 # Wizard UI (hot reload)
-cd beautifulplanet/safepaw/services/wizard/ui
+cd services/wizard/ui
 npm install && npm run dev
 ```
 
-From safepaw root: `make lint`, `make vulncheck`, `make fuzz`. See [CONTRIBUTING.md](beautifulplanet/safepaw/CONTRIBUTING.md).
+From the repo root: `make lint`, `make vulncheck`, `make fuzz`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Testing
 
@@ -419,20 +419,19 @@ From safepaw root: `make lint`, `make vulncheck`, `make fuzz`. See [CONTRIBUTING
 | Gateway | `services/gateway` | `go test ./... -race` |
 | Wizard | `services/wizard` | `go test ./... -race` |
 | Fuzz (gateway) | `services/gateway` | `go test -fuzz=...` or `make fuzz` |
-| Vuln check | safepaw root | `make vulncheck` |
-| E2E (live stack) | safepaw/scripts | `./verify-deployment.sh` (after `docker compose up -d`) |
+| Vuln check | repo root | `make vulncheck` |
+| E2E (live stack) | scripts/ | `./scripts/verify-deployment.sh` (after `docker compose up -d`) |
 
 CI runs build, test with coverage gate (gateway 60%, wizard 55%), lint, gosec, govulncheck, and Docker build.
 
 ## Project structure
 
-> **Layout note:** Code lives under `beautifulplanet/safepaw/` (org/project namespace). A `go.work` workspace file at that level ties the Go modules together so standard tooling (`gopls`, `go test ./...`, etc.) works from the project root. CI and Dockerfiles reference paths relative to this directory.
-
 ```
-beautifulplanet/safepaw/
-├── docker-compose.yml       # 5 services, health checks, resource limits
+SafePaw/
+├── docker-compose.yml       # 6 services, health checks, resource limits
 ├── Makefile                 # build, test, lint, vulncheck, fuzz, Docker
 ├── .env.example
+├── go.work                  # Go workspace (gateway, wizard, mockbackend)
 ├── SECURITY.md              # Incident response, logging, hardening, MFA
 ├── RUNBOOK.md               # 6 playbooks, secret rotation
 ├── THREAT-MODEL.md          # STRIDE (27 threats)
@@ -442,6 +441,8 @@ beautifulplanet/safepaw/
 ├── services/
 │   ├── gateway/             # Go reverse proxy, middleware, tools/tokengen
 │   ├── wizard/              # Go + React (cmd, internal, ui)
+│   ├── mockbackend/         # Test backend
+│   ├── openclaw/            # OpenClaw Dockerfile
 │   └── postgres/init/
 ├── _archived/               # Legacy / previous architecture
 └── shared/proto/
@@ -451,7 +452,7 @@ beautifulplanet/safepaw/
 
 | Issue | What to do |
 |-------|------------|
-| Lost wizard admin password | `docker compose logs wizard` (first lines) or set `WIZARD_ADMIN_PASSWORD` in `.env` and restart. [SECURITY.md](beautifulplanet/safepaw/SECURITY.md) § Recovery. |
+| Lost wizard admin password | `docker compose logs wizard` (first lines) or set `WIZARD_ADMIN_PASSWORD` in `.env` and restart. [SECURITY.md](SECURITY.md) § Recovery. |
 | Prerequisites fail | Install Docker and Compose; ensure 3000 and 8080 are free. |
 | Dashboard shows no services | Wizard needs read-only Docker socket; check compose mount for `/var/run/docker.sock` (or npipe on Windows). |
 | Gateway 502 / backend unreachable | OpenClaw may still be starting. `docker compose logs openclaw`; `curl http://localhost:8080/health`. |
@@ -464,7 +465,7 @@ curl -s http://localhost:3000/api/v1/health | jq .
 curl -s http://localhost:8080/health | jq .
 ```
 
-Then open http://localhost:3000, sign in, and check the dashboard. Full script: `scripts/verify-deployment.sh` in the safepaw directory.
+Then open http://localhost:3000, sign in, and check the dashboard. Full script: `./scripts/verify-deployment.sh`.
 
 ## FAQ
 
@@ -478,19 +479,36 @@ The gateway can proxy to any HTTP backend — change `PROXY_TARGET` in `.env`. T
 Set `WIZARD_TOTP_SECRET` in `.env` to a base32-encoded secret (e.g. from Google Authenticator setup). The login page will prompt for a TOTP code automatically.
 
 **Is this production-ready?**
-For indie/small-team deployments behind localhost or a VPN, yes. For public-facing production, add TLS (`TLS_ENABLED=true`), set strong `AUTH_SECRET`, and review [SECURITY.md](beautifulplanet/safepaw/SECURITY.md) and the [Production Hardening Checklist](#production-hardening-checklist) in the safepaw README.
+For indie/small-team deployments behind localhost or a VPN, yes. For public-facing production, add TLS (`TLS_ENABLED=true`), set strong `AUTH_SECRET`, and review [SECURITY.md](SECURITY.md) and the [Production Hardening Checklist](#production-hardening-checklist) below.
 
 **What if scanning misses an attack?**
-It will. Scanning is heuristic-only and documented as such. Treat it as one layer of defense-in-depth, not a guarantee. See [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md) for residual risks.
+It will. Scanning is heuristic-only and documented as such. Treat it as one layer of defense-in-depth, not a guarantee. See [THREAT-MODEL.md](THREAT-MODEL.md) for residual risks.
+
+## Production Hardening Checklist
+
+Do this **before** exposing anything beyond localhost:
+
+- [ ] **Set a strong admin password** — `WIZARD_ADMIN_PASSWORD` in `.env` (don't rely on auto-generated)
+- [ ] **Enable MFA** — Set `WIZARD_TOTP_SECRET` for two-factor login on the wizard
+- [ ] **Enable auth on the gateway** — `AUTH_ENABLED=true` + a strong `AUTH_SECRET` (min 32 bytes)
+- [ ] **Enable TLS** — `TLS_ENABLED=true` with valid certs (`TLS_CERT_FILE`, `TLS_KEY_FILE`)
+- [ ] **Keep wizard on localhost** — The wizard binds to `127.0.0.1` by default. Never expose it to the internet without a VPN or reverse proxy with auth.
+- [ ] **Review rate limits** — Default is 60 req/min/IP. Tune `RATE_LIMIT` and `RATE_LIMIT_WINDOW_SEC` for your load.
+- [ ] **Rotate secrets on schedule** — See [RUNBOOK.md](RUNBOOK.md) for rotation playbooks
+- [ ] **Run the verification script** — `./scripts/verify-deployment.sh` after starting the stack
+- [ ] **Monitor logs** — Set `LOG_FORMAT=json` and feed to your SIEM. Alert on `[AUTH]` failures, `[SCANNER]` high-risk, `[RATELIMIT]` denials.
+- [ ] **Understand scanning limits** — Prompt-injection and output scanners are heuristic tripwires, not security boundaries.
+
+---
 
 ## Limitations
 
-- **Prompt-injection and output scanning** — Heuristic (regex/patterns) only; **reduces risk**, does not guarantee prevention. No ML/LLM. See [SECURITY.md](beautifulplanet/safepaw/SECURITY.md).
+- **Prompt-injection and output scanning** — Heuristic (regex/patterns) only; **reduces risk**, does not guarantee prevention. No ML/LLM. See [SECURITY.md](SECURITY.md).
 - **Token revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
 - **Wizard password** — No "forgot password" flow; recovery via logs or `.env` and restart.
 - **Stack** — Docker-first; wizard expects Docker socket for health. No generic bare-metal install path.
 
-**Release / packaging:** No versioned releases or installers are published yet. When going public: plan for versioned tags (e.g. `v0.1.0`), checksums for binaries, and optionally a single-command installer or `docker compose` image pinning. See [CONTRIBUTING.md](beautifulplanet/safepaw/CONTRIBUTING.md) for build and test commands.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build and test commands.
 
 ---
 
@@ -499,17 +517,23 @@ It will. Scanning is heuristic-only and documented as such. Treat it as one laye
 | Document | Purpose |
 |----------|---------|
 | [README.md](README.md) | This file — summary through reference |
-| [SECURITY.md](beautifulplanet/safepaw/SECURITY.md) | Incident response, logging, defense-in-depth, MFA, recovery |
-| [RUNBOOK.md](beautifulplanet/safepaw/RUNBOOK.md) | 6 incident playbooks, secret rotation |
-| [BACKUP-RECOVERY.md](beautifulplanet/safepaw/BACKUP-RECOVERY.md) | Backup/restore for Postgres, Redis, volumes, .env |
-| [THREAT-MODEL.md](beautifulplanet/safepaw/THREAT-MODEL.md) | STRIDE threat model, residual risks |
-| [SCOPE-IMPROVEMENTS.md](beautifulplanet/safepaw/SCOPE-IMPROVEMENTS.md) | Review feedback triage (done vs. open) and improvement backlog |
-| [CONTRIBUTING.md](beautifulplanet/safepaw/CONTRIBUTING.md) | Dev workflow, coding standards, PR process |
-| [RELEASE.md](beautifulplanet/safepaw/RELEASE.md) | Going public: timestamp, checklist, positioning, licensing |
-| [.env.example](beautifulplanet/safepaw/.env.example) | All configuration variables with comments |
+| [SECURITY.md](SECURITY.md) | Incident response, logging, defense-in-depth, MFA, recovery |
+| [RUNBOOK.md](RUNBOOK.md) | 6 incident playbooks, secret rotation |
+| [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) | Backup/restore for Postgres, Redis, volumes, .env |
+| [THREAT-MODEL.md](THREAT-MODEL.md) | STRIDE threat model, residual risks |
+| [SCOPE-IMPROVEMENTS.md](SCOPE-IMPROVEMENTS.md) | Review feedback triage (done vs. open) and improvement backlog |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev workflow, coding standards, PR process |
+| [RELEASE.md](RELEASE.md) | Going public: timestamp, checklist, positioning, licensing |
+| [.env.example](.env.example) | All configuration variables with comments |
 
 ---
 
 ## License
 
 MIT
+
+---
+
+## Acknowledgements
+
+Built in collaboration with [Claude](https://claude.ai/) (Opus) by [Anthropic](https://www.anthropic.com/). Architecture decisions, security hardening, and all review by [@beautifulplanet](https://github.com/beautifulplanet).

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -210,4 +211,64 @@ func containsStr(ss []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// === Encoding evasion tests (Gap 2 fix) ===
+
+func TestScanOutput_Base64EncodedScript(t *testing.T) {
+	// Encode a script tag as base64 — scanner should decode and detect it
+	payload := `<script>alert("xss")</script>`
+	encoded := base64.StdEncoding.EncodeToString([]byte(payload))
+	content := "Here is some data: " + encoded
+
+	risk, triggers := ScanOutput(content)
+	if risk < OutputRiskHigh {
+		t.Errorf("base64-encoded script tag not detected: risk=%s triggers=%v", risk, triggers)
+	}
+}
+
+func TestScanOutput_Base64EncodedAPIKey(t *testing.T) {
+	payload := "sk-" + strings.Repeat("a", 24)
+	encoded := base64.StdEncoding.EncodeToString([]byte(payload))
+	content := "Result: " + encoded
+
+	risk, triggers := ScanOutput(content)
+	if risk < OutputRiskHigh {
+		t.Errorf("base64-encoded API key not detected: risk=%s triggers=%v", risk, triggers)
+	}
+}
+
+func TestScanOutput_FullwidthUnicodeScript(t *testing.T) {
+	// Fullwidth characters: ＜ｓｃｒｉｐｔ＞
+	content := "\uff1c\uff53\uff43\uff52\uff49\uff50\uff54\uff1e"
+	risk, triggers := ScanOutput(content)
+	if risk < OutputRiskHigh {
+		t.Errorf("fullwidth unicode script tag not detected: risk=%s triggers=%v", risk, triggers)
+	}
+}
+
+func TestScanOutput_FullwidthJavascriptURI(t *testing.T) {
+	// ｊａｖａｓｃｒｉｐｔ：
+	content := "\uff4a\uff41\uff56\uff41\uff53\uff43\uff52\uff49\uff50\uff54\uff1a"
+	risk, triggers := ScanOutput(content)
+	if risk < OutputRiskMedium {
+		t.Errorf("fullwidth javascript: URI not detected: risk=%s triggers=%v", risk, triggers)
+	}
+}
+
+func TestNormalizeUnicode(t *testing.T) {
+	// Fullwidth A = \uff21 should become A (0x41)
+	result := normalizeUnicode("\uff21\uff22\uff23")
+	if result != "ABC" {
+		t.Errorf("normalizeUnicode = %q, want ABC", result)
+	}
+}
+
+func TestNormalizeForScan_PlainText(t *testing.T) {
+	// Plain text should come back unchanged
+	input := "Hello, this is safe text with no encoding."
+	result := normalizeForScan(input)
+	if result != input {
+		t.Errorf("normalizeForScan changed plain text: %q", result)
+	}
 }

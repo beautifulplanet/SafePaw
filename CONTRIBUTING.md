@@ -19,7 +19,7 @@ Thank you for your interest in contributing to SafePaw. This guide covers the de
 ```bash
 # Clone
 git clone https://github.com/beautifulplanet/SafePaw.git
-cd SafePaw/beautifulplanet/safepaw
+cd SafePaw
 
 # Gateway
 cd services/gateway

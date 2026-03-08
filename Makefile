@@ -95,7 +95,7 @@ verify-gateway-mock: ## Run gateway + mock backend integration (no OpenClaw)
 # ── Git Hooks ──────────────────────────────────────────
 
 install-hooks: ## Install pre-commit hook
-	@ln -sf ../../beautifulplanet/safepaw/scripts/pre-commit.sh $(shell git rev-parse --show-toplevel)/.git/hooks/pre-commit
+	@ln -sf ../../scripts/pre-commit.sh $(shell git rev-parse --show-toplevel)/.git/hooks/pre-commit
 	@echo "Pre-commit hook installed."
 
 # ── Clean ──────────────────────────────────────────────

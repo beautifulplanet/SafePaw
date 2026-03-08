@@ -28,8 +28,9 @@ import (
 )
 
 const (
-	wsDialTimeout = 10 * time.Second
-	wsBufferSize  = 32 * 1024 // 32KB copy buffer
+	wsDialTimeout  = 10 * time.Second
+	wsBufferSize   = 32 * 1024       // 32KB copy buffer
+	wsMaxMsgSize   = 100 * 1024 * 1024 // 100MB total connection bytes client→backend (not per-message)
 )
 
 // isWebSocketUpgrade checks if a request is a WebSocket upgrade.
@@ -148,10 +149,11 @@ func wsProxy(target *url.URL) http.Handler {
 			done <- struct{}{}
 		}()
 
-		// Client → Backend: pass through (input already scanned by body scanner)
+		// Client → Backend: pass through with size limit
+		// (input already scanned by body scanner middleware)
 		go func() {
 			buf := make([]byte, wsBufferSize)
-			if _, err := io.CopyBuffer(backendConn, clientConn, buf); err != nil {
+			if _, err := io.CopyBuffer(backendConn, io.LimitReader(clientConn, wsMaxMsgSize), buf); err != nil {
 				log.Printf("[WS] Client→Backend copy error: %v", err)
 			}
 			done <- struct{}{}
