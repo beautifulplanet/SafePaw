@@ -184,6 +184,16 @@ jobs:
           docker images safepaw-gateway:ci
           docker images safepaw-wizard:ci
 
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.62.1
+
+      - name: Scan gateway image
+        run: trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed safepaw-gateway:ci
+
+      - name: Scan wizard image
+        run: trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed safepaw-wizard:ci
+
   # ── OpenClaw Compatibility ─────────────────────────────
   openclaw-compat:
     name: OpenClaw Compatibility
