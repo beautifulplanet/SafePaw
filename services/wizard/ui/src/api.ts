@@ -128,6 +128,35 @@ export interface GatewayActivity {
   recent_ips: string[]
 }
 
+export interface UsageDailyEntry {
+  date: string
+  totalCost: number
+  totalTokens: number
+}
+
+export interface UsageTotals {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  totalTokens: number
+  totalCost: number
+}
+
+export interface UsageResponse {
+  status: string
+  collector?: string
+  updatedAt?: string
+  alert?: string
+  warnThresholdUsd?: number
+  critThresholdUsd?: number
+  todayCostUsd?: number
+  periodCostUsd?: number
+  days?: number
+  daily?: UsageDailyEntry[]
+  totals?: UsageTotals
+}
+
 // ─── Endpoints ───────────────────────────────────────────────
 
 export const api = {
@@ -177,4 +206,8 @@ export const api = {
   /** Get gateway activity (metrics + top paths). */
   gatewayActivity: () =>
     request<GatewayActivity>('/gateway/activity'),
+
+  /** Get LLM cost/usage data proxied from gateway. */
+  gatewayUsage: () =>
+    request<UsageResponse>('/gateway/usage'),
 }
