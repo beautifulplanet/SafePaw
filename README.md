@@ -426,6 +426,8 @@ CI runs build, test with coverage gate (gateway 60%, wizard 55%), lint, gosec, g
 
 ## Project structure
 
+> **Layout note:** Code lives under `beautifulplanet/safepaw/` (org/project namespace). A `go.work` workspace file at that level ties the Go modules together so standard tooling (`gopls`, `go test ./...`, etc.) works from the project root. CI and Dockerfiles reference paths relative to this directory.
+
 ```
 beautifulplanet/safepaw/
 ├── docker-compose.yml       # 5 services, health checks, resource limits
