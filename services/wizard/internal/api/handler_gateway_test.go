@@ -46,7 +46,7 @@ func TestHealthNeedsSetup_True(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/v1/health", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200", rec.Code)
@@ -67,7 +67,7 @@ func TestHealthNeedsSetup_FalseWithAnthropicKey(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/v1/health", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	var resp healthResponse
 	_ = json.NewDecoder(rec.Body).Decode(&resp)
@@ -82,7 +82,7 @@ func TestHealthNeedsSetup_FalseWithOpenAIKey(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/v1/health", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	var resp healthResponse
 	_ = json.NewDecoder(rec.Body).Decode(&resp)
@@ -103,7 +103,7 @@ func TestHealthNeedsSetup_TrueWhenEnvFileMissing(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/v1/health", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	var resp healthResponse
 	_ = json.NewDecoder(rec.Body).Decode(&resp)
@@ -123,7 +123,7 @@ func TestGatewayToken_Success(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/gateway/token", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
@@ -188,7 +188,7 @@ func TestGatewayToken_NoAuthSecret(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/gateway/token", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("Status = %d, want 400 when AUTH_SECRET missing", rec.Code)
@@ -203,7 +203,7 @@ func TestGatewayToken_ShortSecret(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/gateway/token", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("Status = %d, want 400 when AUTH_SECRET too short", rec.Code)
@@ -219,7 +219,7 @@ func TestGatewayToken_TTLTooLarge(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/gateway/token", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("Status = %d, want 400 when TTL too large", rec.Code)
@@ -236,7 +236,7 @@ func TestGatewayToken_DefaultValues(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/gateway/token", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
@@ -267,7 +267,7 @@ func TestGatewayToken_BadBody(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/gateway/token", bytes.NewReader([]byte("not json")))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("Status = %d, want 400 for bad body", rec.Code)
@@ -380,7 +380,7 @@ func TestGatewayMetrics_UnreachableGateway(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/v1/gateway/metrics", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200 (graceful degradation)", rec.Code)
@@ -415,7 +415,7 @@ safepaw_active_connections 2
 
 	req := httptest.NewRequest("GET", "/api/v1/gateway/metrics", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200", rec.Code)
@@ -460,7 +460,7 @@ safepaw_auth_failures_total 1
 
 	req := httptest.NewRequest("GET", "/api/v1/gateway/activity", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200", rec.Code)
@@ -487,7 +487,7 @@ func TestGatewayActivity_UnreachableGateway(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/v1/gateway/activity", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200 (graceful degradation)", rec.Code)
