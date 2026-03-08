@@ -25,6 +25,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   prompt injection.
 - **Pitfalls checklist** — `PITFALLS.md` consolidating 40+ gotchas from all
   project documentation.
+- **Penetration testing policy** — `docs/PENTEST-POLICY.md` with scope, testing
+  types, rules of engagement, responsible disclosure, severity SLAs.
+- **SOC 2 & GDPR compliance mapping** — `docs/COMPLIANCE.md` mapping controls
+  to Trust Service Criteria (CC1–CC9) and GDPR articles with honest gap analysis.
+- **Patching policy** — `docs/PATCHING-POLICY.md` with Dependabot workflow,
+  severity SLAs, container base image strategy, dependency freeze process.
+- **SecretsProvider interface** — `shared/secrets/` Go package defining pluggable
+  secret backend interface with `EnvProvider` default implementation.
+- **Secrets migration guide** — `docs/SECRETS-MIGRATION.md` with step-by-step
+  Vault migration path and Docker Compose integration examples.
+- **Encrypted backups** — `scripts/backup-encrypted.sh` wraps backup with GPG
+  AES-256 symmetric encryption.
+- **Restore verification** — `scripts/restore-verify.sh` non-destructive integrity
+  check validating decryption, extraction, artifact presence, and .env keys.
 
 ### Changed
 - Gateway coverage pushed to 65.2% (from 55%).
