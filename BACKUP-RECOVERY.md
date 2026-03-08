@@ -155,6 +155,23 @@ Backups are written to `./backups/` (or set `BACKUP_DIR`). The script backs up P
 
 Add retention (e.g. delete backups older than 7 days) in a separate cron or inside the script if desired.
 
+### Automated installer
+
+A one-command installer adds the cron job with built-in retention (default 30 days):
+
+```bash
+sudo ./scripts/backup-cron-install.sh            # install daily 2 AM + 30-day retention
+sudo ./scripts/backup-cron-install.sh --remove    # remove cron entry
+```
+
+Customize with environment variables:
+
+```bash
+CRON_SCHEDULE="0 3 * * *" RETENTION_DAYS=7 sudo ./scripts/backup-cron-install.sh
+```
+
+Verify: `crontab -l | grep safepaw`
+
 ---
 
 ## Recommended Schedule
