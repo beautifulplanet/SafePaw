@@ -122,6 +122,12 @@ func (h *Handler) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	} else if _, touchedTOTP := updates["WIZARD_TOTP_SECRET"]; touchedTOTP {
 		h.ReloadCredsFromEnv()
 		h.BumpSessionGen()
+	} else if _, touchedOp := updates["WIZARD_OPERATOR_PASSWORD"]; touchedOp {
+		h.ReloadCredsFromEnv()
+		h.BumpSessionGen()
+	} else if _, touchedViewer := updates["WIZARD_VIEWER_PASSWORD"]; touchedViewer {
+		h.ReloadCredsFromEnv()
+		h.BumpSessionGen()
 	}
 
 	configIP := r.RemoteAddr

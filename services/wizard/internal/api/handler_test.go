@@ -34,7 +34,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/v1/health", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200", rec.Code)
@@ -64,7 +64,7 @@ func TestLoginSuccess(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
@@ -137,7 +137,7 @@ func TestLoginWithMFA_RequiresTOTP(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("Status = %d, want 401 when MFA enabled but no TOTP", rec.Code)
@@ -164,7 +164,7 @@ func TestLoginWithMFA_RejectsInvalidTOTP(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("Status = %d, want 401 for wrong TOTP", rec.Code)
@@ -191,7 +191,7 @@ func TestLoginWithMFA_AcceptsValidTOTP(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want 200 when password + valid TOTP. Body: %s", rec.Code, rec.Body.String())
@@ -206,7 +206,7 @@ func TestLoginWrongPassword(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("Status = %d, want 401", rec.Code)
@@ -220,7 +220,7 @@ func TestLoginBadBody(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader([]byte("not json")))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("Status = %d, want 400", rec.Code)
@@ -234,7 +234,7 @@ func TestSPAFallback(t *testing.T) {
 	// Non-API paths should serve the SPA (index.html)
 	req := httptest.NewRequest("GET", "/dashboard", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	// Should return 200 (SPA index.html), not 404
 	if rec.Code != http.StatusOK {
@@ -248,7 +248,7 @@ func TestServiceRestartUnknownService(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/api/v1/services/unknownservice/restart", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("Status = %d, want 400 for unknown service", rec.Code)
@@ -268,7 +268,7 @@ func TestServiceRestartNoDocker(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/api/v1/services/wizard/restart", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	// With nil docker we return 503
 	if rec.Code != http.StatusServiceUnavailable {

@@ -16,9 +16,12 @@ var ok = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 
 // sessionValidator returns a SessionValidator that validates tokens with the given secret and gen 0 (for tests).
 func sessionValidator(secret string) SessionValidator {
-	return func(token string) bool {
-		_, err := session.Validate(token, secret, 0)
-		return err == nil
+	return func(token string) (string, bool) {
+		claims, err := session.Validate(token, secret, 0)
+		if err != nil {
+			return "", false
+		}
+		return claims.EffectiveRole(), true
 	}
 }
 
@@ -125,7 +128,7 @@ func TestAdminAuth_ValidBearerToken(t *testing.T) {
 	secret := "test-admin-password"
 	handler := AdminAuth(sessionValidator(secret), ok)
 
-	token, _ := session.Create(secret, time.Hour, 0)
+	token, _ := session.Create(secret, time.Hour, 0, "admin")
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -141,7 +144,7 @@ func TestAdminAuth_ValidCookie(t *testing.T) {
 	secret := "test-admin-password"
 	handler := AdminAuth(sessionValidator(secret), ok)
 
-	token, _ := session.Create(secret, time.Hour, 0)
+	token, _ := session.Create(secret, time.Hour, 0, "admin")
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -156,7 +159,7 @@ func TestAdminAuth_ValidCookie(t *testing.T) {
 func TestAdminAuth_InvalidToken(t *testing.T) {
 	handler := AdminAuth(sessionValidator("real-secret"), ok)
 
-	token, _ := session.Create("wrong-secret", time.Hour, 0)
+	token, _ := session.Create("wrong-secret", time.Hour, 0, "admin")
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -172,7 +175,7 @@ func TestAdminAuth_ExpiredToken(t *testing.T) {
 	secret := "test-admin-password"
 	handler := AdminAuth(sessionValidator(secret), ok)
 
-	token, _ := session.Create(secret, -1*time.Hour, 0) // Already expired
+	token, _ := session.Create(secret, -1*time.Hour, 0, "admin") // Already expired
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -355,8 +358,8 @@ func TestAdminAuth_BearerTakesPrecedenceOverCookie(t *testing.T) {
 	secret := "test-admin-password"
 	handler := AdminAuth(sessionValidator(secret), ok)
 
-	goodToken, _ := session.Create(secret, time.Hour, 0)
-	badToken, _ := session.Create("wrong-secret", time.Hour, 0)
+	goodToken, _ := session.Create(secret, time.Hour, 0, "admin")
+	badToken, _ := session.Create("wrong-secret", time.Hour, 0, "admin")
 
 	req := httptest.NewRequest("GET", "/api/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer "+goodToken)

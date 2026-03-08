@@ -9,7 +9,7 @@ func TestCreateAndValidate(t *testing.T) {
 	secret := "test-secret-key-32bytes-long!!"
 	ttl := 1 * time.Hour
 
-	token, err := Create(secret, ttl, 0)
+	token, err := Create(secret, ttl, 0, "admin")
 	if err != nil {
 		t.Fatalf("Create() failed: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestCreateAndValidate(t *testing.T) {
 }
 
 func TestValidateWrongSecret(t *testing.T) {
-	token, _ := Create("correct-secret", 1*time.Hour, 0)
+	token, _ := Create("correct-secret", 1*time.Hour, 0, "admin")
 
 	_, err := Validate(token, "wrong-secret", 0)
 	if err == nil {
@@ -50,7 +50,7 @@ func TestValidateWrongSecret(t *testing.T) {
 func TestValidateExpired(t *testing.T) {
 	secret := "test-secret"
 	// Create a token that's already expired (negative TTL)
-	token, err := Create(secret, -1*time.Hour, 0)
+	token, err := Create(secret, -1*time.Hour, 0, "admin")
 	if err != nil {
 		t.Fatalf("Create() failed: %v", err)
 	}
@@ -88,8 +88,8 @@ func TestValidateInvalidFormat(t *testing.T) {
 
 func TestTokensAreUnique(t *testing.T) {
 	secret := "test"
-	token1, _ := Create(secret, time.Hour, 0)
-	token2, _ := Create(secret, time.Hour, 0)
+	token1, _ := Create(secret, time.Hour, 0, "admin")
+	token2, _ := Create(secret, time.Hour, 0, "admin")
 
 	// Tokens MUST differ even when created in the same second (nonce/jti)
 	if token1 == token2 {
@@ -106,7 +106,7 @@ func TestTokensAreUnique(t *testing.T) {
 
 func TestTokenHasJTI(t *testing.T) {
 	secret := "test"
-	token, _ := Create(secret, time.Hour, 0)
+	token, _ := Create(secret, time.Hour, 0, "admin")
 
 	claims, err := Validate(token, secret, 0)
 	if err != nil {
@@ -122,7 +122,7 @@ func TestTokenHasJTI(t *testing.T) {
 
 func TestValidateTamperedPayload(t *testing.T) {
 	secret := "test-secret"
-	token, _ := Create(secret, time.Hour, 0)
+	token, _ := Create(secret, time.Hour, 0, "admin")
 
 	// Tamper with the payload (change first char)
 	tampered := "X" + token[1:]
@@ -134,7 +134,7 @@ func TestValidateTamperedPayload(t *testing.T) {
 
 func TestValidateSessionInvalidated(t *testing.T) {
 	secret := "test-secret"
-	token, _ := Create(secret, time.Hour, 0)
+	token, _ := Create(secret, time.Hour, 0, "admin")
 
 	// Same gen: valid
 	_, err := Validate(token, secret, 0)

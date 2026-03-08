@@ -11,6 +11,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net"
@@ -68,20 +69,37 @@ func CORS(allowedOrigins []string, next http.Handler) http.Handler {
 	})
 }
 
-// SessionValidator is a function that returns true if the token is a valid session.
+// SessionValidator is a function that validates a session token and returns the role and validity.
 // Used so the handler can supply password and session generation (invalidated on credential change).
-type SessionValidator func(token string) bool
+type SessionValidator func(token string) (role string, ok bool)
+
+// contextKey is an unexported type for context keys in this package.
+type contextKey int
+
+const roleContextKey contextKey = iota
+
+// GetRole extracts the authenticated role from the request context.
+// Returns empty string if not authenticated.
+func GetRole(r *http.Request) string {
+	if v, ok := r.Context().Value(roleContextKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// SetRole returns a new request with the given role injected into its context.
+// Intended for use by handlers and tests that need to set the role directly.
+func SetRole(r *http.Request, role string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), roleContextKey, role))
+}
 
 // AdminAuth protects API endpoints with signed session tokens.
 // Accepts Bearer token in Authorization header or "session" cookie.
 // validate is typically handler.SessionValidator() so password and session generation stay in sync.
+// On successful auth, the role is stored in the request context (accessible via GetRole).
 // Static assets (UI files) are served without auth so the login page loads.
 func AdminAuth(validate SessionValidator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Allow unauthenticated access to:
-		//   - Static UI files (so login page can load)
-		//   - Login endpoint (so user can authenticate)
-		//   - Health check
 		if isPublicPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
@@ -90,22 +108,41 @@ func AdminAuth(validate SessionValidator, next http.Handler) http.Handler {
 		// Check Authorization: Bearer <token>
 		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 			token := strings.TrimPrefix(auth, "Bearer ")
-			if validate(token) {
-				next.ServeHTTP(w, r)
+			if role, ok := validate(token); ok {
+				ctx := context.WithValue(r.Context(), roleContextKey, role)
+				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 		}
 
 		// Check cookie fallback (for browser-based access)
 		if cookie, err := r.Cookie("session"); err == nil {
-			if validate(cookie.Value) {
-				next.ServeHTTP(w, r)
+			if role, ok := validate(cookie.Value); ok {
+				ctx := context.WithValue(r.Context(), roleContextKey, role)
+				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 		}
 
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 	})
+}
+
+// RequireRole returns middleware that restricts access to the given roles.
+// Must be used after AdminAuth (expects role in context).
+func RequireRole(roles []string, next http.HandlerFunc) http.HandlerFunc {
+	allowed := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		allowed[r] = true
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		role := GetRole(r)
+		if !allowed[role] {
+			http.Error(w, `{"error":"forbidden","required_role":"`+roles[0]+`"}`, http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}
 }
 
 // isPublicPath returns true for paths that don't require auth.

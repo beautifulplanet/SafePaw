@@ -10,7 +10,14 @@ import (
 	"testing"
 
 	"safepaw/wizard/internal/config"
+	"safepaw/wizard/internal/middleware"
 )
+
+// asAdmin injects admin role into the request context for tests that
+// call Router() directly (bypassing the AdminAuth middleware).
+func asAdmin(r *http.Request) *http.Request {
+	return middleware.SetRole(r, "admin")
+}
 
 func TestGetConfig(t *testing.T) {
 	dir := t.TempDir()
@@ -32,7 +39,7 @@ func TestGetConfig(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/v1/config", nil)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /api/v1/config: status = %d, want 200", rec.Code)
@@ -70,7 +77,7 @@ func TestPutConfigAllowedKey(t *testing.T) {
 	req := httptest.NewRequest("PUT", "/api/v1/config", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT /api/v1/config: status = %d, want 200", rec.Code)
@@ -106,7 +113,7 @@ func TestPutConfigRejectsDisallowedKey(t *testing.T) {
 	req := httptest.NewRequest("PUT", "/api/v1/config", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT with disallowed key: status = %d (rejected keys are skipped, still 200)", rec.Code)
@@ -135,7 +142,7 @@ func TestPutConfigSystemProfileExpands(t *testing.T) {
 	req := httptest.NewRequest("PUT", "/api/v1/config", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT SYSTEM_PROFILE=large: status = %d, want 200", rec.Code)
@@ -176,7 +183,7 @@ func TestPutConfigSystemProfileVeryLarge(t *testing.T) {
 	req := httptest.NewRequest("PUT", "/api/v1/config", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT SYSTEM_PROFILE=very-large: status = %d, want 200", rec.Code)
@@ -211,7 +218,7 @@ func TestPutConfigSystemProfileInvalid(t *testing.T) {
 	req := httptest.NewRequest("PUT", "/api/v1/config", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, asAdmin(req))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("PUT SYSTEM_PROFILE=gigantic: status = %d, want 400", rec.Code)

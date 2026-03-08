@@ -86,14 +86,18 @@ func clientIP(r *http.Request) string {
 
 // SessionValidator returns a function that validates session tokens using the server session secret and session generation.
 // Pass this to middleware.AdminAuth so that when password or TOTP is changed via PUT /config, existing tokens fail validation.
+// Returns (role, true) on success, ("", false) on invalid token.
 func (h *Handler) SessionValidator() middleware.SessionValidator {
-	return func(token string) bool {
-		_, err := session.Validate(token, h.cfg.SessionSecret, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
-		return err == nil
+	return func(token string) (string, bool) {
+		claims, err := session.Validate(token, h.cfg.SessionSecret, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
+		if err != nil {
+			return "", false
+		}
+		return claims.EffectiveRole(), true
 	}
 }
 
-// ReloadCredsFromEnv re-reads the .env file and updates AdminPassword and TOTPSecret in memory.
+// ReloadCredsFromEnv re-reads the .env file and updates AdminPassword, OperatorPassword, ViewerPassword, and TOTPSecret in memory.
 // Call after PUT /config updates those keys so new logins use the new credentials.
 func (h *Handler) ReloadCredsFromEnv() {
 	env, err := readEnvFile(h.cfg.EnvFilePath)
@@ -107,6 +111,12 @@ func (h *Handler) ReloadCredsFromEnv() {
 	if v, ok := env["WIZARD_TOTP_SECRET"]; ok {
 		h.cfg.TOTPSecret = v
 	}
+	if v, ok := env["WIZARD_OPERATOR_PASSWORD"]; ok {
+		h.cfg.OperatorPassword = v
+	}
+	if v, ok := env["WIZARD_VIEWER_PASSWORD"]; ok {
+		h.cfg.ViewerPassword = v
+	}
 }
 
 // BumpSessionGen increments the session generation so all existing tokens fail validation (e.g. after password or TOTP change).
@@ -116,20 +126,28 @@ func (h *Handler) BumpSessionGen() {
 }
 
 // Router returns the HTTP handler with all routes registered.
+// Routes enforce RBAC:
+//   - viewer:   read-only (GET status, config, metrics, activity, prerequisites)
+//   - operator: viewer + restart services
+//   - admin:    full access (config changes, token generation)
 func (h *Handler) Router() http.Handler {
 	mux := http.NewServeMux()
+
+	adminOnly := []string{"admin"}
+	operatorUp := []string{"admin", "operator"}
+	anyRole := []string{"admin", "operator", "viewer"}
 
 	// ── API Routes ──
 	mux.HandleFunc("GET /api/v1/health", h.handleHealth)
 	mux.HandleFunc("POST /api/v1/auth/login", h.handleLogin)
-	mux.HandleFunc("GET /api/v1/prerequisites", h.handlePrerequisites)
-	mux.HandleFunc("GET /api/v1/status", h.handleStatus)
-	mux.HandleFunc("GET /api/v1/config", h.handleGetConfig)
-	mux.HandleFunc("PUT /api/v1/config", h.handlePutConfig)
-	mux.HandleFunc("POST /api/v1/services/{name}/restart", h.handleServiceRestart)
-	mux.HandleFunc("POST /api/v1/gateway/token", h.handleGatewayToken)
-	mux.HandleFunc("GET /api/v1/gateway/metrics", h.handleGatewayMetrics)
-	mux.HandleFunc("GET /api/v1/gateway/activity", h.handleGatewayActivity)
+	mux.HandleFunc("GET /api/v1/prerequisites", middleware.RequireRole(anyRole, h.handlePrerequisites))
+	mux.HandleFunc("GET /api/v1/status", middleware.RequireRole(anyRole, h.handleStatus))
+	mux.HandleFunc("GET /api/v1/config", middleware.RequireRole(anyRole, h.handleGetConfig))
+	mux.HandleFunc("PUT /api/v1/config", middleware.RequireRole(adminOnly, h.handlePutConfig))
+	mux.HandleFunc("POST /api/v1/services/{name}/restart", middleware.RequireRole(operatorUp, h.handleServiceRestart))
+	mux.HandleFunc("POST /api/v1/gateway/token", middleware.RequireRole(adminOnly, h.handleGatewayToken))
+	mux.HandleFunc("GET /api/v1/gateway/metrics", middleware.RequireRole(anyRole, h.handleGatewayMetrics))
+	mux.HandleFunc("GET /api/v1/gateway/activity", middleware.RequireRole(anyRole, h.handleGatewayActivity))
 
 	// ── SPA Fallback ──
 	// Serve React app for all non-API routes
@@ -183,7 +201,8 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	ExpiresIn int `json:"expires_in"` // seconds
+	ExpiresIn int    `json:"expires_in"` // seconds
+	Role      string `json:"role"`       // "admin", "operator", or "viewer"
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +215,9 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if subtle.ConstantTimeCompare([]byte(req.Password), []byte(h.cfg.AdminPassword)) != 1 {
+	// Determine role by matching password (check all configured passwords)
+	role := h.matchPasswordToRole(req.Password)
+	if role == "" {
 		ip := clientIP(r)
 		log.Printf("[WARN] Failed login attempt from %s", sanitizeLog(ip))
 		h.audit.LoginFailure(ip, "invalid_password")
@@ -205,8 +226,8 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// When MFA is enabled, require and validate TOTP code
-	if h.cfg.TOTPSecret != "" {
+	// When MFA is enabled, require and validate TOTP code (admin and operator only)
+	if h.cfg.TOTPSecret != "" && role != "viewer" {
 		if req.TOTP == "" {
 			writeJSON(w, http.StatusUnauthorized, errorResponse{"totp_required"})
 			return
@@ -223,7 +244,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Generate signed session token (24h TTL); include current gen so credential rotation invalidates old tokens
 	const ttl = 24 * time.Hour
-	token, err := session.Create(h.cfg.SessionSecret, ttl, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
+	token, err := session.Create(h.cfg.SessionSecret, ttl, int(h.sessionGen.Load()%uint64(^uint(0)>>1)), role) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
 	if err != nil {
 		log.Printf("[ERROR] Failed to create session token: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})
@@ -262,7 +283,37 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, loginResponse{
 		ExpiresIn: int(ttl.Seconds()),
+		Role:      role,
 	})
+}
+
+// matchPasswordToRole checks the given password against all configured passwords
+// and returns the corresponding role. Returns "" if no match.
+// Uses constant-time comparison for all checks to prevent timing attacks.
+func (h *Handler) matchPasswordToRole(password string) string {
+	adminMatch := subtle.ConstantTimeCompare([]byte(password), []byte(h.cfg.AdminPassword)) == 1
+
+	operatorMatch := false
+	if h.cfg.OperatorPassword != "" {
+		operatorMatch = subtle.ConstantTimeCompare([]byte(password), []byte(h.cfg.OperatorPassword)) == 1
+	}
+
+	viewerMatch := false
+	if h.cfg.ViewerPassword != "" {
+		viewerMatch = subtle.ConstantTimeCompare([]byte(password), []byte(h.cfg.ViewerPassword)) == 1
+	}
+
+	// Priority: admin > operator > viewer (in case same password used for multiple roles)
+	switch {
+	case adminMatch:
+		return "admin"
+	case operatorMatch:
+		return "operator"
+	case viewerMatch:
+		return "viewer"
+	default:
+		return ""
+	}
 }
 
 // ─── Prerequisites Check ─────────────────────────────────────

@@ -36,11 +36,12 @@ import (
 
 // Claims represents the token payload.
 type Claims struct {
-	Subject   string `json:"sub"`           // Always "admin" for wizard
-	IssuedAt  int64  `json:"iat"`           // Unix timestamp
-	ExpiresAt int64  `json:"exp"`           // Unix timestamp
-	JTI       string `json:"jti,omitempty"` // Unique nonce (replay protection)
-	Gen       int    `json:"gen,omitempty"` // Session generation; tokens with gen < current are invalid (e.g. after password/TOTP change)
+	Subject   string `json:"sub"`            // Always "admin" for wizard
+	IssuedAt  int64  `json:"iat"`            // Unix timestamp
+	ExpiresAt int64  `json:"exp"`            // Unix timestamp
+	JTI       string `json:"jti,omitempty"`  // Unique nonce (replay protection)
+	Gen       int    `json:"gen,omitempty"`  // Session generation; tokens with gen < current are invalid (e.g. after password/TOTP change)
+	Role      string `json:"role,omitempty"` // RBAC role: "admin", "operator", "viewer" (default "admin" for backward compat)
 }
 
 var (
@@ -54,7 +55,8 @@ var (
 // The secret should be the admin password (never leaves the server).
 // Each token includes a unique cryptographic nonce (jti) for replay protection.
 // gen is the current session generation; when password or TOTP is changed, bump gen so old tokens fail Validate.
-func Create(secret string, ttl time.Duration, gen int) (string, error) {
+// role is the RBAC role ("admin", "operator", or "viewer"); empty defaults to "admin" on Validate.
+func Create(secret string, ttl time.Duration, gen int, role string) (string, error) {
 	nonce, err := generateNonce()
 	if err != nil {
 		return "", err
@@ -67,6 +69,7 @@ func Create(secret string, ttl time.Duration, gen int) (string, error) {
 		ExpiresAt: now.Add(ttl).Unix(),
 		JTI:       nonce,
 		Gen:       gen,
+		Role:      role,
 	}
 
 	payload, err := json.Marshal(claims)
@@ -125,6 +128,15 @@ func Validate(token, secret string, currentGen int) (*Claims, error) {
 	}
 
 	return &claims, nil
+}
+
+// EffectiveRole returns the role from claims, defaulting to "admin" for backward
+// compatibility with tokens issued before RBAC was added.
+func (c *Claims) EffectiveRole() string {
+	if c.Role == "" {
+		return "admin"
+	}
+	return c.Role
 }
 
 func sign(payload []byte, secret string) []byte {
