@@ -52,6 +52,12 @@ type Config struct {
 	// Redis (for persistent revocation, optional)
 	RedisAddr     string
 	RedisPassword string
+
+	// Cost monitoring — OpenClaw usage collector
+	OpenClawWSURL         string  // WebSocket endpoint for OpenClaw control plane
+	OpenClawGatewayToken  string  // Auth token for OpenClaw WS API
+	CostAlertDailyWarn    float64 // Daily cost warning threshold (USD)
+	CostAlertDailyCrit    float64 // Daily cost critical threshold (USD)
 }
 
 // Load reads config from environment variables with safe defaults.
@@ -100,6 +106,12 @@ func Load() (*Config, error) {
 		// Redis (optional — enables persistent revocation)
 		RedisAddr:     envStr("REDIS_ADDR", ""),
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
+
+		// Cost monitoring
+		OpenClawWSURL:        envStr("OPENCLAW_WS_URL", ""),
+		OpenClawGatewayToken: os.Getenv("OPENCLAW_GATEWAY_TOKEN"),
+		CostAlertDailyWarn:   envFloat("COST_ALERT_DAILY_WARN", 1.0),
+		CostAlertDailyCrit:   envFloat("COST_ALERT_DAILY_CRIT", 10.0),
 	}
 
 	// Load auth secret (required if auth is enabled)
@@ -141,6 +153,15 @@ func envInt(key string, fallback int) int {
 	if val := os.Getenv(key); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			return n
+		}
+	}
+	return fallback
+}
+
+func envFloat(key string, fallback float64) float64 {
+	if val := os.Getenv(key); val != "" {
+		if f, err := strconv.ParseFloat(val, 64); err == nil {
+			return f
 		}
 	}
 	return fallback

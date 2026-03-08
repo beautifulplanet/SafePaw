@@ -156,6 +156,11 @@ services:
       # Redis (for rate limiter state, optional)
       # Structured logging (json for SIEM, text for dev)
       LOG_FORMAT: ${LOG_FORMAT:-text}
+      # Cost monitoring — OpenClaw WS token + alert thresholds
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_WS_URL: "ws://openclaw:18789"
+      COST_ALERT_DAILY_WARN: ${COST_ALERT_DAILY_WARN:-1.00}
+      COST_ALERT_DAILY_CRIT: ${COST_ALERT_DAILY_CRIT:-10.00}
       REDIS_ADDR: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     ports:
@@ -209,6 +214,8 @@ services:
       # LLM Provider (set in .env)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Auth token for SafePaw cost monitoring (must match gateway's OPENCLAW_GATEWAY_TOKEN)
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
       # Channel tokens (set in .env via Wizard UI)
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
