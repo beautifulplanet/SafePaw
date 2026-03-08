@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
-	"nhooyr.io/websocket"
 )
 
 // UsageCollector connects to OpenClaw's WS API and polls cost data.
@@ -48,19 +48,19 @@ type UsageCollector struct {
 type CollectorStatus string
 
 const (
-	StatusDisabled     CollectorStatus = "disabled"
-	StatusConnecting   CollectorStatus = "connecting"
-	StatusConnected    CollectorStatus = "connected"
-	StatusError        CollectorStatus = "error"
-	StatusUnavailable  CollectorStatus = "unavailable"
+	StatusDisabled    CollectorStatus = "disabled"
+	StatusConnecting  CollectorStatus = "connecting"
+	StatusConnected   CollectorStatus = "connected"
+	StatusError       CollectorStatus = "error"
+	StatusUnavailable CollectorStatus = "unavailable"
 )
 
 // CostUsageSummary mirrors OpenClaw's usage.cost response.
 type CostUsageSummary struct {
-	UpdatedAt time.Time            `json:"updatedAt"`
-	Days      int                  `json:"days"`
+	UpdatedAt time.Time             `json:"updatedAt"`
+	Days      int                   `json:"days"`
 	Daily     []CostUsageDailyEntry `json:"daily"`
-	Totals    CostUsageTotals      `json:"totals"`
+	Totals    CostUsageTotals       `json:"totals"`
 }
 
 // CostUsageDailyEntry is one day's token/cost breakdown.
@@ -71,32 +71,32 @@ type CostUsageDailyEntry struct {
 
 // CostUsageTotals holds aggregated cost/token data.
 type CostUsageTotals struct {
-	Input             int64   `json:"input"`
-	Output            int64   `json:"output"`
-	CacheRead         int64   `json:"cacheRead"`
-	CacheWrite        int64   `json:"cacheWrite"`
-	TotalTokens       int64   `json:"totalTokens"`
-	TotalCost         float64 `json:"totalCost"`
-	InputCost         float64 `json:"inputCost"`
-	OutputCost        float64 `json:"outputCost"`
-	CacheReadCost     float64 `json:"cacheReadCost"`
-	CacheWriteCost    float64 `json:"cacheWriteCost"`
-	MissingCostEntries int    `json:"missingCostEntries"`
+	Input              int64   `json:"input"`
+	Output             int64   `json:"output"`
+	CacheRead          int64   `json:"cacheRead"`
+	CacheWrite         int64   `json:"cacheWrite"`
+	TotalTokens        int64   `json:"totalTokens"`
+	TotalCost          float64 `json:"totalCost"`
+	InputCost          float64 `json:"inputCost"`
+	OutputCost         float64 `json:"outputCost"`
+	CacheReadCost      float64 `json:"cacheReadCost"`
+	CacheWriteCost     float64 `json:"cacheWriteCost"`
+	MissingCostEntries int     `json:"missingCostEntries"`
 }
 
 // UsageResponse is the JSON returned by /admin/usage.
 type UsageResponse struct {
-	Status    string             `json:"status"`
-	Collector string             `json:"collector"`
-	UpdatedAt string             `json:"updatedAt,omitempty"`
-	Alert     string             `json:"alert,omitempty"`
-	WarnUSD   float64            `json:"warnThresholdUsd"`
-	CritUSD   float64            `json:"critThresholdUsd"`
-	TodayCost float64            `json:"todayCostUsd"`
-	PeriodCost float64           `json:"periodCostUsd"`
-	Days      int                `json:"days"`
-	Daily     []CostUsageDailyEntry `json:"daily,omitempty"`
-	Totals    *CostUsageTotals   `json:"totals,omitempty"`
+	Status     string                `json:"status"`
+	Collector  string                `json:"collector"`
+	UpdatedAt  string                `json:"updatedAt,omitempty"`
+	Alert      string                `json:"alert,omitempty"`
+	WarnUSD    float64               `json:"warnThresholdUsd"`
+	CritUSD    float64               `json:"critThresholdUsd"`
+	TodayCost  float64               `json:"todayCostUsd"`
+	PeriodCost float64               `json:"periodCostUsd"`
+	Days       int                   `json:"days"`
+	Daily      []CostUsageDailyEntry `json:"daily,omitempty"`
+	Totals     *CostUsageTotals      `json:"totals,omitempty"`
 }
 
 // WS protocol frame types
@@ -127,19 +127,19 @@ type challengePayload struct {
 }
 
 type connectParams struct {
-	MinProtocol int              `json:"minProtocol"`
-	MaxProtocol int              `json:"maxProtocol"`
-	Client      connectClient    `json:"client"`
-	Role        string           `json:"role"`
-	Scopes      []string         `json:"scopes"`
-	Auth        connectAuth      `json:"auth"`
+	MinProtocol int           `json:"minProtocol"`
+	MaxProtocol int           `json:"maxProtocol"`
+	Client      connectClient `json:"client"`
+	Role        string        `json:"role"`
+	Scopes      []string      `json:"scopes"`
+	Auth        connectAuth   `json:"auth"`
 }
 
 type connectClient struct {
-	ID      string `json:"id"`
-	Version string `json:"version"`
+	ID       string `json:"id"`
+	Version  string `json:"version"`
 	Platform string `json:"platform"`
-	Mode    string `json:"mode"`
+	Mode     string `json:"mode"`
 }
 
 type connectAuth struct {
@@ -263,11 +263,14 @@ func (uc *UsageCollector) connectAndPoll() error {
 	ctx, cancel := context.WithTimeout(uc.ctx, 10*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, uc.wsURL, nil)
+	conn, resp, err := websocket.Dial(ctx, uc.wsURL, nil)
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck // best-effort cleanup
 
 	// Set a generous read limit for usage.cost responses (they can be large)
 	conn.SetReadLimit(1 << 20) // 1MB

@@ -28,9 +28,9 @@ import (
 )
 
 const (
-	wsDialTimeout  = 10 * time.Second
-	wsBufferSize   = 32 * 1024       // 32KB copy buffer
-	wsMaxMsgSize   = 100 * 1024 * 1024 // 100MB total connection bytes client→backend (not per-message)
+	wsDialTimeout = 10 * time.Second
+	wsBufferSize  = 32 * 1024         // 32KB copy buffer
+	wsMaxMsgSize  = 100 * 1024 * 1024 // 100MB total connection bytes client→backend (not per-message)
 )
 
 // isWebSocketUpgrade checks if a request is a WebSocket upgrade.
