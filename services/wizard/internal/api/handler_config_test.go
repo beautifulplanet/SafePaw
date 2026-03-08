@@ -83,7 +83,7 @@ func TestPutConfigAllowedKey(t *testing.T) {
 		t.Fatalf("PUT /api/v1/config: status = %d, want 200", rec.Code)
 	}
 	// Verify file was updated
-	env, err := readEnvFile(envPath)
+	env, err := ReadEnvFile(envPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestPutConfigRejectsDisallowedKey(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT with disallowed key: status = %d (rejected keys are skipped, still 200)", rec.Code)
 	}
-	env, _ := readEnvFile(envPath)
+	env, _ := ReadEnvFile(envPath)
 	if env["POSTGRES_PASSWORD"] != "secret" {
 		t.Errorf("POSTGRES_PASSWORD should be unchanged, got %q", env["POSTGRES_PASSWORD"])
 	}
@@ -147,7 +147,7 @@ func TestPutConfigSystemProfileExpands(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT SYSTEM_PROFILE=large: status = %d, want 200", rec.Code)
 	}
-	env, err := readEnvFile(envPath)
+	env, err := ReadEnvFile(envPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestPutConfigSystemProfileVeryLarge(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT SYSTEM_PROFILE=very-large: status = %d, want 200", rec.Code)
 	}
-	env, err := readEnvFile(envPath)
+	env, err := ReadEnvFile(envPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestPutConfigSystemProfileInvalid(t *testing.T) {
 		t.Fatalf("PUT SYSTEM_PROFILE=gigantic: status = %d, want 400", rec.Code)
 	}
 	// Verify env was not changed
-	env, _ := readEnvFile(envPath)
+	env, _ := ReadEnvFile(envPath)
 	if env["SYSTEM_PROFILE"] != "small" {
 		t.Errorf("SYSTEM_PROFILE should be unchanged, got %q", env["SYSTEM_PROFILE"])
 	}

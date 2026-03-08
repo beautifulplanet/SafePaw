@@ -38,6 +38,16 @@ type Config struct {
 	// Paths
 	ComposeFilePath string // Path to the project's docker-compose.yml
 	EnvFilePath     string // Path to the .env file
+
+	// Postgres (for cost history persistence)
+	PostgresHost     string
+	PostgresPort     int
+	PostgresUser     string
+	PostgresPassword string
+	PostgresDB       string
+
+	// Gateway
+	GatewayURL string // e.g., http://safepaw-gateway:8080
 }
 
 // Load reads configuration from environment variables.
@@ -50,6 +60,12 @@ func Load() (*Config, error) {
 		ComposeFilePath: getEnv("COMPOSE_FILE_PATH", "/app/docker-compose.yml"),
 		EnvFilePath:     getEnv("ENV_FILE_PATH", "/app/.env"),
 		TOTPSecret:      getEnv("WIZARD_TOTP_SECRET", ""),
+		PostgresHost:    getEnv("POSTGRES_HOST", ""),
+		PostgresPort:    getEnvInt("POSTGRES_PORT", 5432),
+		PostgresUser:    getEnv("POSTGRES_USER", ""),
+		PostgresPassword: getEnv("POSTGRES_PASSWORD", ""),
+		PostgresDB:      getEnv("POSTGRES_DB", ""),
+		GatewayURL:      getEnv("GATEWAY_URL", "http://safepaw-gateway:8080"),
 	}
 
 	// Admin password: use provided or generate a secure random one

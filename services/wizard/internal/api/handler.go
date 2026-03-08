@@ -101,7 +101,7 @@ func (h *Handler) SessionValidator() middleware.SessionValidator {
 // ReloadCredsFromEnv re-reads the .env file and updates AdminPassword, OperatorPassword, ViewerPassword, and TOTPSecret in memory.
 // Call after PUT /config updates those keys so new logins use the new credentials.
 func (h *Handler) ReloadCredsFromEnv() {
-	env, err := readEnvFile(h.cfg.EnvFilePath)
+	env, err := ReadEnvFile(h.cfg.EnvFilePath)
 	if err != nil {
 		log.Printf("[WARN] ReloadCredsFromEnv: read failed: %v", err)
 		return
@@ -183,7 +183,7 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 // needsSetup returns true when critical configuration is missing.
 // Checks: at least one LLM API key must be configured.
 func (h *Handler) needsSetup() bool {
-	env, err := readEnvFile(h.cfg.EnvFilePath)
+	env, err := ReadEnvFile(h.cfg.EnvFilePath)
 	if err != nil {
 		// If we can't read the env file, setup is definitely needed
 		return true
@@ -635,7 +635,7 @@ func (h *Handler) handleGatewayToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read AUTH_SECRET from .env
-	env, err := readEnvFile(h.cfg.EnvFilePath)
+	env, err := ReadEnvFile(h.cfg.EnvFilePath)
 	if err != nil {
 		log.Printf("[ERROR] handleGatewayToken: cannot read env: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{"cannot read configuration"})
@@ -929,7 +929,7 @@ func (h *Handler) handleGatewayUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read AUTH_SECRET to mint a gateway admin token
-	env, err := readEnvFile(h.cfg.EnvFilePath)
+	env, err := ReadEnvFile(h.cfg.EnvFilePath)
 	if err != nil {
 		log.Printf("[WARN] handleGatewayUsage: cannot read env: %v", err)
 		writeJSON(w, http.StatusOK, map[string]string{"status": "unavailable"})
