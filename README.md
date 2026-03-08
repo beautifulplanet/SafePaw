@@ -8,15 +8,20 @@
   <a href="#part-2-tech-stack--architecture"><strong>Architecture</strong></a> &middot;
   <a href="https://github.com/beautifulplanet/SafePaw"><strong>GitHub</strong></a> &middot;
   <a href="SECURITY.md"><strong>Security</strong></a> &middot;
-  <a href="RUNBOOK.md"><strong>Runbook</strong></a>
+  <a href="RUNBOOK.md"><strong>Runbook</strong></a> &middot;
+  <a href="docs/adr/"><strong>ADRs</strong></a> &middot;
+  <a href="CHANGELOG.md"><strong>Changelog</strong></a>
 </p>
 
 <p align="center">
+  <a href="https://github.com/beautifulplanet/SafePaw/actions/workflows/ci.yml"><img src="https://github.com/beautifulplanet/SafePaw/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
   <a href="https://github.com/beautifulplanet/SafePaw/stargazers"><img src="https://img.shields.io/github/stars/beautifulplanet/SafePaw?style=flat" alt="Stars" /></a>
   <img src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go" alt="Go 1.24" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React 19" />
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker" alt="Docker Compose" />
+  <img src="https://img.shields.io/badge/tests-322-brightgreen" alt="322 tests" />
+  <img src="https://img.shields.io/badge/coverage-65%25-yellowgreen" alt="65% coverage" />
 </p>
 
 <br/>
@@ -83,8 +88,8 @@ Prometheus metrics, Grafana dashboards, 6 alert rules, structured JSON logging. 
 6 playbooks: token compromise, injection detected, gateway down, brute force, secret rotation, disk full. Copy-paste commands.
 </td>
 <td align="center">
-<h3>🧪 258+ Tests</h3>
-Go unit and integration tests, 7 fuzz targets, coverage gate (60%) in CI. Lint, gosec, govulncheck, Docker build on every push.
+<h3>🧪 322 Tests</h3>
+Go unit and integration tests, 7 fuzz targets, coverage gate (65%) in CI. Lint, gosec, govulncheck, Trivy container scan on every push.
 </td>
 <td align="center">
 <h3>📐 Threat Model</h3>
@@ -521,8 +526,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build and test commands.
 | [RUNBOOK.md](RUNBOOK.md) | 6 incident playbooks, secret rotation |
 | [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) | Backup/restore for Postgres, Redis, volumes, .env |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | STRIDE threat model, residual risks |
+| [CHANGELOG.md](CHANGELOG.md) | Release history (Keep a Changelog format) |
+| [docs/adr/](docs/adr/) | 6 architecture decision records (HMAC, zero-deps, Go, socket proxy, heuristics, monorepo) |
+| [docs/COMPLIANCE.md](docs/COMPLIANCE.md) | SOC 2 & GDPR control mapping with gap analysis |
+| [docs/PENTEST-POLICY.md](docs/PENTEST-POLICY.md) | Penetration testing scope, methodology, responsible disclosure |
+| [docs/PATCHING-POLICY.md](docs/PATCHING-POLICY.md) | Dependency update SLAs, Dependabot workflow, freeze policy |
+| [docs/SECRETS-MIGRATION.md](docs/SECRETS-MIGRATION.md) | Migration guide from env vars to Vault/external secrets |
 | [SCOPE-IMPROVEMENTS.md](SCOPE-IMPROVEMENTS.md) | Review feedback triage (done vs. open) and improvement backlog |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev workflow, coding standards, PR process |
+| [PITFALLS.md](PITFALLS.md) | Known gotchas and edge cases |
 | [RELEASE.md](RELEASE.md) | Going public: timestamp, checklist, positioning, licensing |
 | [.env.example](.env.example) | All configuration variables with comments |
 
