@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -273,5 +274,88 @@ func TestServiceRestartNoDocker(t *testing.T) {
 	// With nil docker we return 503
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("Status = %d, want 503 when Docker client unavailable", rec.Code)
+	}
+}
+
+func TestGatewayUsage_NoAuthSecret(t *testing.T) {
+	// Without EnvFilePath (no .env), handler should return {"status":"unavailable"}
+	h := newTestHandler(t)
+	router := h.Router()
+
+	req := httptest.NewRequest("GET", "/api/v1/gateway/usage", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, asAdmin(req))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want 200", rec.Code)
+	}
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode: %v", err)
+	}
+	if resp["status"] != "unavailable" {
+		t.Errorf("status = %q, want %q", resp["status"], "unavailable")
+	}
+}
+
+func TestGatewayUsage_ProxiesGateway(t *testing.T) {
+	// Spin up a fake gateway that returns usage JSON
+	fakeGateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/usage" {
+			http.NotFound(w, r)
+			return
+		}
+		auth := r.Header.Get("Authorization")
+		if auth == "" || !bytes.HasPrefix([]byte(auth), []byte("Bearer ")) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":        "ok",
+			"todayCostUsd":  1.25,
+			"periodCostUsd": 42.50,
+		})
+	}))
+	defer fakeGateway.Close()
+
+	// Write a .env with AUTH_SECRET
+	dir := t.TempDir()
+	envPath := dir + "/.env"
+	if err := os.WriteFile(envPath, []byte("AUTH_SECRET=abcdefghijklmnopqrstuvwxyz123456\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Port:          3000,
+		AdminPassword: "test-password-123",
+		SessionSecret: "test-session-secret-32bytes!!!",
+		EnvFilePath:   envPath,
+	}
+	h, err := NewHandler(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Point GATEWAY_URL at our fake server
+	t.Setenv("GATEWAY_URL", fakeGateway.URL)
+
+	router := h.Router()
+	req := httptest.NewRequest("GET", "/api/v1/gateway/usage", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, asAdmin(req))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want 200", rec.Code)
+	}
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode: %v", err)
+	}
+	if resp["status"] != "ok" {
+		t.Errorf("status = %v, want %q", resp["status"], "ok")
+	}
+	if resp["todayCostUsd"] != 1.25 {
+		t.Errorf("todayCostUsd = %v, want 1.25", resp["todayCostUsd"])
 	}
 }

@@ -16,6 +16,7 @@
 //   POST /api/v1/gateway/token   — Generate a gateway auth token (reads AUTH_SECRET from .env)
 //   GET  /api/v1/gateway/metrics — Proxy Prometheus metrics from gateway
 //   GET  /api/v1/gateway/activity — Parsed gateway activity summary
+//   GET  /api/v1/gateway/usage   — Proxy OpenClaw cost/usage data from gateway
 // =============================================================
 
 package api
@@ -148,6 +149,7 @@ func (h *Handler) Router() http.Handler {
 	mux.HandleFunc("POST /api/v1/gateway/token", middleware.RequireRole(adminOnly, h.handleGatewayToken))
 	mux.HandleFunc("GET /api/v1/gateway/metrics", middleware.RequireRole(anyRole, h.handleGatewayMetrics))
 	mux.HandleFunc("GET /api/v1/gateway/activity", middleware.RequireRole(anyRole, h.handleGatewayActivity))
+	mux.HandleFunc("GET /api/v1/gateway/usage", middleware.RequireRole(anyRole, h.handleGatewayUsage))
 
 	// ── SPA Fallback ──
 	// Serve React app for all non-API routes
@@ -910,6 +912,67 @@ func extractLabel(line, label string) string {
 		return ""
 	}
 	return line[start : start+end]
+}
+
+// ─── Gateway Usage Proxy ─────────────────────────────────────
+
+// handleGatewayUsage proxies the gateway's /admin/usage endpoint, which returns
+// OpenClaw cost/token data. The gateway requires admin-scoped auth, so we mint
+// a short-lived HMAC token using AUTH_SECRET from .env.
+func (h *Handler) handleGatewayUsage(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	gatewayBase := "http://safepaw-gateway:8080"
+	if gw := os.Getenv("GATEWAY_URL"); gw != "" {
+		gatewayBase = gw
+	}
+
+	// Read AUTH_SECRET to mint a gateway admin token
+	env, err := readEnvFile(h.cfg.EnvFilePath)
+	if err != nil {
+		log.Printf("[WARN] handleGatewayUsage: cannot read env: %v", err)
+		writeJSON(w, http.StatusOK, map[string]string{"status": "unavailable"})
+		return
+	}
+	secret := env["AUTH_SECRET"]
+	if secret == "" || len(secret) < 32 {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "unavailable"})
+		return
+	}
+
+	// Build a short-lived admin-scoped token (same format as handleGatewayToken)
+	now := time.Now().Unix()
+	payload, _ := json.Marshal(map[string]interface{}{
+		"sub": "wizard-usage-proxy", "iat": now, "exp": now + 30, "scope": "admin",
+	})
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	token := payloadB64 + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	req, err := http.NewRequestWithContext(ctx, "GET", gatewayBase+"/admin/usage", nil)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "unavailable"})
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "unavailable"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "unavailable"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(body)
 }
 
 // ─── SPA Handler ─────────────────────────────────────────────
