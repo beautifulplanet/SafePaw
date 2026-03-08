@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, type ServiceInfo, type StatusResponse, type GatewayMetrics, type UsageResponse } from '../api'
+import { api, type ServiceInfo, type StatusResponse, type GatewayMetrics, type UsageResponse, type CostHistoryResponse, type CostModelsResponse, type CostTrendsResponse } from '../api'
 
 const POLL_INTERVAL = 5000 // ms
 
@@ -13,6 +13,9 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
   const [data, setData] = useState<StatusResponse | null>(null)
   const [metrics, setMetrics] = useState<GatewayMetrics | null>(null)
   const [usage, setUsage] = useState<UsageResponse | null>(null)
+  const [costHistory, setCostHistory] = useState<CostHistoryResponse | null>(null)
+  const [costModels, setCostModels] = useState<CostModelsResponse | null>(null)
+  const [costTrends, setCostTrends] = useState<CostTrendsResponse | null>(null)
   const [error, setError] = useState('')
   const [restarting, setRestarting] = useState<string | null>(null)
   const [openingAssistant, setOpeningAssistant] = useState(false)
@@ -47,6 +50,21 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
     }
   }, [])
 
+  const fetchCostAnalytics = useCallback(async () => {
+    try {
+      const [history, models, trends] = await Promise.all([
+        api.costHistory(30),
+        api.costModels(30),
+        api.costTrends(7),
+      ])
+      setCostHistory(history)
+      setCostModels(models)
+      setCostTrends(trends)
+    } catch {
+      // Cost analytics non-critical
+    }
+  }, [])
+
   const handleOpenAssistant = useCallback(async () => {
     setOpeningAssistant(true)
     try {
@@ -77,18 +95,20 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
     void fetchStatus()
     void fetchMetrics()
     void fetchUsage()
+    void fetchCostAnalytics()
     intervalRef.current = setInterval(() => {
       void fetchStatus()
       void fetchMetrics()
     }, POLL_INTERVAL)
     usageIntervalRef.current = setInterval(() => {
       void fetchUsage()
+      void fetchCostAnalytics()
     }, 60000)
     return () => {
       clearInterval(intervalRef.current)
       clearInterval(usageIntervalRef.current)
     }
-  }, [fetchStatus, fetchMetrics, fetchUsage])
+  }, [fetchStatus, fetchMetrics, fetchUsage, fetchCostAnalytics])
 
   return (
     <div>
@@ -133,6 +153,11 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
 
       {/* LLM Usage & Cost */}
       {usage && usage.status === 'ok' && <CostPanel usage={usage} />}
+
+      {/* Cost Analytics (Postgres-backed history) */}
+      {costTrends?.status === 'ok' && (
+        <CostAnalyticsPanel history={costHistory} models={costModels} trends={costTrends} />
+      )}
 
       {!data ? (
         // Loading skeleton
@@ -432,6 +457,161 @@ function CostPanel({ usage }: { usage: UsageResponse }) {
                   style={{ height: `${pct}%` }}
                   title={`${d.date}: $${d.totalCost.toFixed(2)}`}
                 />
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Cost Analytics Panel (Postgres-backed) ──────────────────
+
+function trendArrow(pct: number): string {
+  if (pct > 10) return '↑'
+  if (pct < -10) return '↓'
+  return '→'
+}
+
+function trendColor(pct: number): string {
+  if (pct > 50) return 'text-red-400'
+  if (pct > 10) return 'text-yellow-400'
+  if (pct < -10) return 'text-green-400'
+  return 'text-gray-400'
+}
+
+function anomalyBadge(score: number): { label: string; cls: string } | null {
+  if (score >= 0.7) return { label: '⚠ Anomaly', cls: 'border-red-500/30 bg-red-500/10 text-red-400' }
+  if (score >= 0.4) return { label: 'Unusual', cls: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400' }
+  return null
+}
+
+interface ModelAggregate {
+  provider: string
+  model: string
+  totalCost: number
+  totalTokens: number
+  requestCount: number
+}
+
+function aggregateModels(models: CostModelsResponse | null): ModelAggregate[] {
+  if (!models?.models?.length) return []
+  const map = new Map<string, ModelAggregate>()
+  for (const m of models.models) {
+    const key = `${m.provider}/${m.model}`
+    const agg = map.get(key) ?? { provider: m.provider, model: m.model, totalCost: 0, totalTokens: 0, requestCount: 0 }
+    agg.totalCost += m.totalCost
+    agg.totalTokens += m.totalTokens
+    agg.requestCount += m.requestCount
+    map.set(key, agg)
+  }
+  return [...map.values()].sort((a, b) => b.totalCost - a.totalCost)
+}
+
+function CostAnalyticsPanel({ history, models, trends }: {
+  history: CostHistoryResponse | null
+  models: CostModelsResponse | null
+  trends: CostTrendsResponse | null
+}) {
+  const trend = trends?.trend
+  const daily = history?.daily ?? []
+  const modelAgg = aggregateModels(models)
+  const maxBarCost = daily.reduce((m, d) => Math.max(m, d.totalCost), 0.01)
+  const maxModelCost = modelAgg.length > 0 ? modelAgg[0]!.totalCost : 1
+
+  return (
+    <div className="card mb-8 card-enter" style={{ animationDelay: '120ms' }}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-lg">📊 Cost Analytics</h3>
+        {trend && anomalyBadge(trend.anomalyScore) && (
+          <span className={`text-xs px-2 py-0.5 rounded-full border ${anomalyBadge(trend.anomalyScore)!.cls}`}>
+            {anomalyBadge(trend.anomalyScore)!.label}
+          </span>
+        )}
+      </div>
+
+      {/* Trend summary cards */}
+      {trend && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Last {trend.recentDays}d</p>
+            <p className="text-xl font-bold tabular-nums text-gray-100">
+              ${trend.recentCost.toFixed(2)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Prior {trend.recentDays}d</p>
+            <p className="text-xl font-bold tabular-nums text-gray-100">
+              ${trend.priorCost.toFixed(2)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Cost Change</p>
+            <p className={`text-xl font-bold tabular-nums ${trendColor(trend.costChangePct)}`}>
+              {trendArrow(trend.costChangePct)} {trend.costChangePct >= 0 ? '+' : ''}{trend.costChangePct.toFixed(1)}%
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Daily Avg</p>
+            <p className="text-xl font-bold tabular-nums text-gray-100">
+              ${trend.dailyAvgRecent.toFixed(2)}
+            </p>
+            {trend.dailyAvgPrior > 0 && (
+              <p className="text-[10px] text-gray-600">was ${trend.dailyAvgPrior.toFixed(2)}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Historical daily chart */}
+      {daily.length > 0 && (
+        <div className="mb-6">
+          <p className="text-xs text-gray-500 mb-2">Daily Cost History (last {daily.length} days)</p>
+          <div className="flex items-end gap-px h-20">
+            {daily.slice().reverse().map((d) => {
+              const pct = Math.max((d.totalCost / maxBarCost) * 100, 2)
+              return (
+                <div
+                  key={d.date}
+                  className={`flex-1 rounded-t-sm ${costBarColor(d.totalCost)} opacity-80 hover:opacity-100 transition-opacity`}
+                  style={{ height: `${pct}%` }}
+                  title={`${d.date}: $${d.totalCost.toFixed(2)} · ${formatTokens(d.totalTokens)} tokens · ${d.messages} msgs`}
+                />
+              )
+            })}
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[10px] text-gray-600">{daily[daily.length - 1]?.date}</span>
+            <span className="text-[10px] text-gray-600">{daily[0]?.date}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Per-model breakdown */}
+      {modelAgg.length > 0 && (
+        <div>
+          <p className="text-xs text-gray-500 mb-2">Cost by Model</p>
+          <div className="space-y-2">
+            {modelAgg.slice(0, 8).map((m) => {
+              const pct = (m.totalCost / maxModelCost) * 100
+              return (
+                <div key={`${m.provider}/${m.model}`}>
+                  <div className="flex items-center justify-between text-xs mb-0.5">
+                    <span className="text-gray-300 truncate max-w-[60%]" title={`${m.provider}/${m.model}`}>
+                      {m.model}
+                    </span>
+                    <span className="text-gray-400 tabular-nums">
+                      ${m.totalCost.toFixed(2)} · {formatTokens(m.totalTokens)} · {m.requestCount} req
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${costBarColor(m.totalCost)} transition-all`}
+                      style={{ width: `${Math.max(pct, 1)}%` }}
+                    />
+                  </div>
+                </div>
               )
             })}
           </div>

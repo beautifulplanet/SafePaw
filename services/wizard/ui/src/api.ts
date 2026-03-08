@@ -157,6 +157,62 @@ export interface UsageResponse {
   totals?: UsageTotals
 }
 
+// ─── Cost Analytics (Postgres-backed) ────────────────────────
+
+export interface CostDailyRow {
+  date: string
+  totalTokens: number
+  totalCost: number
+  promptTokens: number
+  completionTokens: number
+  messages: number
+  toolCalls: number
+}
+
+export interface CostHistoryResponse {
+  status: string
+  days?: number
+  daily?: CostDailyRow[]
+  error?: string
+}
+
+export interface CostModelRow {
+  date: string
+  provider: string
+  model: string
+  requestCount: number
+  totalTokens: number
+  totalCost: number
+  promptTokens: number
+  completionTokens: number
+}
+
+export interface CostModelsResponse {
+  status: string
+  days?: number
+  models?: CostModelRow[]
+  error?: string
+}
+
+export interface CostTrend {
+  recentDays: number
+  recentCost: number
+  recentTokens: number
+  priorCost: number
+  priorTokens: number
+  costChangePct: number
+  tokenChangePct: number
+  dailyAvgRecent: number
+  dailyAvgPrior: number
+  anomalyScore: number
+}
+
+export interface CostTrendsResponse {
+  status: string
+  trend?: CostTrend
+  error?: string
+}
+
 // ─── Endpoints ───────────────────────────────────────────────
 
 export const api = {
@@ -210,4 +266,16 @@ export const api = {
   /** Get LLM cost/usage data proxied from gateway. */
   gatewayUsage: () =>
     request<UsageResponse>('/gateway/usage'),
+
+  /** Get historical daily cost snapshots from Postgres. */
+  costHistory: (days = 30) =>
+    request<CostHistoryResponse>(`/cost/history?days=${days}`),
+
+  /** Get per-model cost breakdown from Postgres. */
+  costModels: (days = 30) =>
+    request<CostModelsResponse>(`/cost/models?days=${days}`),
+
+  /** Get trend analysis (recent vs prior period) from Postgres. */
+  costTrends: (days = 7) =>
+    request<CostTrendsResponse>(`/cost/trends?days=${days}`),
 }
