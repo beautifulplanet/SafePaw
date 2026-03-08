@@ -262,6 +262,7 @@ func main() {
 	handler = middleware.RateLimitWithGuard(rateLimiter, bruteForce, handler)
 	handler = middleware.BruteForceMiddleware(bruteForce, handler)
 	handler = middleware.OriginCheck(cfg.AllowedOrigins, handler)
+	handler = middleware.AuditEmitter(handler)
 	handler = middleware.RequestID(handler)
 	handler = middleware.SecurityHeaders(handler)
 	handler = middleware.MetricsMiddleware(metrics, handler)
@@ -377,6 +378,13 @@ func bodyScanner(maxSize int64, next http.Handler) http.Handler {
 		if risk > middleware.RiskNone {
 			log.Printf("[SCANNER] Prompt injection risk=%s triggers=%v path=%s remote=%s body_len=%d request_id=%s",
 				risk, triggers, r.URL.Path, r.RemoteAddr, len(bodyBytes), r.Header.Get("X-Request-ID"))
+		}
+
+		if sc := middleware.GetSecurityContext(r); sc != nil {
+			sc.InputScan = &middleware.ScanDecision{
+				Risk:     risk.String(),
+				Triggers: triggers,
+			}
 		}
 
 		// Attach risk assessment as header (OpenClaw can read this)

@@ -211,9 +211,15 @@ func BruteForceMiddleware(guard *BruteForceGuard, next http.Handler) http.Handle
 		if banned {
 			log.Printf("[SECURITY] BLOCKED banned ip=%s reason=%s remaining=%v request_id=%s",
 				ip, reason, remaining.Round(time.Second), r.Header.Get("X-Request-ID"))
+			if sc := GetSecurityContext(r); sc != nil {
+				sc.BruteForce = &BruteForceDecision{Banned: true, Reason: reason}
+			}
 			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", remaining.Seconds()))
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
+		}
+		if sc := GetSecurityContext(r); sc != nil {
+			sc.BruteForce = &BruteForceDecision{Banned: false}
 		}
 
 		next.ServeHTTP(w, r)

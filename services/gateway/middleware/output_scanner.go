@@ -217,6 +217,14 @@ func OutputScanner(maxScanSize int64, next http.Handler) http.Handler {
 				r.URL.Path, r.Header.Get("X-Request-ID"))
 		}
 
+		if sc := GetSecurityContext(r); sc != nil {
+			sc.OutputScan = &ScanDecision{
+				Risk:      risk.String(),
+				Triggers:  triggers,
+				Sanitized: risk >= OutputRiskHigh,
+			}
+		}
+
 		w.Header().Set("X-SafePaw-Output-Risk", risk.String())
 		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 		if !cw.headerWritten {
