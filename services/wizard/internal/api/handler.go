@@ -972,7 +972,9 @@ func (h *Handler) handleGatewayUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(body)
+	if _, err := w.Write(body); err != nil {
+		log.Printf("[WARN] handleGatewayUsage: write response: %v", err)
+	}
 }
 
 // ─── SPA Handler ─────────────────────────────────────────────

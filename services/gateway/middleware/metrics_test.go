@@ -176,3 +176,73 @@ func TestMetrics_Handler_MalformedDurationKey(t *testing.T) {
 		t.Error("malformed key should not appear in output")
 	}
 }
+
+func TestMetrics_Handler_CostSnapshot(t *testing.T) {
+	m := NewMetrics()
+
+	// Set up a CostSnapshotFn that returns data
+	m.CostSnapshotFn = func() *CostSnapshot {
+		return &CostSnapshot{
+			TotalCostUSD:     42.50,
+			TodayCostUSD:     1.25,
+			InputTokens:      500000,
+			OutputTokens:     200000,
+			CacheReadTokens:  50000,
+			CacheWriteTokens: 10000,
+		}
+	}
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+
+	checks := []string{
+		"safepaw_llm_cost_dollars_total 42.5",
+		"safepaw_llm_cost_today_dollars 1.25",
+		`safepaw_llm_tokens_total{type="input"} 500000`,
+		`safepaw_llm_tokens_total{type="output"} 200000`,
+		`safepaw_llm_tokens_total{type="cache_read"} 50000`,
+		`safepaw_llm_tokens_total{type="cache_write"} 10000`,
+	}
+	for _, check := range checks {
+		if !strings.Contains(body, check) {
+			t.Errorf("missing metric: %q\n\nFull output:\n%s", check, body)
+		}
+	}
+}
+
+func TestMetrics_Handler_CostSnapshotNil(t *testing.T) {
+	m := NewMetrics()
+
+	// CostSnapshotFn returns nil (e.g., collector has no data)
+	m.CostSnapshotFn = func() *CostSnapshot {
+		return nil
+	}
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+
+	// Cost metrics should NOT appear when snapshot is nil
+	if strings.Contains(body, "safepaw_llm_cost") {
+		t.Error("cost metrics should not appear when CostSnapshotFn returns nil")
+	}
+}
+
+func TestMetrics_Handler_NoCostSnapshotFn(t *testing.T) {
+	m := NewMetrics()
+	// CostSnapshotFn is nil by default
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "safepaw_llm_cost") {
+		t.Error("cost metrics should not appear when CostSnapshotFn is nil")
+	}
+}
