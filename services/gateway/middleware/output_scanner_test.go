@@ -272,3 +272,44 @@ func TestNormalizeForScan_PlainText(t *testing.T) {
 		t.Errorf("normalizeForScan changed plain text: %q", result)
 	}
 }
+
+func TestOutputScanner_LargeResponsePassthrough(t *testing.T) {
+	// Response exceeds maxScanSize → should passthrough without scanning
+	bigBody := strings.Repeat("A", 200)
+	handler := OutputScanner(100, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte(bigBody))
+	}))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rr.Code)
+	}
+	if rr.Body.String() != bigBody {
+		t.Errorf("expected full body passthrough, got len=%d", rr.Body.Len())
+	}
+}
+
+func TestOutputScanner_MultiWriteExceedsMax(t *testing.T) {
+	// Multiple small writes that together exceed maxScanSize
+	handler := OutputScanner(50, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		for i := 0; i < 5; i++ {
+			w.Write([]byte(strings.Repeat("B", 20)))
+		}
+	}))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rr.Code)
+	}
+	if rr.Body.Len() != 100 {
+		t.Errorf("expected 100 bytes, got %d", rr.Body.Len())
+	}
+}

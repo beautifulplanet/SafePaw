@@ -99,14 +99,62 @@ func TestBruteForceGuard_EscalatedDuration(t *testing.T) {
 	g := NewBruteForceGuard(2, 5*time.Minute)
 	defer g.Stop()
 
-	// 1st ban (2 strikes)
-	g.RecordFailure("10.0.0.1", "test")
-	g.RecordFailure("10.0.0.1", "test")
-	_, _, d1 := g.IsBanned("10.0.0.1")
+	ip := "10.0.0.1"
 
+	// 1st ban: 2 strikes → bans=1 → baseBan (5m)
+	g.RecordFailure(ip, "test")
+	g.RecordFailure(ip, "test")
+	_, _, d1 := g.IsBanned(ip)
 	if d1 > 5*time.Minute+time.Second || d1 < 4*time.Minute {
 		t.Errorf("expected ~5min for 1st ban, got %v", d1)
 	}
+
+	// 2nd ban: 4 strikes → bans=2 → baseBan*3 (15m)
+	g.RecordFailure(ip, "test")
+	g.RecordFailure(ip, "test")
+	_, _, d2 := g.IsBanned(ip)
+	if d2 > 15*time.Minute+time.Second || d2 < 14*time.Minute {
+		t.Errorf("expected ~15min for 2nd ban, got %v", d2)
+	}
+
+	// 3rd ban: 6 strikes → bans=3 → baseBan*12 (60m)
+	g.RecordFailure(ip, "test")
+	g.RecordFailure(ip, "test")
+	_, _, d3 := g.IsBanned(ip)
+	if d3 > 60*time.Minute+time.Second || d3 < 59*time.Minute {
+		t.Errorf("expected ~60min for 3rd ban, got %v", d3)
+	}
+
+	// 4th ban: 8 strikes → bans=4 → baseBan*48 (240m)
+	g.RecordFailure(ip, "test")
+	g.RecordFailure(ip, "test")
+	_, _, d4 := g.IsBanned(ip)
+	if d4 > 240*time.Minute+time.Second || d4 < 239*time.Minute {
+		t.Errorf("expected ~240min for 4th ban, got %v", d4)
+	}
+}
+
+func TestBruteForceGuard_Decrement(t *testing.T) {
+	g := NewBruteForceGuard(3, 5*time.Minute)
+	defer g.Stop()
+
+	ip := "10.0.0.1"
+	g.RecordFailure(ip, "test")
+	g.RecordFailure(ip, "test")
+
+	// Decrement should reduce strikes
+	g.Decrement(ip)
+	banned, _, _ := g.IsBanned(ip)
+	if banned {
+		t.Error("should not be banned after decrement reduced strikes below threshold")
+	}
+
+	// Decrement to zero removes entry
+	g.Decrement(ip)
+	g.Decrement(ip) // no-op on non-existent
+
+	// Decrement non-existent IP is safe
+	g.Decrement("10.0.0.99")
 }
 
 func TestBruteForceMiddleware_AllowsCleanIP(t *testing.T) {
