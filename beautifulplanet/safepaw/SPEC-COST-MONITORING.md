@@ -1,8 +1,9 @@
 # SPEC: Cost Monitoring & Token Usage Tracking
 
-**Status:** DRAFT — needs sign-off before implementation  
+**Status:** APPROVED — implementation in progress  
 **Author:** Copilot  
-**Date:** 2026-03-07
+**Date:** 2026-03-07  
+**Updated:** 2026-03-08 (architecture decision finalized)
 
 ---
 
@@ -22,82 +23,119 @@ with optional spend alerts — without modifying OpenClaw.
 1. **No OpenClaw modifications.** SafePaw must work with any OpenClaw version.
 2. **Gateway-first.** All implementation lives in the Go gateway and wizard.
 3. **Accuracy vs availability.** Estimates are acceptable; we don't need billing-grade precision.
-4. **Minimal overhead.** Parsing response bodies adds latency — keep it under 5ms p99.
+4. **Minimal overhead.** Usage polling is async — zero added latency to proxied requests.
 
 ---
 
-## Architecture Decision: How to capture LLM traffic
+## Architecture Decision
 
-### Option A: Parse OpenClaw's outbound LLM responses (LLM Proxy)
+### Options evaluated
 
-Route OpenClaw's LLM API calls through the gateway. Configure `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` env vars to point to gateway proxy endpoints.
+| Option | Description | Verdict |
+|--------|-------------|---------|
+| **A: Go WS client** | Gateway connects to OpenClaw's WS API, authenticates, calls `usage.cost` | **CHOSEN** |
+| **B: Response parsing** | Parse LLM usage fields from HTTP responses flowing through gateway | **ELIMINATED** — OpenClaw makes outbound LLM calls internally; responses never transit the gateway. OpenClaw's HTTP API hardcodes `usage: {0,0,0}`. |
+| **C: Node.js sidecar** | Add WS client script inside OpenClaw container, expose via HTTP | **REJECTED** — trades code simplicity for operational complexity (two processes, separate crash domain, health-check blind spot) |
 
-- **Pro:** Sees exact token counts from provider responses
-- **Pro:** Can enforce spend limits by blocking requests
-- **Con:** Requires OpenClaw to support base URL overrides (it does via `providerBaseUrl`)
-- **Con:** Adds the gateway as an outbound hop → latency on every LLM call
-- **Con:** Must handle streaming SSE responses to extract usage from final chunk
+### Why Option A
 
-### Option B: Poll OpenClaw's built-in usage API
+1. **Data fidelity:** Gets OpenClaw's own processed usage data — same data the Control UI shows, including per-day breakdowns, cache tokens, and cost calculations.
+2. **Simple protocol:** The minimal WS handshake is 3 JSON frames (challenge → connect → usage.cost). Device identity not required for `gateway-client`/`backend` mode with token auth from localhost.
+3. **Operational simplicity:** One process, one binary, one language. The gateway already owns auth, caching, health checks, and Prometheus.
+4. **Clean degradation:** If OpenClaw is down or protocol changes, usage endpoint returns "unavailable" — no crash, no stale data.
 
-OpenClaw already has `src/gateway/server-methods/usage.ts` with usage tracking, token counts, and cost aggregation. Query it periodically via the internal network.
+### Protocol details (OpenClaw WS gateway, protocol v3)
 
-- **Pro:** Zero changes to traffic flow — no added latency to LLM calls
-- **Pro:** OpenClaw already normalizes usage across all providers
-- **Pro:** Includes cache read/write tokens, retries, all the details
-- **Con:** Depends on OpenClaw's internal API (could change across versions)
-- **Con:** Can't enforce spend limits (read-only)
+1. Open WebSocket to `ws://openclaw:18789`
+2. Receive `connect.challenge` event with nonce
+3. Send `connect` request: `{client: {id: "gateway-client", mode: "backend"}, auth: {token: <TOKEN>}, role: "operator", scopes: ["operator.read"]}`
+4. Receive `hello-ok` response
+5. Send `usage.cost` request (no params = last 30 days)
+6. Receive `CostUsageSummary` response
 
-### Option C: Hybrid — Poll usage + gateway-level spend alert
-
-Poll OpenClaw's usage API for data (Option B), but add a circuit breaker in the gateway that can block all traffic to OpenClaw if a spend threshold is exceeded.
-
-- **Pro:** Best of both worlds — accurate data, enforceable limits
-- **Pro:** No latency added to normal LLM calls
-- **Con:** Blunt instrument — blocks ALL traffic, not just expensive models
-
-### Recommendation: **Option B first, Option C as follow-up**
-
-Start with polling OpenClaw's usage API. It's the simplest path, gives immediate value, and doesn't add latency. Add the gateway circuit breaker later if users need spend caps.
+Token: set via `OPENCLAW_GATEWAY_TOKEN` env var (deterministic) or read from OpenClaw's auto-generated config.
 
 ---
 
-## Scope — Phase 1 (this PR)
+## Scope — Phase 1
 
-### 1. Gateway: Usage collector (`middleware/usage.go`)
+### 1. Gateway: OpenClaw WS usage collector (`usage_collector.go`)
 
-- New goroutine polls `http://openclaw:18789/api/usage` (or whatever the endpoint is) every 60 seconds
-- Parses token counts: input, output, cache read, cache write, total
-- Parses cost data if available
-- Stores in memory (rolling 24h window, per-model breakdown)
-- Exposes as Prometheus metrics:
-  - `safepaw_llm_tokens_total{provider, model, type}` (counter) — type: input/output/cache_read/cache_write
-  - `safepaw_llm_cost_dollars{provider, model}` (gauge) — estimated cost
-  - `safepaw_llm_requests_total{provider, model, status}` (counter)
+- Background goroutine connects to OpenClaw via WebSocket
+- Authenticates with `gateway-client`/`backend` mode + token
+- Calls `usage.cost` every 60 seconds (OpenClaw caches for 30s)
+- Stores latest `CostUsageSummary` in memory (atomic pointer swap)
+- Handles reconnection on disconnect (backoff: 5s, 15s, 30s, 60s)
+- Graceful shutdown via context cancellation
+- Exposes Prometheus metrics (hand-rolled, matching existing pattern):
+  - `safepaw_llm_cost_dollars_total` (gauge) — total cost
+  - `safepaw_llm_tokens_total{type}` (gauge) — input/output/cache_read/cache_write
+  - `safepaw_llm_cost_daily_dollars{date}` (gauge) — per-day cost
 
-### 2. Gateway: Usage API endpoint
+### 2. Gateway: Pricing table (`pricing.go`)
 
-- `GET /admin/usage` — returns JSON summary:
+- Hardcoded per-model token pricing for alert thresholds
+- Anthropic: Claude Opus, Sonnet, Haiku
+- OpenAI: GPT-4o, GPT-4o-mini, o1, o3-mini
+- Not used for cost calculation (OpenClaw already calculates cost) — used only for threshold color classification
+
+### 3. Gateway: Usage API endpoint
+
+- `GET /admin/usage` — returns JSON:
   ```json
   {
-    "period": "24h",
-    "total_tokens": 1250000,
-    "total_cost_usd": 12.50,
-    "by_model": [
-      {"provider": "anthropic", "model": "claude-sonnet-4-20250514", "input_tokens": 500000, "output_tokens": 200000, "cost_usd": 4.20},
-      {"provider": "openai", "model": "gpt-4o", "input_tokens": 300000, "output_tokens": 250000, "cost_usd": 8.30}
+    "updated_at": "2026-03-08T12:00:00Z",
+    "days": 30,
+    "totals": {
+      "input_tokens": 500000, "output_tokens": 200000,
+      "cache_read_tokens": 50000, "cache_write_tokens": 10000,
+      "total_tokens": 760000, "total_cost_usd": 12.50
+    },
+    "daily": [
+      {"date": "2026-03-08", "total_tokens": 25000, "total_cost_usd": 0.45},
+      {"date": "2026-03-07", "total_tokens": 31000, "total_cost_usd": 0.62}
     ],
-    "last_updated": "2026-03-07T21:00:00Z"
+    "status": "connected"
   }
   ```
-- Protected by auth (same as `/admin/revoke`)
+- Protected by auth (same as `/admin/revoke`) — requires "admin" scope
+- Returns `{"status": "unavailable"}` if collector has no data
 
-### 3. Wizard: Cost dashboard component
+### 4. Wizard: Cost dashboard component
 
-- New section in wizard dashboard: "LLM Usage & Cost"
-- Shows: total cost today, total tokens, per-model breakdown table
-- Simple bar chart or table — no heavy charting library
-- Polls `/admin/usage` via gateway every 60s
+- New section in Dashboard page: "LLM Usage & Cost"
+- Shows: total cost (today + 30d), token counts, daily cost bars
+- Color coding: green (<$1/day), yellow ($1–$10/day), red (>$10/day)
+- Polls via wizard API proxy every 60s
+- Graceful "unavailable" state when gateway has no data
+
+### 5. Configuration
+
+- `OPENCLAW_GATEWAY_TOKEN` — set in `.env` and docker-compose.yml, also passed to OpenClaw
+- `COST_ALERT_DAILY_WARN` — daily cost threshold for yellow (default: $1.00)
+- `COST_ALERT_DAILY_CRIT` — daily cost threshold for red (default: $10.00)
+
+---
+
+## Out of scope (Phase 1)
+
+- Spend alerts/notifications (push)
+- Circuit breaker / spend cap enforcement
+- Historical usage (>30d) persisted to Postgres
+- Per-channel or per-user usage breakdown
+- Heartbeat waste detection (Phase 2)
+
+---
+
+## Acceptance criteria
+
+1. `GET /admin/usage` returns token counts and cost matching OpenClaw's data (within polling interval)
+2. Prometheus metrics populated and scrapeable at `/metrics`
+3. Wizard dashboard shows cost data with auto-refresh
+4. Zero added latency to proxied requests (usage collection is async background goroutine)
+5. Graceful degradation: if OpenClaw WS unavailable, endpoint returns `{"status": "unavailable"}`  
+6. Unit tests for the usage collector, pricing table, and API endpoint
+7. All existing tests still pass
 - Color coding: green (<$1/day), yellow ($1–$10/day), red (>$10/day)
 - Heartbeat waste callout: flag high-frequency low-token requests hitting expensive models
 
@@ -156,16 +194,18 @@ Start with polling OpenClaw's usage API. It's the simplest path, gives immediate
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `services/gateway/middleware/usage.go` | Create | Usage collector, poller, Prometheus metrics |
-| `services/gateway/middleware/pricing.go` | Create | Per-model token pricing table |
-| `services/gateway/middleware/usage_test.go` | Create | Unit tests |
-| `services/gateway/middleware/pricing_test.go` | Create | Pricing lookup tests |
-| `services/gateway/main.go` | Modify | Start usage collector, add `/admin/usage` endpoint |
-| `services/wizard/ui/src/components/CostDashboard.tsx` | Create | React component for cost display |
-| `services/wizard/ui/src/App.tsx` (or equivalent) | Modify | Wire in CostDashboard |
-| `services/wizard/internal/api/handler.go` | Modify | Proxy `/admin/usage` from gateway (if needed) |
-| `.env.example` | Modify | Add `COST_ALERT_DAILY_WARN` and `COST_ALERT_DAILY_CRIT` |
-| `README.md` | Modify | Document cost monitoring feature |
+| `services/gateway/usage_collector.go` | Create | WS client, polling, reconnect, Prometheus metrics |
+| `services/gateway/usage_collector_test.go` | Create | Unit tests for collector |
+| `services/gateway/pricing.go` | Create | Per-model token pricing table |
+| `services/gateway/pricing_test.go` | Create | Pricing lookup tests |
+| `services/gateway/main.go` | Modify | Start collector, add `/admin/usage` endpoint |
+| `services/gateway/config/config.go` | Modify | Add `OPENCLAW_GATEWAY_TOKEN`, alert thresholds |
+| `services/gateway/go.mod` | Modify | Add `nhooyr.io/websocket` dependency |
+| `services/wizard/ui/src/pages/Dashboard.tsx` | Modify | Add cost section |
+| `services/wizard/ui/src/api.ts` | Modify | Add usage types + endpoint |
+| `services/wizard/internal/api/handler.go` | Modify | Proxy `/admin/usage` from gateway |
+| `docker-compose.yml` | Modify | Add `OPENCLAW_GATEWAY_TOKEN` env var |
+| `.env.example` | Modify | Add cost monitoring config |
 
 ---
 

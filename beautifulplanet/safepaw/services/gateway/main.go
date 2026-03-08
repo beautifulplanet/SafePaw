@@ -113,6 +113,17 @@ func main() {
 	defer bruteForce.Stop()
 
 	// --------------------------------------------------------
+	// Step 3b: Start cost monitoring collector
+	// --------------------------------------------------------
+	usageCollector := NewUsageCollector(
+		cfg.OpenClawWSURL,
+		cfg.OpenClawGatewayToken,
+		cfg.CostAlertDailyWarn,
+		cfg.CostAlertDailyCrit,
+	)
+	defer usageCollector.Stop()
+
+	// --------------------------------------------------------
 	// Step 4: Build HTTP routes with middleware stack
 	// --------------------------------------------------------
 	mux := http.NewServeMux()
@@ -212,6 +223,28 @@ func main() {
 					"subject":            body.Subject,
 					"active_revocations": revocations.Count(),
 				})
+			})))
+
+		// Cost monitoring endpoint (requires admin scope)
+		mux.Handle("/admin/usage", middleware.AuthRequired(auth, "admin", revocations,
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" {
+					http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(usageCollector.Snapshot())
+			})))
+
+		// Pricing reference endpoint (requires admin scope)
+		mux.Handle("/admin/pricing", middleware.AuthRequired(auth, "admin", revocations,
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" {
+					http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(PricingTable)
 			})))
 
 		log.Printf("[AUTH] Authentication ENABLED (default TTL=%v, max TTL=%v, revocation=enabled)",

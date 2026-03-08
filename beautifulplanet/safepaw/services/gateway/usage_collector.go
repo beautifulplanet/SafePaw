@@ -1,0 +1,533 @@
+// =============================================================
+// SafePaw Gateway — OpenClaw Usage Collector
+// =============================================================
+// WebSocket client that connects to OpenClaw's control plane,
+// authenticates with a shared gateway token, and periodically
+// polls usage.cost to build a cost summary for the dashboard.
+//
+// Protocol: OpenClaw WS v3 (JSON frames)
+//   1. Open WS to openclaw:18789
+//   2. Receive connect.challenge event (nonce)
+//   3. Send connect request with token auth
+//   4. Send usage.cost request every pollInterval
+//   5. Handle tick keepalives; reconnect on failure
+// =============================================================
+
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"nhooyr.io/websocket"
+)
+
+// UsageCollector connects to OpenClaw's WS API and polls cost data.
+type UsageCollector struct {
+	wsURL    string
+	token    string
+	warnUSD  float64
+	critUSD  float64
+	interval time.Duration
+
+	mu     sync.RWMutex
+	data   *CostUsageSummary
+	status CollectorStatus
+	lastOK time.Time
+
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+// CollectorStatus describes the current state of the collector.
+type CollectorStatus string
+
+const (
+	StatusDisabled     CollectorStatus = "disabled"
+	StatusConnecting   CollectorStatus = "connecting"
+	StatusConnected    CollectorStatus = "connected"
+	StatusError        CollectorStatus = "error"
+	StatusUnavailable  CollectorStatus = "unavailable"
+)
+
+// CostUsageSummary mirrors OpenClaw's usage.cost response.
+type CostUsageSummary struct {
+	UpdatedAt time.Time            `json:"updatedAt"`
+	Days      int                  `json:"days"`
+	Daily     []CostUsageDailyEntry `json:"daily"`
+	Totals    CostUsageTotals      `json:"totals"`
+}
+
+// CostUsageDailyEntry is one day's token/cost breakdown.
+type CostUsageDailyEntry struct {
+	Date string `json:"date"` // "YYYY-MM-DD"
+	CostUsageTotals
+}
+
+// CostUsageTotals holds aggregated cost/token data.
+type CostUsageTotals struct {
+	Input             int64   `json:"input"`
+	Output            int64   `json:"output"`
+	CacheRead         int64   `json:"cacheRead"`
+	CacheWrite        int64   `json:"cacheWrite"`
+	TotalTokens       int64   `json:"totalTokens"`
+	TotalCost         float64 `json:"totalCost"`
+	InputCost         float64 `json:"inputCost"`
+	OutputCost        float64 `json:"outputCost"`
+	CacheReadCost     float64 `json:"cacheReadCost"`
+	CacheWriteCost    float64 `json:"cacheWriteCost"`
+	MissingCostEntries int    `json:"missingCostEntries"`
+}
+
+// UsageResponse is the JSON returned by /admin/usage.
+type UsageResponse struct {
+	Status    string             `json:"status"`
+	Collector string             `json:"collector"`
+	UpdatedAt string             `json:"updatedAt,omitempty"`
+	Alert     string             `json:"alert,omitempty"`
+	WarnUSD   float64            `json:"warnThresholdUsd"`
+	CritUSD   float64            `json:"critThresholdUsd"`
+	TodayCost float64            `json:"todayCostUsd"`
+	PeriodCost float64           `json:"periodCostUsd"`
+	Days      int                `json:"days"`
+	Daily     []CostUsageDailyEntry `json:"daily,omitempty"`
+	Totals    *CostUsageTotals   `json:"totals,omitempty"`
+}
+
+// WS protocol frame types
+type wsRequest struct {
+	Type   string      `json:"type"`
+	ID     string      `json:"id"`
+	Method string      `json:"method"`
+	Params interface{} `json:"params,omitempty"`
+}
+
+type wsResponse struct {
+	Type    string          `json:"type"`
+	ID      string          `json:"id,omitempty"`
+	OK      bool            `json:"ok"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+	Error   *wsError        `json:"error,omitempty"`
+	Event   string          `json:"event,omitempty"`
+}
+
+type wsError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type challengePayload struct {
+	Nonce string `json:"nonce"`
+	Ts    int64  `json:"ts"`
+}
+
+type connectParams struct {
+	MinProtocol int              `json:"minProtocol"`
+	MaxProtocol int              `json:"maxProtocol"`
+	Client      connectClient    `json:"client"`
+	Role        string           `json:"role"`
+	Scopes      []string         `json:"scopes"`
+	Auth        connectAuth      `json:"auth"`
+}
+
+type connectClient struct {
+	ID      string `json:"id"`
+	Version string `json:"version"`
+	Platform string `json:"platform"`
+	Mode    string `json:"mode"`
+}
+
+type connectAuth struct {
+	Token string `json:"token"`
+}
+
+// NewUsageCollector creates a new collector. If wsURL or token is empty, it stays disabled.
+func NewUsageCollector(wsURL, token string, warnUSD, critUSD float64) *UsageCollector {
+	ctx, cancel := context.WithCancel(context.Background())
+	uc := &UsageCollector{
+		wsURL:    wsURL,
+		token:    token,
+		warnUSD:  warnUSD,
+		critUSD:  critUSD,
+		interval: 60 * time.Second,
+		status:   StatusDisabled,
+		ctx:      ctx,
+		cancel:   cancel,
+	}
+
+	if wsURL == "" || token == "" {
+		log.Println("[COST] Usage collector disabled (OPENCLAW_WS_URL or OPENCLAW_GATEWAY_TOKEN not set)")
+		return uc
+	}
+
+	uc.status = StatusConnecting
+	go uc.run()
+	return uc
+}
+
+// Snapshot returns the current cost data and alert level.
+func (uc *UsageCollector) Snapshot() UsageResponse {
+	uc.mu.RLock()
+	defer uc.mu.RUnlock()
+
+	resp := UsageResponse{
+		Collector: string(uc.status),
+		WarnUSD:   uc.warnUSD,
+		CritUSD:   uc.critUSD,
+	}
+
+	if uc.data == nil {
+		resp.Status = "unavailable"
+		return resp
+	}
+
+	resp.Status = "ok"
+	resp.UpdatedAt = uc.data.UpdatedAt.Format(time.RFC3339)
+	resp.Days = uc.data.Days
+	resp.Daily = uc.data.Daily
+	resp.Totals = &uc.data.Totals
+	resp.PeriodCost = uc.data.Totals.TotalCost
+
+	// Today's cost = last daily entry if it matches today
+	today := time.Now().UTC().Format("2006-01-02")
+	if len(uc.data.Daily) > 0 {
+		last := uc.data.Daily[len(uc.data.Daily)-1]
+		if last.Date == today {
+			resp.TodayCost = last.TotalCost
+		}
+	}
+
+	// Alert level
+	switch {
+	case resp.TodayCost >= uc.critUSD:
+		resp.Alert = "critical"
+	case resp.TodayCost >= uc.warnUSD:
+		resp.Alert = "warning"
+	default:
+		resp.Alert = "ok"
+	}
+
+	return resp
+}
+
+// Stop shuts down the collector.
+func (uc *UsageCollector) Stop() {
+	uc.cancel()
+}
+
+// run is the main loop: connect → poll → reconnect on failure.
+func (uc *UsageCollector) run() {
+	backoff := time.Second
+	maxBackoff := 60 * time.Second
+
+	for {
+		select {
+		case <-uc.ctx.Done():
+			return
+		default:
+		}
+
+		err := uc.connectAndPoll()
+		if err != nil {
+			uc.mu.Lock()
+			uc.status = StatusError
+			uc.mu.Unlock()
+			log.Printf("[COST] Connection error: %v (reconnecting in %v)", err, backoff)
+		}
+
+		select {
+		case <-uc.ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+
+		// Exponential backoff capped at maxBackoff
+		backoff = backoff * 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
+}
+
+// connectAndPoll opens a WS connection, authenticates, and polls until failure.
+func (uc *UsageCollector) connectAndPoll() error {
+	uc.mu.Lock()
+	uc.status = StatusConnecting
+	uc.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(uc.ctx, 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, uc.wsURL, nil)
+	if err != nil {
+		return fmt.Errorf("dial: %w", err)
+	}
+	defer conn.CloseNow()
+
+	// Set a generous read limit for usage.cost responses (they can be large)
+	conn.SetReadLimit(1 << 20) // 1MB
+
+	// Step 1: Receive connect.challenge
+	challenge, err := uc.readFrame(conn)
+	if err != nil {
+		return fmt.Errorf("read challenge: %w", err)
+	}
+	if challenge.Event != "connect.challenge" {
+		return fmt.Errorf("expected connect.challenge, got event=%q type=%q", challenge.Event, challenge.Type)
+	}
+
+	// Step 2: Send connect request with token auth
+	connectID := uuid.NewString()
+	connectReq := wsRequest{
+		Type:   "req",
+		ID:     connectID,
+		Method: "connect",
+		Params: connectParams{
+			MinProtocol: 3,
+			MaxProtocol: 3,
+			Client: connectClient{
+				ID:       "gateway-client",
+				Version:  "1.0.0",
+				Platform: "linux",
+				Mode:     "backend",
+			},
+			Role:   "operator",
+			Scopes: []string{"operator.read"},
+			Auth:   connectAuth{Token: uc.token},
+		},
+	}
+
+	if err := uc.writeFrame(conn, connectReq); err != nil {
+		return fmt.Errorf("send connect: %w", err)
+	}
+
+	// Step 3: Read connect response (hello-ok)
+	helloResp, err := uc.readFrame(conn)
+	if err != nil {
+		return fmt.Errorf("read hello: %w", err)
+	}
+	if helloResp.ID == connectID && !helloResp.OK {
+		errMsg := "unknown"
+		if helloResp.Error != nil {
+			errMsg = helloResp.Error.Message
+		}
+		return fmt.Errorf("connect rejected: %s", errMsg)
+	}
+
+	uc.mu.Lock()
+	uc.status = StatusConnected
+	uc.mu.Unlock()
+	log.Println("[COST] Connected to OpenClaw usage API")
+
+	// Reset backoff on successful connect (caller manages this via return nil pattern)
+	// Step 4: Poll loop
+	return uc.pollLoop(conn)
+}
+
+// pollLoop periodically sends usage.cost requests and processes responses.
+func (uc *UsageCollector) pollLoop(conn *websocket.Conn) error {
+	// Fetch immediately on connect
+	if err := uc.fetchUsage(conn); err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(uc.interval)
+	defer ticker.Stop()
+
+	// Also read incoming frames (tick events) in a separate goroutine
+	errCh := make(chan error, 1)
+	frameCh := make(chan wsResponse, 16)
+	go func() {
+		for {
+			frame, err := uc.readFrame(conn)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			frameCh <- frame
+		}
+	}()
+
+	// Map of pending request IDs
+	pending := make(map[string]chan wsResponse)
+	var pendingMu sync.Mutex
+
+	for {
+		select {
+		case <-uc.ctx.Done():
+			conn.Close(websocket.StatusNormalClosure, "shutdown")
+			return nil
+
+		case err := <-errCh:
+			return fmt.Errorf("read: %w", err)
+
+		case frame := <-frameCh:
+			if frame.Type == "res" && frame.ID != "" {
+				pendingMu.Lock()
+				if ch, ok := pending[frame.ID]; ok {
+					ch <- frame
+					delete(pending, frame.ID)
+				}
+				pendingMu.Unlock()
+			}
+			// tick events are ignored (they just keep the connection alive)
+
+		case <-ticker.C:
+			reqID := uuid.NewString()
+			req := wsRequest{
+				Type:   "req",
+				ID:     reqID,
+				Method: "usage.cost",
+				Params: map[string]interface{}{"days": 30},
+			}
+
+			ch := make(chan wsResponse, 1)
+			pendingMu.Lock()
+			pending[reqID] = ch
+			pendingMu.Unlock()
+
+			if err := uc.writeFrame(conn, req); err != nil {
+				return fmt.Errorf("write usage.cost: %w", err)
+			}
+
+			// Wait for response with timeout
+			select {
+			case resp := <-ch:
+				if err := uc.processUsageResponse(resp); err != nil {
+					log.Printf("[COST] Failed to process usage response: %v", err)
+				}
+			case <-time.After(15 * time.Second):
+				log.Println("[COST] usage.cost request timed out")
+				pendingMu.Lock()
+				delete(pending, reqID)
+				pendingMu.Unlock()
+			case <-uc.ctx.Done():
+				conn.Close(websocket.StatusNormalClosure, "shutdown")
+				return nil
+			}
+		}
+	}
+}
+
+// fetchUsage sends a single usage.cost request and blocks until it gets a response.
+func (uc *UsageCollector) fetchUsage(conn *websocket.Conn) error {
+	reqID := uuid.NewString()
+	req := wsRequest{
+		Type:   "req",
+		ID:     reqID,
+		Method: "usage.cost",
+		Params: map[string]interface{}{"days": 30},
+	}
+
+	if err := uc.writeFrame(conn, req); err != nil {
+		return fmt.Errorf("write usage.cost: %w", err)
+	}
+
+	// Read frames until we get our response (skip events)
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		frame, err := uc.readFrame(conn)
+		if err != nil {
+			return fmt.Errorf("read usage response: %w", err)
+		}
+		if frame.Type == "res" && frame.ID == reqID {
+			return uc.processUsageResponse(frame)
+		}
+		// Skip events (tick, etc.)
+	}
+	return fmt.Errorf("usage.cost response timed out")
+}
+
+// processUsageResponse parses the usage.cost response and updates the cache.
+func (uc *UsageCollector) processUsageResponse(resp wsResponse) error {
+	if !resp.OK {
+		errMsg := "unknown"
+		if resp.Error != nil {
+			errMsg = resp.Error.Message
+		}
+		return fmt.Errorf("usage.cost error: %s", errMsg)
+	}
+
+	// Parse the raw response — OpenClaw returns updatedAt as epoch ms
+	var raw struct {
+		UpdatedAt float64               `json:"updatedAt"`
+		Days      int                   `json:"days"`
+		Daily     []CostUsageDailyEntry `json:"daily"`
+		Totals    CostUsageTotals       `json:"totals"`
+	}
+	if err := json.Unmarshal(resp.Payload, &raw); err != nil {
+		return fmt.Errorf("unmarshal usage: %w", err)
+	}
+
+	summary := &CostUsageSummary{
+		UpdatedAt: time.UnixMilli(int64(raw.UpdatedAt)),
+		Days:      raw.Days,
+		Daily:     raw.Daily,
+		Totals:    raw.Totals,
+	}
+
+	uc.mu.Lock()
+	uc.data = summary
+	uc.lastOK = time.Now()
+	uc.mu.Unlock()
+
+	// Log alert level
+	today := time.Now().UTC().Format("2006-01-02")
+	var todayCost float64
+	if len(summary.Daily) > 0 {
+		last := summary.Daily[len(summary.Daily)-1]
+		if last.Date == today {
+			todayCost = last.TotalCost
+		}
+	}
+
+	if todayCost >= uc.critUSD {
+		log.Printf("[COST] CRITICAL: today's cost $%.2f exceeds critical threshold $%.2f", todayCost, uc.critUSD)
+	} else if todayCost >= uc.warnUSD {
+		log.Printf("[COST] WARNING: today's cost $%.2f exceeds warning threshold $%.2f", todayCost, uc.warnUSD)
+	}
+
+	return nil
+}
+
+// readFrame reads and decodes one JSON frame from the WS connection.
+func (uc *UsageCollector) readFrame(conn *websocket.Conn) (wsResponse, error) {
+	ctx, cancel := context.WithTimeout(uc.ctx, 120*time.Second)
+	defer cancel()
+
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		return wsResponse{}, err
+	}
+
+	var frame wsResponse
+	if err := json.Unmarshal(data, &frame); err != nil {
+		return wsResponse{}, fmt.Errorf("decode frame: %w (data=%s)", err, truncate(string(data), 200))
+	}
+	return frame, nil
+}
+
+// writeFrame encodes and sends one JSON frame to the WS connection.
+func (uc *UsageCollector) writeFrame(conn *websocket.Conn, frame interface{}) error {
+	data, err := json.Marshal(frame)
+	if err != nil {
+		return fmt.Errorf("encode frame: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(uc.ctx, 10*time.Second)
+	defer cancel()
+
+	return conn.Write(ctx, websocket.MessageText, data)
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
