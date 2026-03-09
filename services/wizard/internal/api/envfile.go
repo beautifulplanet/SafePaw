@@ -17,6 +17,7 @@ import (
 // Keys that are considered secrets: mask value in GET responses.
 var secretKeys = map[string]bool{
 	"REDIS_PASSWORD": true, "POSTGRES_PASSWORD": true, "WIZARD_ADMIN_PASSWORD": true,
+	"WIZARD_OPERATOR_PASSWORD": true, "WIZARD_VIEWER_PASSWORD": true, "WIZARD_TOTP_SECRET": true,
 	"AUTH_SECRET": true, "ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true,
 	"DISCORD_BOT_TOKEN": true, "TELEGRAM_BOT_TOKEN": true, "SLACK_BOT_TOKEN": true,
 	"SLACK_APP_TOKEN": true,
