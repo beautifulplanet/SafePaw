@@ -91,7 +91,7 @@ Token revocation is now implemented as an in-memory revocation list in the gatew
 
 - **How it works:** Admin calls `POST /admin/revoke` with `{"subject":"user_id","reason":"compromised"}`. The gateway records the revocation timestamp and rejects all tokens for that subject issued before the revocation time.
 - **Scope:** Revocation is subject-level (all tokens for a user), not per-token. This is deliberate — if credentials are compromised, all tokens should be invalid.
-- **Persistence:** In-memory only. Revocation entries auto-expire after `AUTH_MAX_TTL` (default 7 days). Entries are lost on gateway restart, which is acceptable for short-lived tokens. Redis/Postgres-backed persistence is future work.
+- **Persistence:** Redis-backed when `REDIS_URL` is configured (default in production). Revocation entries auto-expire after `AUTH_MAX_TTL` (default 7 days). Entries survive gateway restarts. Falls back to in-memory when Redis is unavailable.
 - **Admin endpoint:** `POST /admin/revoke` requires an `admin`-scoped auth token.
 
 **Emergency revocation steps:**
