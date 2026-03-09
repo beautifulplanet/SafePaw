@@ -212,12 +212,12 @@ var eventHandlerPattern = regexp.MustCompile(
 	`(?i)<[^>]+\bon\w+\s*=`,
 )
 
-// Match javascript: and vbscript: URI schemes.
-// data: is excluded — it's commonly used in legitimate base64 image URIs
-// and AI-generated code (e.g., data:image/png;base64,...). Malicious data:
-// URIs are caught by the CSP header (default-src) in SecurityHeaders.
+// Match javascript:, vbscript:, and dangerous data: URI schemes.
+// data:image/ and data:font/ are legitimate base64 assets and are safe.
+// data:text/html is the primary XSS vector (e.g., data:text/html,<script>...).
+// We block data:text/ which covers data:text/html, data:text/javascript, etc.
 var dangerousURIPattern = regexp.MustCompile(
-	`(?i)(javascript|vbscript)\s*:`,
+	`(?i)(javascript|vbscript)\s*:|data\s*:\s*text/`,
 )
 
 func stripDangerousHTML(s string) string {

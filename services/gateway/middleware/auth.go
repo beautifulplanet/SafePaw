@@ -425,8 +425,9 @@ func extractToken(r *http.Request) string {
 // SetTokenCookie sets an HttpOnly cookie with the auth token when a user
 // arrives via ?token= query param. This lets the OpenClaw SPA's subsequent
 // requests (API calls, WebSocket upgrades) carry the token automatically.
-// The cookie is Secure when the request is over TLS, SameSite=Lax to
-// allow same-site navigation, and expires in 1 hour.
+// The cookie is Secure when the request is over TLS, SameSite=Strict to
+// block all cross-site cookie sending (security gateway should never accept
+// cross-origin cookie-authenticated requests), and expires in 1 hour.
 func SetTokenCookie(w http.ResponseWriter, r *http.Request, token string) {
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
@@ -435,7 +436,7 @@ func SetTokenCookie(w http.ResponseWriter, r *http.Request, token string) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   3600, // 1 hour
 	})
 }
@@ -463,25 +464,16 @@ func splitToken(token string) (payload, signature string, ok bool) {
 // ================================================================
 
 // isStaticAsset returns true for paths that serve the backend UI's static
-// assets (JS bundles, CSS, images, fonts). These are loaded by the browser
-// via <script src> and <link href> which cannot carry auth tokens.
-// The files have content-hashed filenames and contain no sensitive data.
+// assets. Only /assets/* paths and explicit root-level files are exempt.
+// This prevents suffix-based bypasses (e.g., /../secret.js) from evading
+// auth, rate limiting, and brute-force protection.
 func isStaticAsset(path string) bool {
 	if strings.HasPrefix(path, "/assets/") {
 		return true
 	}
-	// Common static files served from the root
-	switch {
-	case strings.HasSuffix(path, ".js"),
-		strings.HasSuffix(path, ".css"),
-		strings.HasSuffix(path, ".svg"),
-		strings.HasSuffix(path, ".png"),
-		strings.HasSuffix(path, ".ico"),
-		strings.HasSuffix(path, ".woff"),
-		strings.HasSuffix(path, ".woff2"),
-		strings.HasSuffix(path, ".ttf"),
-		strings.HasSuffix(path, ".webp"),
-		strings.HasSuffix(path, ".webmanifest"):
+	// Only exempt well-known root files, not arbitrary .js/.css paths
+	switch path {
+	case "/favicon.ico", "/robots.txt", "/manifest.webmanifest":
 		return true
 	}
 	return false
