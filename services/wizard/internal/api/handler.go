@@ -104,7 +104,11 @@ func clientIP(r *http.Request) string {
 		}
 		return strings.TrimSpace(fwd)
 	}
-	return r.RemoteAddr
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // SessionValidator returns a function that validates session tokens using the server session secret and session generation.
