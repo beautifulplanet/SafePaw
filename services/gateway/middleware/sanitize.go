@@ -361,8 +361,8 @@ var promptInjectionPatterns = []struct {
 	{regexp.MustCompile(`(أنت الآن|تصرف ك|تظاهر بأنك|كن).{0,15}(مدير|مسؤول|نظام|بلا قيود)`), RiskHigh, "identity_hijack_ar"},
 	// "reveal/show system prompt/password"
 	{regexp.MustCompile(`(اكشف|أظهر|اعرض|أخبرني).{0,15}(موجه النظام|التعليمات|كلمة المرور|المفتاح|السر)`), RiskHigh, "secret_extraction_ar"},
-	// "new instructions"
-	{regexp.MustCompile(`تعليمات جديدة|قواعد جديدة|أوامر جديدة`), RiskHigh, "prompt_replacement_ar"},
+	// "new instructions/rules" with directive context (هذه/اتبع/نفذ/استبدل = these/follow/execute/replace)
+	{regexp.MustCompile(`(هذه|اتبع|نفذ|استبدل|استخدم).{0,10}(تعليمات جديدة|قواعد جديدة|أوامر جديدة)|(تعليمات جديدة|قواعد جديدة|أوامر جديدة).{0,10}(التالية|هي|الآن|فقط)`), RiskHigh, "prompt_replacement_ar"},
 	// jailbreak
 	{regexp.MustCompile(`(وضع المطور|وضع بلا قيود|افعل أي شيء|وضع الإله)`), RiskHigh, "jailbreak_ar"},
 
@@ -379,12 +379,12 @@ var promptInjectionPatterns = []struct {
 	{regexp.MustCompile(`(डेवलपर मोड|बिना प्रतिबंध|कुछ भी करो|जेलब्रेक)`), RiskHigh, "jailbreak_hi"},
 
 	// --- Japanese ---
-	// "ignore/forget/disregard previous instructions"
-	{regexp.MustCompile(`(無視して|忘れて|無効にして|取り消して).{0,10}(以前の|上記の|すべての|システムの).{0,10}(指示|ルール|命令|プロンプト)`), RiskHigh, "instruction_override_ja"},
-	// "you are now / act as admin"
-	{regexp.MustCompile(`(あなたは今|として振る舞って|のふりをして|になって).{0,10}(管理者|ルート|システム|制限なし)`), RiskHigh, "identity_hijack_ja"},
-	// "reveal/show system prompt"
-	{regexp.MustCompile(`(表示して|教えて|見せて|出力して).{0,10}(システムプロンプト|指示|パスワード|秘密鍵|シークレット)`), RiskHigh, "secret_extraction_ja"},
+	// "ignore/forget/disregard previous instructions" (both VO and SOV word orders)
+	{regexp.MustCompile(`(無視して|忘れて|無効にして|取り消して).{0,10}(以前の|上記の|すべての|システムの).{0,10}(指示|ルール|命令|プロンプト)|(以前の|上記の|すべての|システムの).{0,10}(指示|ルール|命令|プロンプト).{0,15}(無視|忘れ|無効に|取り消)`), RiskHigh, "instruction_override_ja"},
+	// "you are now / act as admin" (both VO and SOV)
+	{regexp.MustCompile(`(あなたは今|として振る舞って|のふりをして|になって).{0,10}(管理者|ルート|システム|制限なし)|(管理者|ルート|システム|制限なし).{0,10}(になって|として振る舞って|のふりをして|になれ)`), RiskHigh, "identity_hijack_ja"},
+	// "reveal/show system prompt" (both VO and SOV)
+	{regexp.MustCompile(`(表示して|教えて|見せて|出力して).{0,10}(システムプロンプト|指示|パスワード|秘密鍵|シークレット)|(システムプロンプト|指示|パスワード|秘密鍵|シークレット).{0,15}(表示|教え|見せ|出力)`), RiskHigh, "secret_extraction_ja"},
 	// "new instructions"
 	{regexp.MustCompile(`新しい(指示|ルール|命令|システムプロンプト)`), RiskHigh, "prompt_replacement_ja"},
 	// jailbreak
