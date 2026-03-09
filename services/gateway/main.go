@@ -442,6 +442,10 @@ func bodyScanner(maxSize int64, next http.Handler) http.Handler {
 			r.Header.Set("X-SafePaw-Triggers", strings.Join(triggers, ","))
 		}
 
+		// System prompt reinforcement: inject safety preamble on every request
+		// so OpenClaw can prepend it to conversation context
+		r.Header.Set("X-SafePaw-Context", middleware.SystemPromptReinforcement)
+
 		next.ServeHTTP(w, r)
 	})
 }
