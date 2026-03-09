@@ -68,17 +68,25 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
   const handleOpenAssistant = useCallback(async () => {
     setOpeningAssistant(true)
     try {
-      const { token } = await api.gatewayToken('wizard-user', 'proxy', 1)
       // Build gateway URL — handle Codespaces forwarded ports (port is in subdomain)
       const host = window.location.host
       let gatewayBase: string
       if (host.includes('.app.github.dev')) {
-        // Codespaces: replace port in subdomain (e.g. -3000. → -8080.)
         gatewayBase = `${window.location.protocol}//${host.replace(/-\d+\.app\.github\.dev/, '-8080.app.github.dev')}`
       } else {
         gatewayBase = `${window.location.protocol}//${window.location.hostname}:8080`
       }
-      const url = `${gatewayBase}/?token=${encodeURIComponent(token)}`
+
+      // Try to get a gateway token. If auth is disabled or AUTH_SECRET isn't
+      // configured, the token endpoint will fail — that's fine, just open
+      // the gateway without a token (it doesn't need one when auth is off).
+      let url = gatewayBase + '/'
+      try {
+        const { token } = await api.gatewayToken('wizard-user', 'proxy', 1)
+        url = `${gatewayBase}/?token=${encodeURIComponent(token)}`
+      } catch {
+        // Auth likely disabled or not configured — open without token
+      }
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to open AI assistant')

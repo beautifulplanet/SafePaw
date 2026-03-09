@@ -89,7 +89,7 @@ func OriginCheck(allowedOrigins []string, next http.Handler) http.Handler {
 		// This prevents cross-port blocking when the Wizard (e.g. :3000)
 		// connects to the Gateway (e.g. :8080) during local development.
 		if len(allowed) == 0 {
-			if origin == "" || isLocalhostOrigin(origin) {
+			if origin == "" || isLocalhostOrigin(origin) || isCodespacesOrigin(origin) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -123,6 +123,17 @@ func isLocalhostOrigin(origin string) bool {
 		origin = origin[:idx]
 	}
 	return origin == "localhost" || origin == "127.0.0.1" || origin == "[::1]" || origin == "::1"
+}
+
+// isCodespacesOrigin returns true for GitHub Codespaces port-forwarded origins
+// (e.g. https://xxx-8080.app.github.dev). These are trusted because Codespaces
+// port forwarding is authenticated by GitHub.
+func isCodespacesOrigin(origin string) bool {
+	origin = strings.ToLower(origin)
+	for _, prefix := range []string{"https://", "http://"} {
+		origin = strings.TrimPrefix(origin, prefix)
+	}
+	return strings.HasSuffix(origin, ".app.github.dev")
 }
 
 // ================================================================

@@ -346,6 +346,12 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 		r.Header.Set("X-Auth-Subject", claims.Sub)
 		r.Header.Set("X-Auth-Scope", claims.Scope)
 
+		// If the token came from ?token= query param (initial page load),
+		// set a cookie so the SPA's subsequent fetch/WS calls carry it.
+		if r.URL.Query().Get("token") != "" {
+			SetTokenCookie(w, r, r.URL.Query().Get("token"))
+		}
+
 		if sc := GetSecurityContext(r); sc != nil {
 			sc.Auth = &AuthDecision{Outcome: "allow", Sub: claims.Sub, Scope: claims.Scope}
 		}
@@ -388,9 +394,11 @@ func AuthOptional(auth *Authenticator, next http.Handler) http.Handler {
 // ================================================================
 
 // extractToken gets the auth token from the request.
-// For WebSocket upgrades, query param ?token= is accepted (browsers cannot set
-// custom headers during the upgrade handshake).
-// For regular HTTP requests, only the Authorization: Bearer header is checked.
+// Priority: Authorization header > query param > cookie.
+// The cookie is set by the gateway when the user first arrives with ?token=
+// (see SetTokenCookie). This lets the OpenClaw SPA's subsequent API and
+// WebSocket calls carry the token automatically without the SPA knowing
+// about SafePaw's auth system.
 func extractToken(r *http.Request) string {
 	// 1. Check Authorization header (preferred — explicit and standard)
 	authHeader := r.Header.Get("Authorization")
@@ -405,7 +413,31 @@ func extractToken(r *http.Request) string {
 		return token
 	}
 
+	// 3. Check cookie (set on first ?token= page load so the SPA's JS/fetch/WS
+	//    calls automatically carry auth without knowing about SafePaw tokens).
+	if c, err := r.Cookie("safepaw_token"); err == nil && c.Value != "" {
+		return c.Value
+	}
+
 	return ""
+}
+
+// SetTokenCookie sets an HttpOnly cookie with the auth token when a user
+// arrives via ?token= query param. This lets the OpenClaw SPA's subsequent
+// requests (API calls, WebSocket upgrades) carry the token automatically.
+// The cookie is Secure when the request is over TLS, SameSite=Lax to
+// allow same-site navigation, and expires in 1 hour.
+func SetTokenCookie(w http.ResponseWriter, r *http.Request, token string) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	http.SetCookie(w, &http.Cookie{
+		Name:     "safepaw_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   3600, // 1 hour
+	})
 }
 
 // splitToken splits a token string on the single "." separator.
