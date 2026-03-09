@@ -281,6 +281,7 @@ const PatternVersion = "2.0.0"
 var PatternChangelog = []string{
 	"v1.0.0 (2024-12-01): Initial 14-pattern set (instruction override, identity hijack, system delimiter, jailbreak, data exfiltration, encoding evasion)",
 	"v2.0.0 (2026-02-28): Added version tracking, changelog, /health exposure. No pattern changes.",
+	"v3.0.0 (2026-03-09): Added non-English prompt injection patterns for Mandarin, Spanish, Arabic, Hindi, Japanese (SOW PL1).",
 }
 
 // promptInjectionPatterns are regex patterns that indicate potential
@@ -321,6 +322,73 @@ var promptInjectionPatterns = []struct {
 	// Data exfiltration
 	{regexp.MustCompile(`(?i)\b(send|post|fetch|curl|wget|http)\b.{0,30}\b(external|webhook|url|endpoint)\b`), RiskMedium, "data_exfiltration"},
 	{regexp.MustCompile(`(?i)\bhttps?://[^\s]{10,}`), RiskLow, "url_in_content"},
+
+	// ================================================================
+	// Non-English prompt injection patterns (SOW PL1, v3.0.0)
+	// Top 5 non-English languages by internet usage.
+	// Each language covers: instruction override, identity hijack,
+	// secret extraction, and jailbreak equivalents.
+	// ================================================================
+
+	// --- Mandarin Chinese ---
+	// "ignore/disregard previous instructions/rules"
+	{regexp.MustCompile(`(忽略|无视|忘记|放弃).{0,10}(之前|以上|先前|所有|系统).{0,10}(指令|指示|规则|提示)`), RiskHigh, "instruction_override_zh"},
+	// "you are now / act as admin/root/system"
+	{regexp.MustCompile(`(你现在是|扮演|假装|变成).{0,10}(管理员|系统|超级用户|无限制)`), RiskHigh, "identity_hijack_zh"},
+	// "reveal/show system prompt/secret/password"
+	{regexp.MustCompile(`(显示|透露|输出|打印|告诉我).{0,10}(系统提示|指令|密码|密钥|秘密)`), RiskHigh, "secret_extraction_zh"},
+	// "new instructions/rules/system prompt"
+	{regexp.MustCompile(`新的(指令|规则|系统提示|提示词)`), RiskHigh, "prompt_replacement_zh"},
+	// "jailbreak / developer mode / do anything"
+	{regexp.MustCompile(`(越狱模式|开发者模式|无限制模式|做任何事)`), RiskHigh, "jailbreak_zh"},
+
+	// --- Spanish ---
+	// "ignore/forget/disregard previous instructions"
+	{regexp.MustCompile(`(?i)(ignora|olvida|desecha|anula).{0,15}(instrucciones|reglas|indicaciones|prompt).{0,15}(anteriores|previas|del sistema)?`), RiskHigh, "instruction_override_es"},
+	// "you are now / act as admin"
+	{regexp.MustCompile(`(?i)(ahora eres|act[uú]a como|finge ser|convi[eé]rtete en).{0,15}(administrador|root|sistema|sin restricciones)`), RiskHigh, "identity_hijack_es"},
+	// "reveal/show system prompt/password/secret"
+	{regexp.MustCompile(`(?i)(revela|muestra|dime|imprime).{0,15}(prompt del sistema|instrucciones|contrase[ñn]a|clave|secreto)`), RiskHigh, "secret_extraction_es"},
+	// "new instructions"
+	{regexp.MustCompile(`(?i)nuevas?\s+(instrucciones|reglas|prompt del sistema)`), RiskHigh, "prompt_replacement_es"},
+	// jailbreak keywords
+	{regexp.MustCompile(`(?i)(modo desarrollador|modo sin restricciones|haz cualquier cosa|modo dios)`), RiskHigh, "jailbreak_es"},
+
+	// --- Arabic ---
+	// "ignore/forget previous instructions/rules"
+	{regexp.MustCompile(`(تجاهل|انسَ|اهمل|ألغِ).{0,15}(التعليمات|القواعد|الأوامر|النظام).{0,10}(السابقة|القديمة)?`), RiskHigh, "instruction_override_ar"},
+	// "you are now / act as admin/root"
+	{regexp.MustCompile(`(أنت الآن|تصرف ك|تظاهر بأنك|كن).{0,15}(مدير|مسؤول|نظام|بلا قيود)`), RiskHigh, "identity_hijack_ar"},
+	// "reveal/show system prompt/password"
+	{regexp.MustCompile(`(اكشف|أظهر|اعرض|أخبرني).{0,15}(موجه النظام|التعليمات|كلمة المرور|المفتاح|السر)`), RiskHigh, "secret_extraction_ar"},
+	// "new instructions"
+	{regexp.MustCompile(`تعليمات جديدة|قواعد جديدة|أوامر جديدة`), RiskHigh, "prompt_replacement_ar"},
+	// jailbreak
+	{regexp.MustCompile(`(وضع المطور|وضع بلا قيود|افعل أي شيء|وضع الإله)`), RiskHigh, "jailbreak_ar"},
+
+	// --- Hindi ---
+	// "ignore/forget previous instructions/rules"
+	{regexp.MustCompile(`(अनदेखा करो|भूल जाओ|नज़रअंदाज़ करो|छोड़ दो).{0,15}(पिछले|पहले|सिस्टम|सभी).{0,10}(निर्देश|नियम|आदेश)?`), RiskHigh, "instruction_override_hi"},
+	// "you are now / act as admin"
+	{regexp.MustCompile(`(अब तुम|बनो|बन जाओ|की तरह काम करो).{0,15}(एडमिन|रूट|सिस्टम|बिना प्रतिबंध)`), RiskHigh, "identity_hijack_hi"},
+	// "reveal/show system prompt/password"
+	{regexp.MustCompile(`(दिखाओ|बताओ|प्रकट करो).{0,15}(सिस्टम प्रॉम्प्ट|निर्देश|पासवर्ड|कुंजी|रहस्य)`), RiskHigh, "secret_extraction_hi"},
+	// "new instructions"
+	{regexp.MustCompile(`नए (निर्देश|नियम|आदेश|सिस्टम प्रॉम्प्ट)`), RiskHigh, "prompt_replacement_hi"},
+	// jailbreak
+	{regexp.MustCompile(`(डेवलपर मोड|बिना प्रतिबंध|कुछ भी करो|जेलब्रेक)`), RiskHigh, "jailbreak_hi"},
+
+	// --- Japanese ---
+	// "ignore/forget/disregard previous instructions"
+	{regexp.MustCompile(`(無視して|忘れて|無効にして|取り消して).{0,10}(以前の|上記の|すべての|システムの).{0,10}(指示|ルール|命令|プロンプト)`), RiskHigh, "instruction_override_ja"},
+	// "you are now / act as admin"
+	{regexp.MustCompile(`(あなたは今|として振る舞って|のふりをして|になって).{0,10}(管理者|ルート|システム|制限なし)`), RiskHigh, "identity_hijack_ja"},
+	// "reveal/show system prompt"
+	{regexp.MustCompile(`(表示して|教えて|見せて|出力して).{0,10}(システムプロンプト|指示|パスワード|秘密鍵|シークレット)`), RiskHigh, "secret_extraction_ja"},
+	// "new instructions"
+	{regexp.MustCompile(`新しい(指示|ルール|命令|システムプロンプト)`), RiskHigh, "prompt_replacement_ja"},
+	// jailbreak
+	{regexp.MustCompile(`(脱獄モード|開発者モード|制限なしモード|何でもやって)`), RiskHigh, "jailbreak_ja"},
 }
 
 // AssessPromptInjectionRisk scans content for prompt injection patterns.
