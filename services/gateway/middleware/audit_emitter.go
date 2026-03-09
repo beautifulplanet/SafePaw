@@ -13,8 +13,11 @@
 package middleware
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -58,6 +61,15 @@ func (sc *statusCapture) Write(b []byte) (int, error) {
 		sc.written = true
 	}
 	return sc.ResponseWriter.Write(b)
+}
+
+// Hijack delegates to the underlying ResponseWriter so WebSocket
+// upgrades can obtain the raw connection through the audit wrapper.
+func (sc *statusCapture) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := sc.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("underlying ResponseWriter does not support hijacking")
 }
 
 // AuditEmitter is middleware that creates a SecurityContext, attaches
