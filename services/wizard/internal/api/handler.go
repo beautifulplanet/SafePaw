@@ -64,7 +64,7 @@ type Handler struct {
 	sessionGen  atomic.Uint64
 	costQuerier costhistory.Querier    // nil when Postgres unavailable
 	credMu      sync.RWMutex           // protects cfg credential fields (AdminPassword, OperatorPassword, ViewerPassword, TOTPSecret)
-	loginGuard  *middleware.LoginGuard  // per-IP login rate limit and lockout
+	loginGuard  *middleware.LoginGuard // per-IP login rate limit and lockout
 }
 
 // NewHandler creates a new API handler.
