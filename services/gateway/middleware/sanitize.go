@@ -266,7 +266,7 @@ func (r PromptInjectionRisk) String() string {
 // PatternVersion tracks the prompt injection pattern set.
 // Increment on every pattern addition/modification.
 // This version is exposed via /health and /metrics for monitoring.
-const PatternVersion = "3.0.0"
+const PatternVersion = "4.0.0"
 
 // PatternChangelog documents pattern set evolution.
 // Review quarterly or when new attack techniques emerge.
@@ -282,6 +282,7 @@ var PatternChangelog = []string{
 	"v1.0.0 (2024-12-01): Initial 14-pattern set (instruction override, identity hijack, system delimiter, jailbreak, data exfiltration, encoding evasion)",
 	"v2.0.0 (2026-02-28): Added version tracking, changelog, /health exposure. No pattern changes.",
 	"v3.0.0 (2026-03-09): Added non-English prompt injection patterns for Mandarin, Spanish, Arabic, Hindi, Japanese (SOW PL1).",
+	"v4.0.0 (2026-03-09): Language-agnostic defense layer. ChatML/JSON structural patterns, Korean/Russian/Portuguese/French/German/Turkish patterns, Unicode script analysis for unsupported languages.",
 }
 
 // promptInjectionPatterns are regex patterns that indicate potential
@@ -322,6 +323,15 @@ var promptInjectionPatterns = []struct {
 	// Data exfiltration
 	{regexp.MustCompile(`(?i)\b(send|post|fetch|curl|wget|http)\b.{0,30}\b(external|webhook|url|endpoint)\b`), RiskMedium, "data_exfiltration"},
 	{regexp.MustCompile(`(?i)\bhttps?://[^\s]{10,}`), RiskLow, "url_in_content"},
+
+	// ================================================================
+	// Language-Agnostic Structural Patterns (v4.0.0)
+	// ================================================================
+	// Detect injection STRUCTURE regardless of language.
+	// ChatML format markers (OpenAI internal format) — never in legit user text.
+	{regexp.MustCompile(`<\|im_(start|end)\|>`), RiskHigh, "chatml_injection"},
+	// JSON messages-array injection ({"role":"system","content":...})
+	{regexp.MustCompile(`(?i)"role"\s*:\s*"system"\s*,\s*"content"\s*:`), RiskHigh, "json_role_injection"},
 
 	// ================================================================
 	// Non-English prompt injection patterns (SOW PL1, v3.0.0)
@@ -389,17 +399,109 @@ var promptInjectionPatterns = []struct {
 	{regexp.MustCompile(`新しい(指示|ルール|命令|システムプロンプト)`), RiskHigh, "prompt_replacement_ja"},
 	// jailbreak
 	{regexp.MustCompile(`(脱獄モード|開発者モード|制限なしモード|何でもやって)`), RiskHigh, "jailbreak_ja"},
+
+	// ================================================================
+	// Extended Language Coverage (v4.0.0)
+	// Top 12 internet languages. Covers instruction_override + jailbreak
+	// for Korean, Russian, Portuguese, French, German, Turkish.
+	// ================================================================
+
+	// --- Korean ---
+	// "ignore/forget previous instructions" (both VO and SOV)
+	{regexp.MustCompile(`(무시|잊어|무효화|취소).{0,15}(이전|시스템|모든|위의).{0,10}(지시|명령|규칙|프롬프트|지침)|(이전|시스템|모든|위의).{0,10}(지시|명령|규칙|프롬프트|지침).{0,10}(무시|잊어|무효화|취소)`), RiskHigh, "instruction_override_ko"},
+	{regexp.MustCompile(`(탈옥\s*모드|개발자\s*모드|제한\s*없는\s*모드|아무거나\s*해)`), RiskHigh, "jailbreak_ko"},
+
+	// --- Russian ---
+	{regexp.MustCompile(`(?i)(игнорируй|забудь|отмени|проигнорируй).{0,15}(предыдущие|системные|все|прежние).{0,10}(инструкции|правила|команды|промпт)?`), RiskHigh, "instruction_override_ru"},
+	{regexp.MustCompile(`(?i)(режим разработчика|без ограничений|делай что угодно|режим бога)`), RiskHigh, "jailbreak_ru"},
+
+	// --- Portuguese ---
+	{regexp.MustCompile(`(?i)(ignora|esqueça|desconsidere|anule).{0,15}(instruções|regras|indicações|prompt).{0,15}(anteriores|prévias|do sistema)?`), RiskHigh, "instruction_override_pt"},
+	{regexp.MustCompile(`(?i)(modo desenvolvedor|modo sem restrições|faça qualquer coisa|modo deus)`), RiskHigh, "jailbreak_pt"},
+
+	// --- French ---
+	{regexp.MustCompile(`(?i)(ignore|oublie|annule|ne\s+tiens?\s+pas\s+compte).{0,20}(instructions?|règles?|consignes?|prompt).{0,15}(précédentes?|du\s+système|d['''']avant)?`), RiskHigh, "instruction_override_fr"},
+	{regexp.MustCompile(`(?i)(mode\s+développeur|mode\s+sans\s+restriction|fais?\s+n['''']importe\s+quoi|mode\s+dieu)`), RiskHigh, "jailbreak_fr"},
+
+	// --- German ---
+	{regexp.MustCompile(`(?i)(ignoriere?|vergiss|übergehe?|missachte).{0,15}(vorherige|obige|alle|system).{0,10}(Anweisungen|Regeln|Befehle|Prompt)?`), RiskHigh, "instruction_override_de"},
+	{regexp.MustCompile(`(?i)(Entwicklermodus|unbeschränkter\s+Modus|mach\s+alles|Gottmodus)`), RiskHigh, "jailbreak_de"},
+
+	// --- Turkish ---
+	{regexp.MustCompile(`(?i)(yok\s*say|unut|görmezden\s+gel|iptal\s+et).{0,15}(önceki|sistem|tüm|eski).{0,10}(talimatları?|kuralları?|komutları?|promptu?)?|(önceki|sistem|tüm|eski).{0,10}(talimatları?|kuralları?|komutları?|promptu?).{0,10}(yok\s*say|unut|görmezden\s+gel|iptal\s+et)`), RiskHigh, "instruction_override_tr"},
+	{regexp.MustCompile(`(?i)(geliştirici\s+modu|kısıtlamasız\s+mod|her\s+şeyi\s+yap|tanrı\s+modu)`), RiskHigh, "jailbreak_tr"},
 }
 
-// AssessPromptInjectionRisk scans content for prompt injection patterns.
+// ================================================================
+// Language-Agnostic Script Analysis (v4.0.0)
+// ================================================================
+// Catches potential injection in languages WITHOUT dedicated patterns.
+// If a message contains ≥10 characters in unsupported Unicode scripts
+// AND also contains English injection keywords, it is flagged.
+//
+// This cannot catch pure unsupported-script attacks with zero English.
+// That requires an ML classifier (Phase 2, SOW §4).
+
+// supportedScripts lists Unicode scripts covered by dedicated patterns.
+var supportedScripts = []*unicode.RangeTable{
+	unicode.Latin,      // English, Spanish, Portuguese, French, German, Turkish
+	unicode.Han,        // Chinese
+	unicode.Arabic,     // Arabic
+	unicode.Devanagari, // Hindi
+	unicode.Hiragana,   // Japanese
+	unicode.Katakana,   // Japanese
+	unicode.Hangul,     // Korean
+	unicode.Cyrillic,   // Russian
+}
+
+// injectionKeywordsForScriptMixing matches English words commonly
+// embedded in cross-language prompt injection attacks.
+var injectionKeywordsForScriptMixing = regexp.MustCompile(
+	`(?i)\b(ignore|disregard|forget|override|bypass|system\s*prompt|instructions?|jailbreak|DAN|developer\s*mode|reveal|admin|root|unrestricted|hack|sudo)\b`,
+)
+
+// analyzeUnsupportedScripts checks for significant text in Unicode
+// scripts that lack dedicated regex patterns. If also combined with
+// English injection keywords, returns medium risk.
+func analyzeUnsupportedScripts(content string) (PromptInjectionRisk, string) {
+	unsupported := 0
+	for _, r := range content {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		covered := false
+		for _, s := range supportedScripts {
+			if unicode.Is(s, r) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			unsupported++
+		}
+	}
+	if unsupported < 10 {
+		return RiskNone, ""
+	}
+	if injectionKeywordsForScriptMixing.MatchString(content) {
+		return RiskMedium, "unsupported_script_mixed"
+	}
+	return RiskNone, ""
+}
+
+// AssessPromptInjectionRisk scans content for prompt injection patterns
+// and language-agnostic structural analysis.
 // Returns the highest risk level found and a list of triggered patterns.
 //
-// This is a HEURISTIC layer — it catches known patterns but cannot
-// catch novel attacks. Defense-in-depth requires:
-// 1. This heuristic scanner (catches 80% of attacks)
-// 2. LLM-based detection (catches sophisticated attacks)
-// 3. Output validation (catches successful injections)
-// 4. Rate limiting (limits damage from successful attacks)
+// Defense-in-depth architecture:
+//
+//	Layer 1: Regex patterns for 12 languages (this function)
+//	Layer 2: Structural detection — ChatML, JSON role, delimiters
+//	Layer 3: Unicode script analysis — catches unsupported languages
+//	         when mixed with English injection keywords
+//	Layer 4 (Phase 2): ML-based classifier for novel/pure attacks
+//	Layer 5: Output scanning (OutputScanner middleware)
+//	Layer 6: Rate limiting + brute force protection
 func AssessPromptInjectionRisk(content string) (PromptInjectionRisk, []string) {
 	maxRisk := RiskNone
 	var triggered []string
@@ -411,6 +513,14 @@ func AssessPromptInjectionRisk(content string) (PromptInjectionRisk, []string) {
 			}
 			triggered = append(triggered, p.name)
 		}
+	}
+
+	// Language-agnostic: catch unsupported scripts + English keywords
+	if scriptRisk, scriptTrigger := analyzeUnsupportedScripts(content); scriptRisk > RiskNone {
+		if scriptRisk > maxRisk {
+			maxRisk = scriptRisk
+		}
+		triggered = append(triggered, scriptTrigger)
 	}
 
 	if maxRisk > RiskNone {
