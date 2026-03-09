@@ -29,6 +29,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -131,6 +132,12 @@ func main() {
 	defer usageCollector.Stop()
 
 	// --------------------------------------------------------
+	// Step 3c: Create receipt ledger for agent action tracing
+	// --------------------------------------------------------
+	receiptLedger := middleware.NewLedger(0) // default 10k capacity
+	log.Println("[CONFIG] Receipt ledger enabled (append-only, in-memory)")
+
+	// --------------------------------------------------------
 	// Step 4: Build HTTP routes with middleware stack
 	// --------------------------------------------------------
 	mux := http.NewServeMux()
@@ -194,7 +201,7 @@ func main() {
 	// Everything else -> reverse proxy to OpenClaw
 	// WebSocket upgrades get the dedicated WS tunnel handler;
 	// regular HTTP gets body scanning then reverse proxy.
-	wsHandler := wsProxy(cfg.ProxyTarget)
+	wsHandler := wsProxy(cfg.ProxyTarget, receiptLedger)
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isWebSocketUpgrade(r) {
 			wsHandler.ServeHTTP(w, r)
@@ -265,6 +272,10 @@ func main() {
 				json.NewEncoder(w).Encode(PricingTable) // #nosec G104 -- best-effort HTTP response
 			})))
 
+		// Receipt ledger endpoint (requires admin scope)
+		mux.Handle("/admin/ledger", middleware.AuthRequired(auth, "admin", revocations,
+			ledgerHandler(receiptLedger)))
+
 		log.Printf("[AUTH] Authentication ENABLED (default TTL=%v, max TTL=%v, revocation=enabled)",
 			cfg.AuthDefaultTTL, cfg.AuthMaxTTL)
 		handler = middleware.AuthRequiredWithGuard(auth, "proxy", revocations, bruteForce, handler)
@@ -275,6 +286,9 @@ func main() {
 		log.Println("[SECURITY] ║  Set AUTH_ENABLED=true and AUTH_SECRET for production.       ║")
 		log.Println("[SECURITY] ╚══════════════════════════════════════════════════════════════╝")
 		handler = middleware.StripAuthHeaders(handler)
+
+		// Ledger endpoint without auth protection (dev mode only)
+		mux.Handle("/admin/ledger", ledgerHandler(receiptLedger))
 	}
 
 	handler = middleware.RateLimitWithGuard(rateLimiter, bruteForce, handler)
@@ -443,4 +457,53 @@ func singleJoiningSlash(a, b string) string {
 		return a + "/" + b
 	}
 	return a + b
+}
+
+// ledgerHandler returns an HTTP handler that serves the receipt ledger.
+// Supports query params: request_id, session_id, subject, action, since_seq, limit.
+func ledgerHandler(ledger *middleware.Ledger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		q := r.URL.Query()
+		query := middleware.LedgerQuery{
+			RequestID: q.Get("request_id"),
+			SessionID: q.Get("session_id"),
+			Subject:   q.Get("subject"),
+			Action:    q.Get("action"),
+		}
+
+		if v := q.Get("since_seq"); v != "" {
+			if seq, err := strconv.ParseUint(v, 10, 64); err == nil {
+				query.SinceSeq = seq
+			}
+		}
+		if v := q.Get("limit"); v != "" {
+			if lim, err := strconv.Atoi(v); err == nil && lim > 0 {
+				query.Limit = lim
+			}
+		}
+
+		// Default: if no filters, return recent entries
+		var receipts []middleware.Receipt
+		if query.RequestID == "" && query.SessionID == "" && query.Subject == "" && query.Action == "" && query.SinceSeq == 0 {
+			limit := query.Limit
+			if limit <= 0 {
+				limit = 100
+			}
+			receipts = ledger.Recent(limit)
+		} else {
+			receipts = ledger.Query(query)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{ // #nosec G104 -- best-effort HTTP response
+			"total_receipts": ledger.Count(),
+			"last_seq":       ledger.LastSeq(),
+			"receipts":       receipts,
+		})
+	})
 }
