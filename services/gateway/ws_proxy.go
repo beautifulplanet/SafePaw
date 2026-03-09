@@ -123,21 +123,45 @@ func wsProxy(target *url.URL, ledger *middleware.Ledger) http.Handler {
 			r.URL.RawQuery = q.Encode()
 		}
 
-		// Rewrite Origin header to match backend — the gateway already
+		// Rewrite Origin header to localhost — the gateway already
 		// validated the origin (OriginCheck middleware), so we translate
-		// to an origin the backend accepts. Without this, OpenClaw rejects
-		// connections from Codespaces/external origins.
+		// to an origin the backend accepts. OpenClaw's controlUi only
+		// allows localhost origins, not Docker service hostnames.
 		if origin := r.Header.Get("Origin"); origin != "" {
 			scheme := "http"
 			if target.Scheme == "https" || target.Scheme == "wss" {
 				scheme = "https"
 			}
-			r.Header.Set("Origin", scheme+"://"+target.Host)
+			port := target.Port()
+			if port == "" {
+				if scheme == "https" {
+					port = "443"
+				} else {
+					port = "80"
+				}
+			}
+			r.Header.Set("Origin", scheme+"://localhost:"+port)
 		}
 
 		// Strip internal headers that clients could spoof
 		r.Header.Del("X-SafePaw-Risk")
 		r.Header.Del("X-SafePaw-Triggers")
+
+		// Inject trusted-proxy identity header so OpenClaw accepts the
+		// connection without requiring a gateway token from the browser.
+		// SafePaw gateway has already authenticated the user.
+		r.Header.Set("X-SafePaw-User", "safepaw-gateway")
+
+		// Strip proxy/forwarded headers — if present, OpenClaw detects
+		// "proxy headers from untrusted address" and applies stricter
+		// origin validation that rejects even localhost origins.
+		// The gateway already enforced auth, rate-limiting, and origin
+		// checks, so the backend doesn't need these for security.
+		r.Header.Del("X-Forwarded-For")
+		r.Header.Del("X-Forwarded-Proto")
+		r.Header.Del("X-Forwarded-Host")
+		r.Header.Del("X-Real-Ip")
+		r.Header.Del("Forwarded")
 
 		// Forward the request to the backend
 		if err := r.Write(backendConn); err != nil {

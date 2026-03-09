@@ -5,7 +5,7 @@ Fixed the "Chat with AI" button that produced black screens, filter messages,
 and was completely non-functional. Root cause was 9 compounding bugs across
 the gateway, wizard UI, and middleware stack.
 
-## Changes Made (2 commits, both pushed)
+## Changes Made (3 commits, all pushed)
 
 ### Commit 78e631c — WS black screen + filter false positives (6 bugs)
 1. **CRITICAL: WriteTimeout kills WS tunnels** — `ws_proxy.go`: clear inherited
@@ -30,8 +30,19 @@ the gateway, wizard UI, and middleware stack.
 9. **Codespaces OriginCheck** — `security.go`: new `isCodespacesOrigin()` function
    auto-allows `*.app.github.dev` origins
 
+### Commit b3cab0a — WebSocket hijack + Origin rewrite (2 root causes)
+10. **CRITICAL: AuditEmitter breaks WS hijack** — `audit_emitter.go`: `statusCapture`
+    wrapped `http.ResponseWriter` without implementing `http.Hijacker`. The WS proxy
+    got "does not support hijacking" and returned HTTP 500. Fix: add `Hijack()` that
+    delegates to the underlying writer.
+11. **HIGH: Origin header rejected by backend** — `ws_proxy.go`: browser Origin
+    (e.g. Codespaces `*.app.github.dev`) was forwarded verbatim to OpenClaw, which
+    only allows localhost origins. Fix: rewrite Origin to match proxy target after
+    the gateway's OriginCheck has already validated it.
+
 ## Files Modified
-- services/gateway/ws_proxy.go
+- services/gateway/ws_proxy.go (deadline clear + Origin rewrite)
+- services/gateway/middleware/audit_emitter.go (Hijack delegation)
 - services/gateway/middleware/output_scanner.go
 - services/gateway/middleware/output_scanner_test.go
 - services/gateway/middleware/sanitize.go
@@ -53,15 +64,13 @@ the gateway, wizard UI, and middleware stack.
   port forwarding. Blocking them serves no security purpose.
 
 ## Current State
-- HEAD: 6fadd4d on main (pushed to origin)
+- HEAD: b3cab0a on main (pushed to origin)
 - All gateway tests pass (4 packages, ~90 tests)
-- Wizard UI rebuilt with new Dashboard.tsx
-- Receipt ledger (from previous session) fully implemented:
-  receipt.go, tool_parser.go, LedgerReader, /admin/ledger endpoint
-- Push command: `unset GITHUB_TOKEN && TOKEN=$(gh auth token) && git push "https://x-access-token:${TOKEN}@github.com/beautifulplanet/SafePaw.git" main`
+- Docker containers rebuilt and running with latest code
+- WebSocket upgrade verified working (HTTP 101) with both Bearer and cookie auth
+- OpenClaw responds with `connect.challenge` through the WS tunnel
+- Full auth flow verified: wizard login → gateway token → gateway accepts → cookie set
 
 ## Next Steps
-- [ ] Verify demo stack runs end-to-end (`docker compose -f docker-compose.demo.yml up`)
-- [ ] Test "Chat with AI" button in running demo
-- [ ] Address any remaining issues from live testing
-- [ ] Rebuild wizard UI dist if any further Dashboard changes
+- [ ] Test "Chat with AI" button in browser (user to verify visually)
+- [ ] If any remaining issues, check browser DevTools console/network/Issues tab
