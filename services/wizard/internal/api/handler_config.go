@@ -15,6 +15,8 @@ import (
 	"sync"
 )
 
+// configWriteMu serialises .env file writes.
+// Lock ordering: configWriteMu → credMu (never acquire credMu then configWriteMu).
 var configWriteMu sync.Mutex
 
 // systemProfiles maps SYSTEM_PROFILE values to per-service resource limits.
