@@ -85,6 +85,9 @@ func (h *Handler) SetCostQuerier(q costhistory.Querier) {
 
 // Close cleans up resources.
 func (h *Handler) Close() {
+	if h.loginGuard != nil {
+		h.loginGuard.Stop()
+	}
 	if h.docker != nil {
 		h.docker.Close()
 	}

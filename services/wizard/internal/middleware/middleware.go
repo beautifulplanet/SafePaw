@@ -215,6 +215,7 @@ type rateLimiter struct {
 	requests map[string]*ipRecord
 	limit    int
 	window   time.Duration
+	stopCh   chan struct{}
 }
 
 type ipRecord struct {
@@ -229,14 +230,20 @@ func RateLimit(limit int, window time.Duration, next http.Handler) http.Handler 
 		requests: make(map[string]*ipRecord),
 		limit:    limit,
 		window:   window,
+		stopCh:   make(chan struct{}),
 	}
 
 	// Cleanup goroutine
 	go func() {
 		ticker := time.NewTicker(window)
 		defer ticker.Stop()
-		for range ticker.C {
-			rl.cleanup()
+		for {
+			select {
+			case <-ticker.C:
+				rl.cleanup()
+			case <-rl.stopCh:
+				return
+			}
 		}
 	}()
 
@@ -298,6 +305,7 @@ type LoginGuard struct {
 	maxAttempts     int
 	window          time.Duration
 	lockoutDuration time.Duration
+	stopCh          chan struct{}
 }
 
 type loginRecord struct {
@@ -314,15 +322,26 @@ func NewLoginGuard(maxAttempts int, window, lockoutDuration time.Duration) *Logi
 		maxAttempts:     maxAttempts,
 		window:          window,
 		lockoutDuration: lockoutDuration,
+		stopCh:          make(chan struct{}),
 	}
 	go func() {
 		ticker := time.NewTicker(window)
 		defer ticker.Stop()
-		for range ticker.C {
-			lg.cleanup()
+		for {
+			select {
+			case <-ticker.C:
+				lg.cleanup()
+			case <-lg.stopCh:
+				return
+			}
 		}
 	}()
 	return lg
+}
+
+// Stop terminates the background cleanup goroutine.
+func (lg *LoginGuard) Stop() {
+	close(lg.stopCh)
 }
 
 // RecordFailure records a failed login attempt. Returns true if the IP is now locked out.
@@ -343,6 +362,11 @@ func (lg *LoginGuard) RecordFailure(ip string) bool {
 		return true
 	}
 	return false
+}
+
+// LockoutDuration returns the configured lockout duration.
+func (lg *LoginGuard) LockoutDuration() time.Duration {
+	return lg.lockoutDuration
 }
 
 // IsLockedOut checks if an IP is currently locked out.
