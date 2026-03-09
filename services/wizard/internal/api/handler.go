@@ -257,7 +257,13 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if role == "" {
 		log.Printf("[WARN] Failed login attempt from %s", sanitizeLog(ip))
 		h.audit.LoginFailure(ip, "invalid_password")
-		h.loginGuard.RecordFailure(ip)
+		if h.loginGuard.RecordFailure(ip) {
+			log.Printf("[WARN] IP %s locked out after repeated failures", sanitizeLog(ip))
+			w.Header().Set("Retry-After", fmt.Sprintf("%.0f", h.loginGuard.LockoutDuration().Seconds()))
+			time.Sleep(500 * time.Millisecond)
+			writeJSON(w, http.StatusTooManyRequests, errorResponse{"too many login attempts, try again later"})
+			return
+		}
 		time.Sleep(500 * time.Millisecond)
 		writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid password"})
 		return
@@ -275,7 +281,13 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if !totp.Validate(totpSecret, req.TOTP) {
 			log.Printf("[WARN] Failed TOTP verification from %s", sanitizeLog(ip))
 			h.audit.LoginFailure(ip, "invalid_totp")
-			h.loginGuard.RecordFailure(ip)
+			if h.loginGuard.RecordFailure(ip) {
+				log.Printf("[WARN] IP %s locked out after repeated failures", sanitizeLog(ip))
+				w.Header().Set("Retry-After", fmt.Sprintf("%.0f", h.loginGuard.LockoutDuration().Seconds()))
+				time.Sleep(500 * time.Millisecond)
+				writeJSON(w, http.StatusTooManyRequests, errorResponse{"too many login attempts, try again later"})
+				return
+			}
 			time.Sleep(500 * time.Millisecond)
 			writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid totp code"})
 			return
