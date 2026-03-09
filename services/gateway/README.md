@@ -94,7 +94,7 @@ AUTH_SECRET=<your-secret>
 ## Status
 - [x] Reverse proxy to OpenClaw backend
 - [x] Security middleware (headers, rate limit, origin check)
-- [x] AI defense body scanner (heuristic prompt-injection detection; see [SECURITY.md](../../SECURITY.md) §10 for limitations)
+- [x] AI defense body scanner (heuristic prompt-injection detection; see [SECURITY.md](../../SECURITY.md) §10 for design boundaries)
 - [x] Authentication middleware (HMAC-SHA256 tokens with revocation)
 - [x] Token revocation (Phase 2 complete — in-memory revocation list, admin `/admin/revoke` endpoint)
 - [x] Response/output body scanning (HTTP responses + WebSocket stream scanning for XSS, secret leaks, data exfiltration)

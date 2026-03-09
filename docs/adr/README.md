@@ -24,3 +24,6 @@ Each ADR follows [Michael Nygard's template](https://cognitect.com/blog/2011/11/
 | [004](004-docker-socket-proxy.md) | Docker socket proxy instead of direct mount | Accepted | 2026-03-01 |
 | [005](005-heuristic-scanning-not-ml.md) | Heuristic prompt-injection scanning, not ML | Accepted | 2026-02-20 |
 | [006](006-embedded-frontend.md) | Monorepo with embedded React frontend | Accepted | 2026-02-10 |
+| [007](007-receipt-ledger.md) | Append-only receipt ledger for agent traceability | Accepted | 2026-03-08 |
+| [008](008-csrf-double-submit.md) | CSRF double-submit cookie pattern | Accepted | 2026-03-07 |
+| [009](009-codespaces-url-routing.md) | Codespaces-aware URL routing | Accepted | 2026-03-08 |
