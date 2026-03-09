@@ -226,6 +226,13 @@ func BruteForceMiddleware(guard *BruteForceGuard, next http.Handler) http.Handle
 			return
 		}
 
+		// Exempt static assets — these are public UI resources that browsers
+		// fetch automatically and should never trigger or be affected by bans.
+		if isStaticAsset(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		ip := extractIP(r)
 
 		banned, reason, remaining := guard.IsBanned(ip)

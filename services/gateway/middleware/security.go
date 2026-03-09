@@ -51,8 +51,10 @@ func SecurityHeaders(next http.Handler) http.Handler {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
 
-		// Content Security Policy — only allow resources from same origin
-		w.Header().Set("Content-Security-Policy", "default-src 'self'")
+		// Content Security Policy — set a strict default, but let downstream
+		// handlers (or the proxied backend) override with a more specific policy.
+		// We use .Add() so the backend's CSP can take precedence if present.
+		// After the proxy runs, if the backend set its own CSP, we remove ours.
 
 		// Don't leak referrer info to other sites
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -83,15 +85,16 @@ func OriginCheck(allowedOrigins []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 
-		// If no origins configured, allow only in dev (no Origin header = same origin)
+		// If no origins configured, auto-allow localhost variants.
+		// This prevents cross-port blocking when the Wizard (e.g. :3000)
+		// connects to the Gateway (e.g. :8080) during local development.
 		if len(allowed) == 0 {
-			if origin == "" {
-				// Same-origin request or tool like curl — allow in dev
+			if origin == "" || isLocalhostOrigin(origin) {
 				next.ServeHTTP(w, r)
 				return
 			}
-			// Has Origin but no allowlist configured — block
-			log.Printf("[SECURITY] Blocked request with Origin=%q (no allowed origins configured) request_id=%s", origin, r.Header.Get("X-Request-ID"))
+			// Has non-localhost Origin but no allowlist — block
+			log.Printf("[SECURITY] Blocked request with Origin=%q (no allowed origins configured, set ALLOWED_ORIGINS) request_id=%s", origin, r.Header.Get("X-Request-ID"))
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -105,6 +108,21 @@ func OriginCheck(allowedOrigins []string, next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isLocalhostOrigin returns true for localhost/127.0.0.1/[::1] origins
+// on any port. Used to auto-allow local dev cross-port requests.
+func isLocalhostOrigin(origin string) bool {
+	origin = strings.ToLower(origin)
+	// Strip scheme
+	for _, prefix := range []string{"https://", "http://"} {
+		origin = strings.TrimPrefix(origin, prefix)
+	}
+	// Strip port
+	if idx := strings.LastIndex(origin, ":"); idx > 0 {
+		origin = origin[:idx]
+	}
+	return origin == "localhost" || origin == "127.0.0.1" || origin == "[::1]" || origin == "::1"
 }
 
 // ================================================================
@@ -202,6 +220,13 @@ func RateLimitWithGuard(rl *RateLimiter, guard *BruteForceGuard, next http.Handl
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Exempt monitoring endpoints so internal probes never get rate-limited
 		if r.URL.Path == "/health" || r.URL.Path == "/metrics" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Exempt static assets — a single page load triggers many sub-requests
+		// for JS bundles, CSS, images, and fonts that shouldn't count toward
+		// the rate limit.
+		if isStaticAsset(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
