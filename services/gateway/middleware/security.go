@@ -51,10 +51,13 @@ func SecurityHeaders(next http.Handler) http.Handler {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
 
-		// Content Security Policy — set a strict default, but let downstream
-		// handlers (or the proxied backend) override with a more specific policy.
-		// We use .Add() so the backend's CSP can take precedence if present.
-		// After the proxy runs, if the backend set its own CSP, we remove ours.
+		// Content Security Policy — strict fallback for gateway-generated
+		// responses (401, 403, 429, 502 error pages). When the reverse proxy
+		// forwards a backend response, the backend's own CSP header is also
+		// present; per the CSP spec, multiple CSP headers intersect (most
+		// restrictive wins), so this fallback never weakens the backend's policy.
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'none'; frame-ancestors 'none'")
 
 		// Don't leak referrer info to other sites
 		w.Header().Set("Referrer-Policy", "no-referrer")

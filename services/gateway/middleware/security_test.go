@@ -27,9 +27,10 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Errorf("%s = %q, want %q", header, got, want)
 		}
 	}
-	// CSP should NOT be set by SecurityHeaders — the backend provides its own
-	if csp := rec.Header().Get("Content-Security-Policy"); csp != "" {
-		t.Errorf("Content-Security-Policy should not be set by SecurityHeaders, got %q", csp)
+	// CSP should be a strict fallback for gateway-generated error pages
+	wantCSP := "default-src 'none'; frame-ancestors 'none'"
+	if csp := rec.Header().Get("Content-Security-Policy"); csp != wantCSP {
+		t.Errorf("Content-Security-Policy = %q, want %q", csp, wantCSP)
 	}
 	if hsts := rec.Header().Get("Strict-Transport-Security"); hsts != "" {
 		t.Errorf("HSTS should not be set over plain HTTP, got %q", hsts)
