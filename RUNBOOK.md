@@ -130,8 +130,8 @@ docker compose up -d --force-recreate openclaw
 
 ### Mitigate
 ```bash
-# Step 1: Wizard has built-in 500ms delay per failed login (already active)
-# Step 2: Wizard has rate limiting (already active)
+# Step 1: Wizard has LoginGuard lockout (5 failures/min → 15-minute IP lockout, already active)
+# Step 2: Wizard has 500ms delay per failed login + rate limiting (already active)
 # Step 3: If attack is from local network, check firewall rules
 
 # Step 4: Change admin password (invalidates all sessions)
