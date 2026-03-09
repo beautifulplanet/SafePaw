@@ -26,6 +26,10 @@ export function Login({ onSuccess }: LoginProps) {
         const msg = err.message === 'totp_required' ? 'TOTP code required (MFA is enabled)' : err.message === 'invalid totp code' ? 'Invalid TOTP code' : 'Invalid password'
         setError(msg)
         if (err.message === 'totp_required') setShowTotp(true)
+      } else if (err instanceof ApiError && err.status === 429) {
+        setError('Too many failed attempts — your IP is temporarily locked out. Wait a few minutes and try again.')
+      } else if (err instanceof ApiError) {
+        setError(err.message || `Server error (${err.status})`)
       } else {
         setError('Connection failed — is the wizard server running?')
       }
