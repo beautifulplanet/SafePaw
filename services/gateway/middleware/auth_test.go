@@ -179,16 +179,16 @@ func TestAuthRequired_ValidToken_QueryParam(t *testing.T) {
 	}
 }
 
-func TestAuthRequired_QueryParam_RejectedForHTTP(t *testing.T) {
+func TestAuthRequired_QueryParam_AcceptedForHTTP(t *testing.T) {
 	auth := newTestAuth(t)
 	token, _ := auth.CreateToken("user1", "proxy", nil)
 	handler := AuthRequired(auth, "proxy", nil, okHandler())
-	// Plain HTTP request with ?token= should be rejected (use Bearer header instead)
+	// Plain HTTP request with ?token= should be accepted (browser navigation, e.g. "Chat with AI" button)
 	req := httptest.NewRequest("GET", "/test?token="+token, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401 (?token= should not work for plain HTTP)", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (?token= should work for browser navigation)", rec.Code)
 	}
 }
 

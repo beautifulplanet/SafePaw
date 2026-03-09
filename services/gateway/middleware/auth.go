@@ -36,7 +36,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -242,8 +241,8 @@ func (a *Authenticator) sign(data []byte) []byte {
 
 // AuthRequired is HTTP middleware that validates auth tokens.
 // It extracts the token from:
-//  1. Query parameter: ?token=<token>   (for WebSocket upgrades)
-//  2. Authorization header: Bearer <token> (for REST-style calls)
+//  1. Authorization header: Bearer <token> (for REST-style calls)
+//  2. Query parameter: ?token=<token>   (for browser navigation and WebSocket upgrades)
 //
 // On success, the validated claims are stored in the response header
 // X-Auth-Subject so downstream handlers can read the authenticated identity.
@@ -383,25 +382,20 @@ func AuthOptional(auth *Authenticator, next http.Handler) http.Handler {
 // custom headers during the upgrade handshake).
 // For regular HTTP requests, only the Authorization: Bearer header is checked.
 func extractToken(r *http.Request) string {
-	// 1. Check query parameter (WebSocket upgrade only)
-	if isUpgrade(r) {
-		if token := r.URL.Query().Get("token"); token != "" {
-			return token
-		}
-	}
-
-	// 2. Check Authorization header
+	// 1. Check Authorization header (preferred — explicit and standard)
 	authHeader := r.Header.Get("Authorization")
 	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 		return authHeader[7:]
 	}
 
-	return ""
-}
+	// 2. Check query parameter (used by browser navigation and WebSocket upgrades,
+	//    since browsers can't set Authorization headers on page loads or WS handshakes).
+	//    The token is stripped from the URL before proxying to the backend (see main.go Director).
+	if token := r.URL.Query().Get("token"); token != "" {
+		return token
+	}
 
-// isUpgrade reports whether r looks like a WebSocket upgrade request.
-func isUpgrade(r *http.Request) bool {
-	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+	return ""
 }
 
 // splitToken splits a token string on the single "." separator.
@@ -434,6 +428,7 @@ func writeAuthError(w http.ResponseWriter, code, message string) {
 	resp := map[string]string{
 		"error":   code,
 		"message": message,
+		"hint":    "Use Authorization: Bearer <token> header or ?token=<token> query parameter",
 	}
 	json.NewEncoder(w).Encode(resp) // #nosec G104 -- best-effort HTTP error response
 }
