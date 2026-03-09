@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { api } from '../api'
 
 interface SetupProps {
@@ -22,8 +22,37 @@ export function Setup({ onComplete }: SetupProps) {
   const [authSecret, setAuthSecret] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [hasExistingKey, setHasExistingKey] = useState(false)
+  const [hasExistingAuth, setHasExistingAuth] = useState(false)
+
+  // Check existing config on mount — auto-fill / auto-skip steps
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { config } = await api.getConfig()
+        // API keys are masked but present if value is non-empty
+        if (config['ANTHROPIC_API_KEY'] || config['OPENAI_API_KEY']) {
+          setHasExistingKey(true)
+        }
+        if (config['AUTH_SECRET'] && config['AUTH_SECRET'] !== 'CHANGE_ME_run_openssl_rand_base64_48') {
+          setHasExistingAuth(true)
+        }
+      } catch {
+        // Config not available — proceed normally
+      }
+    })()
+  }, [])
 
   const currentIndex = STEPS.findIndex(s => s.id === step)
+
+  // Navigate from welcome — skip API key step if already configured
+  const handleWelcomeContinue = useCallback(() => {
+    if (hasExistingKey) {
+      setStep('security')
+    } else {
+      setStep('apikey')
+    }
+  }, [hasExistingKey])
 
   const handleSaveApiKey = useCallback(async () => {
     if (!apiKey.trim()) {
@@ -104,7 +133,7 @@ export function Setup({ onComplete }: SetupProps) {
                 We'll connect your AI provider, turn on security, and you're done.
               </p>
               <div className="space-y-3">
-                <button onClick={() => setStep('apikey')} className="btn-primary w-full text-lg py-3">
+                <button onClick={handleWelcomeContinue} className="btn-primary w-full text-lg py-3">
                   Get Started
                 </button>
               </div>
@@ -176,6 +205,12 @@ export function Setup({ onComplete }: SetupProps) {
                   {saving ? 'Saving…' : 'Continue'}
                 </button>
               </div>
+              <button
+                onClick={() => { setError(''); setStep('security') }}
+                className="w-full text-center text-sm text-gray-500 hover:text-gray-400 mt-3 transition-colors"
+              >
+                Skip for now — I'll add a key later
+              </button>
             </div>
           )}
 
@@ -185,6 +220,12 @@ export function Setup({ onComplete }: SetupProps) {
               <p className="text-gray-400 text-sm mb-6">
                 Choose who can access your AI assistant.
               </p>
+
+              {hasExistingAuth && (
+                <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-3 text-sm text-green-400 mb-4">
+                  ✓ Security is already configured with a strong secret.
+                </div>
+              )}
 
               {/* Auth toggle */}
               <div className="flex items-center justify-between p-4 rounded-lg bg-gray-800/50 border border-gray-700 mb-4">
