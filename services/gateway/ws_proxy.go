@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"safepaw/gateway/middleware"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -55,7 +57,8 @@ func headerContains(header, token string) bool {
 // wsProxy creates a handler that proxies WebSocket connections to the backend.
 // It hijacks the client connection and creates a raw TCP tunnel to the backend,
 // then copies data bidirectionally until either side closes.
-func wsProxy(target *url.URL) http.Handler {
+// If ledger is non-nil, tool calls are recorded in the append-only receipt ledger.
+func wsProxy(target *url.URL, ledger *middleware.Ledger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Determine backend address
 		backendAddr := target.Host
@@ -138,12 +141,27 @@ func wsProxy(target *url.URL) http.Handler {
 		// Bidirectional copy — when either side closes, both are torn down
 		done := make(chan struct{}, 2)
 		reqID := r.Header.Get("X-Request-ID")
+		subject := r.Header.Get("X-Auth-Subject")
+		sessionID := uuid.New().String()
+		tunnelStart := time.Now()
 
-		// Backend → Client: scan output for dangerous content
+		// Record session start in receipt ledger
+		middleware.RecordSessionStart(ledger, reqID, sessionID, subject, r.URL.Path)
+
+		// Backend → Client: scan output for dangerous content + record tool calls
 		go func() {
-			scanner := middleware.NewScanningReader(backendConn, reqID, r.URL.Path)
+			var reader io.Reader = backendConn
+
+			// Layer 1: Output scanning (security)
+			reader = middleware.NewScanningReader(reader, reqID, r.URL.Path)
+
+			// Layer 2: Tool call tracing (observability)
+			if ledger != nil {
+				reader = middleware.NewLedgerReader(reader, ledger, reqID, sessionID, subject, r.URL.Path)
+			}
+
 			buf := make([]byte, wsBufferSize)
-			if _, err := io.CopyBuffer(clientConn, scanner, buf); err != nil {
+			if _, err := io.CopyBuffer(clientConn, reader, buf); err != nil {
 				log.Printf("[WS] Backend→Client copy error: %v", err)
 			}
 			done <- struct{}{}
@@ -161,6 +179,9 @@ func wsProxy(target *url.URL) http.Handler {
 
 		// Wait for either direction to finish
 		<-done
+
+		// Record session end in receipt ledger
+		middleware.RecordSessionEnd(ledger, reqID, sessionID, subject, tunnelStart)
 
 		log.Printf("[WS] Tunnel closed: %s (path=%s)", middleware.SanitizeLogValue(r.RemoteAddr), middleware.SanitizeLogValue(r.URL.Path))
 	})
