@@ -14,7 +14,18 @@ type Page = 'login' | 'prerequisites' | 'dashboard' | 'config' | 'activity' | 's
 export function App() {
   const [page, setPage] = useState<Page>(hasToken() ? 'prerequisites' : 'login')
 
-  const handleLogin = useCallback(() => {
+  // On login, skip prerequisites if this is a first-run (needs_setup).
+  // start.sh already validated Docker/ports, so go straight to Setup wizard.
+  const handleLogin = useCallback(async () => {
+    try {
+      const health = await api.health()
+      if (health.needs_setup) {
+        setPage('setup')
+        return
+      }
+    } catch {
+      // Fall through to prerequisites if health check fails
+    }
     setPage('prerequisites')
   }, [])
 

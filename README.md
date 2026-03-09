@@ -330,32 +330,41 @@ Full threat model: [THREAT-MODEL.md](THREAT-MODEL.md). Incident response: [RUNBO
 
 # Part 3: Quick start
 
+### 3 commands, done
+
+```bash
+git clone https://github.com/beautifulplanet/SafePaw.git
+cd SafePaw
+./start.sh
+```
+
+That's it. The script checks Docker, generates all secrets, picks the right memory profile for your system, starts everything, and opens your browser.
+
+**Windows:** run `start.bat` instead. **Demo mode** (no API key needed): `./start.sh --demo`
+
+### What happens
+
+1. **`start.sh`** generates `.env` with secure random passwords (Redis, Postgres, auth secret, wizard password)
+2. Detects your RAM and sets the right `SYSTEM_PROFILE` (small/medium/large/very-large)
+3. Runs `docker compose up -d --build`
+4. Waits for healthchecks, prints your wizard password, opens `http://localhost:3000`
+
 ### Prerequisites
 
 - Docker and Docker Compose (v2)
 - Ports 3000 (wizard) and 8080 (gateway) free
 - For production: set `AUTH_ENABLED=true`, `AUTH_SECRET`, and optionally `TLS_ENABLED` with certs
 
-### Quickstart
+### Manual setup (advanced)
+
+If you prefer to configure everything yourself:
 
 ```bash
-# Clone
-git clone https://github.com/beautifulplanet/SafePaw.git
-cd SafePaw
-
-# Configure
 cp .env.example .env
-# Edit .env: API keys, channel tokens, AUTH_SECRET if using auth
-
-# Launch
+# Edit .env: API keys, channel tokens, AUTH_SECRET
 docker compose up -d
-
-# Access
-# Wizard:  http://localhost:3000   (password in docker compose logs wizard or set WIZARD_ADMIN_PASSWORD in .env)
-# Gateway: http://localhost:8080  (proxies to OpenClaw)
+# Wizard: http://localhost:3000 (password: docker compose logs wizard)
 ```
-
-First run: wizard prints an admin password once to stdout. Use `docker compose logs wizard` or set `WIZARD_ADMIN_PASSWORD` in `.env`.
 
 ---
 

@@ -154,6 +154,18 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
       {/* LLM Usage & Cost */}
       {usage && usage.status === 'ok' && <CostPanel usage={usage} />}
 
+      {/* Getting Started (show on fresh installs when no conversations yet) */}
+      {metrics && metrics.total_requests === 0 && (
+        <GettingStartedCard onChat={handleOpenAssistant} onOpenSettings={onOpenSettings} />
+      )}
+
+      {/* No-API-key banner (usage unavailable but system running) */}
+      {usage && usage.status !== 'ok' && data && data.overall !== 'down' && (
+        <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-4 py-3 text-sm text-yellow-400 mb-6">
+          💡 Connect an AI provider in Settings to start chatting and see usage data.
+        </div>
+      )}
+
       {/* Cost Analytics (Postgres-backed history) */}
       {costTrends?.status === 'ok' && (
         <CostAnalyticsPanel history={costHistory} models={costModels} trends={costTrends} />
@@ -335,6 +347,39 @@ function EmptyState() {
       <p className="text-gray-400 text-sm max-w-md mx-auto">
         No services are running yet. Contact your administrator to start the system.
       </p>
+    </div>
+  )
+}
+
+function GettingStartedCard({ onChat, onOpenSettings }: { onChat: () => void; onOpenSettings?: () => void }) {
+  return (
+    <div className="card mb-8 card-enter" style={{ animationDelay: '60ms' }}>
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-2xl">🚀</span>
+        <h3 className="font-semibold text-lg">Getting Started</h3>
+      </div>
+      <p className="text-gray-400 text-sm mb-5">
+        Your AI is up and running! Here are 3 things to try:
+      </p>
+      <div className="grid sm:grid-cols-3 gap-4">
+        <button onClick={onChat} className="text-left p-4 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-paw-600/50 transition-colors group">
+          <div className="text-lg mb-2">💬</div>
+          <p className="text-sm font-medium text-gray-200 group-hover:text-paw-400 transition-colors">Send a message</p>
+          <p className="text-xs text-gray-500 mt-1">Open the chat and talk to your AI</p>
+        </button>
+        {onOpenSettings && (
+          <button onClick={onOpenSettings} className="text-left p-4 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-paw-600/50 transition-colors group">
+            <div className="text-lg mb-2">🔌</div>
+            <p className="text-sm font-medium text-gray-200 group-hover:text-paw-400 transition-colors">Connect a channel</p>
+            <p className="text-xs text-gray-500 mt-1">Add Discord, Telegram, or Slack</p>
+          </button>
+        )}
+        <div className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+          <div className="text-lg mb-2">👥</div>
+          <p className="text-sm font-medium text-gray-200">Invite a teammate</p>
+          <p className="text-xs text-gray-500 mt-1">Share the gateway URL + a token</p>
+        </div>
+      </div>
     </div>
   )
 }
