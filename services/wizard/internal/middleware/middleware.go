@@ -34,7 +34,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 				"script-src 'self'; "+
 				"style-src 'self' https://fonts.googleapis.com; "+
 				"img-src 'self' data:; "+
-				"connect-src 'self' ws://localhost:* wss://localhost:*; "+
+				"connect-src 'self' ws://localhost:3000 wss://localhost:3000; "+
 				"font-src 'self' https://fonts.gstatic.com; "+
 				"frame-ancestors 'none'")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
@@ -286,4 +286,100 @@ func extractIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// ─── Login Rate Limiter / Account Lockout ────────────────────
+
+// LoginGuard provides per-IP rate limiting and lockout specifically for the login endpoint.
+// After maxAttempts failures within window, the IP is locked out for lockoutDuration.
+type LoginGuard struct {
+	mu              sync.Mutex
+	attempts        map[string]*loginRecord
+	maxAttempts     int
+	window          time.Duration
+	lockoutDuration time.Duration
+}
+
+type loginRecord struct {
+	failures   int
+	firstFail  time.Time
+	lockedAt   time.Time
+	lockoutDur time.Duration
+}
+
+// NewLoginGuard creates a login guard.
+func NewLoginGuard(maxAttempts int, window, lockoutDuration time.Duration) *LoginGuard {
+	lg := &LoginGuard{
+		attempts:        make(map[string]*loginRecord),
+		maxAttempts:     maxAttempts,
+		window:          window,
+		lockoutDuration: lockoutDuration,
+	}
+	go func() {
+		ticker := time.NewTicker(window)
+		defer ticker.Stop()
+		for range ticker.C {
+			lg.cleanup()
+		}
+	}()
+	return lg
+}
+
+// RecordFailure records a failed login attempt. Returns true if the IP is now locked out.
+func (lg *LoginGuard) RecordFailure(ip string) bool {
+	lg.mu.Lock()
+	defer lg.mu.Unlock()
+
+	now := time.Now()
+	rec, ok := lg.attempts[ip]
+	if !ok || now.Sub(rec.firstFail) > lg.window {
+		rec = &loginRecord{firstFail: now}
+		lg.attempts[ip] = rec
+	}
+	rec.failures++
+	if rec.failures >= lg.maxAttempts {
+		rec.lockedAt = now
+		rec.lockoutDur = lg.lockoutDuration
+		return true
+	}
+	return false
+}
+
+// IsLockedOut checks if an IP is currently locked out.
+func (lg *LoginGuard) IsLockedOut(ip string) (bool, time.Duration) {
+	lg.mu.Lock()
+	defer lg.mu.Unlock()
+
+	rec, ok := lg.attempts[ip]
+	if !ok || rec.lockedAt.IsZero() {
+		return false, 0
+	}
+	remaining := rec.lockoutDur - time.Since(rec.lockedAt)
+	if remaining <= 0 {
+		delete(lg.attempts, ip)
+		return false, 0
+	}
+	return true, remaining
+}
+
+// ResetIP clears failure count on successful login.
+func (lg *LoginGuard) ResetIP(ip string) {
+	lg.mu.Lock()
+	defer lg.mu.Unlock()
+	delete(lg.attempts, ip)
+}
+
+func (lg *LoginGuard) cleanup() {
+	lg.mu.Lock()
+	defer lg.mu.Unlock()
+	now := time.Now()
+	for ip, rec := range lg.attempts {
+		if !rec.lockedAt.IsZero() {
+			if now.Sub(rec.lockedAt) > rec.lockoutDur {
+				delete(lg.attempts, ip)
+			}
+		} else if now.Sub(rec.firstFail) > lg.window {
+			delete(lg.attempts, ip)
+		}
+	}
 }
