@@ -272,7 +272,7 @@ func (m *Metrics) Handler() http.Handler {
 			}
 		}
 
-		w.Write([]byte(b.String()))
+		w.Write([]byte(b.String())) // #nosec G104 -- best-effort metrics response
 	})
 }
 

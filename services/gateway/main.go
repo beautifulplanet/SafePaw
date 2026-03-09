@@ -94,7 +94,7 @@ func main() {
 			log.Printf("[PROXY] Backend error: %v (path=%s remote=%s request_id=%s)", err, r.URL.Path, r.RemoteAddr, r.Header.Get("X-Request-ID"))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadGateway)
-			json.NewEncoder(w).Encode(map[string]string{
+			json.NewEncoder(w).Encode(map[string]string{ // #nosec G104 -- best-effort HTTP response
 				"error":   "bad_gateway",
 				"message": "OpenClaw backend is unavailable",
 			})
@@ -109,7 +109,14 @@ func main() {
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimit, cfg.RateLimitWindow)
 	defer rateLimiter.Stop()
 
-	bruteForce := middleware.NewBruteForceGuard(5, 5*time.Minute)
+	// Shared Redis client for revocation + brute-force persistence
+	var redisClient *middleware.RedisClient
+	if cfg.RedisAddr != "" {
+		redisClient = middleware.NewRedisClient(cfg.RedisAddr, cfg.RedisPassword)
+		log.Printf("[CONFIG] Redis connected at %s (persistent bans + revocation enabled)", cfg.RedisAddr)
+	}
+
+	bruteForce := middleware.NewBruteForceGuardWithRedis(5, 5*time.Minute, redisClient)
 	defer bruteForce.Stop()
 
 	// --------------------------------------------------------
@@ -170,7 +177,7 @@ func main() {
 			status["backend"] = "unreachable"
 			w.WriteHeader(http.StatusServiceUnavailable)
 		} else {
-			resp.Body.Close()
+			resp.Body.Close() // #nosec G104 -- close after status check
 			if resp.StatusCode == http.StatusOK {
 				status["backend"] = "healthy"
 			} else {
@@ -181,7 +188,7 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(status)
+		json.NewEncoder(w).Encode(status) // #nosec G104 -- best-effort HTTP response
 	})
 
 	// Everything else -> reverse proxy to OpenClaw
@@ -207,12 +214,6 @@ func main() {
 			log.Fatalf("[FATAL] Auth setup failed: %v", err)
 		}
 
-		var redisClient *middleware.RedisClient
-		if cfg.RedisAddr != "" {
-			redisClient = middleware.NewRedisClient(cfg.RedisAddr, cfg.RedisPassword)
-			log.Printf("[CONFIG] Redis connected at %s (persistent revocation enabled)", cfg.RedisAddr)
-		}
-
 		revocations := middleware.NewRevocationListWithRedis(cfg.AuthMaxTTL, redisClient)
 		defer revocations.Stop()
 
@@ -230,12 +231,12 @@ func main() {
 				if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Subject == "" {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusBadRequest)
-					json.NewEncoder(w).Encode(map[string]string{"error": "subject is required"})
+					json.NewEncoder(w).Encode(map[string]string{"error": "subject is required"}) // #nosec G104 -- best-effort HTTP response
 					return
 				}
 				revocations.Revoke(body.Subject, body.Reason)
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				json.NewEncoder(w).Encode(map[string]interface{}{ // #nosec G104 -- best-effort HTTP response
 					"status":             "revoked",
 					"subject":            body.Subject,
 					"active_revocations": revocations.Count(),
@@ -250,7 +251,7 @@ func main() {
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(usageCollector.Snapshot())
+				json.NewEncoder(w).Encode(usageCollector.Snapshot()) // #nosec G104 -- best-effort HTTP response
 			})))
 
 		// Pricing reference endpoint (requires admin scope)
@@ -261,7 +262,7 @@ func main() {
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(PricingTable)
+				json.NewEncoder(w).Encode(PricingTable) // #nosec G104 -- best-effort HTTP response
 			})))
 
 		log.Printf("[AUTH] Authentication ENABLED (default TTL=%v, max TTL=%v, revocation=enabled)",
@@ -378,7 +379,7 @@ func bodyScanner(maxSize int64, next http.Handler) http.Handler {
 		}
 
 		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxSize))
-		r.Body.Close()
+		r.Body.Close() // #nosec G104 -- body already read
 		if err != nil {
 			log.Printf("[SCANNER] Body read error: %v (remote=%s request_id=%s)", err, r.RemoteAddr, r.Header.Get("X-Request-ID"))
 			next.ServeHTTP(w, r)

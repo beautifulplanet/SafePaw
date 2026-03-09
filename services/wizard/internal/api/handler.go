@@ -101,7 +101,7 @@ func clientIP(r *http.Request) string {
 // Returns (role, true) on success, ("", false) on invalid token.
 func (h *Handler) SessionValidator() middleware.SessionValidator {
 	return func(token string) (string, bool) {
-		claims, err := session.Validate(token, h.cfg.SessionSecret, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
+		claims, err := session.Validate(token, h.cfg.SessionSecret, int(h.sessionGen.Load()%uint64(^uint(0)>>1))) // #nosec G115 -- sessionGen is a small counter
 		if err != nil {
 			return "", false
 		}
@@ -260,7 +260,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Generate signed session token (24h TTL); include current gen so credential rotation invalidates old tokens
 	const ttl = 24 * time.Hour
-	token, err := session.Create(h.cfg.SessionSecret, ttl, int(h.sessionGen.Load()%uint64(^uint(0)>>1)), role) //nolint:gosec // #nosec G115 -- sessionGen is a small counter
+	token, err := session.Create(h.cfg.SessionSecret, ttl, int(h.sessionGen.Load()%uint64(^uint(0)>>1)), role) // #nosec G115 -- sessionGen is a small counter
 	if err != nil {
 		log.Printf("[ERROR] Failed to create session token: %v", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{"internal error"})

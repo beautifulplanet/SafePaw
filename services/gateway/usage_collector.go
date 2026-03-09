@@ -334,7 +334,7 @@ func (uc *UsageCollector) connectAndPoll() error {
 
 	conn, resp, err := websocket.Dial(ctx, uc.wsURL, nil)
 	if resp != nil && resp.Body != nil {
-		resp.Body.Close()
+		resp.Body.Close() // #nosec G104 -- close after dial
 	}
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
@@ -432,7 +432,7 @@ func (uc *UsageCollector) pollLoop(conn *websocket.Conn) error {
 	for {
 		select {
 		case <-uc.ctx.Done():
-			conn.Close(websocket.StatusNormalClosure, "shutdown")
+			conn.Close(websocket.StatusNormalClosure, "shutdown") // #nosec G104 -- best-effort shutdown
 			return nil
 
 		case err := <-errCh:
@@ -480,7 +480,7 @@ func (uc *UsageCollector) pollLoop(conn *websocket.Conn) error {
 				delete(pending, reqID)
 				pendingMu.Unlock()
 			case <-uc.ctx.Done():
-				conn.Close(websocket.StatusNormalClosure, "shutdown")
+				conn.Close(websocket.StatusNormalClosure, "shutdown") // #nosec G104 -- best-effort shutdown
 				return nil
 			}
 
@@ -518,7 +518,7 @@ func (uc *UsageCollector) pollLoop(conn *websocket.Conn) error {
 				delete(pending, sessID)
 				pendingMu.Unlock()
 			case <-uc.ctx.Done():
-				conn.Close(websocket.StatusNormalClosure, "shutdown")
+				conn.Close(websocket.StatusNormalClosure, "shutdown") // #nosec G104 -- best-effort shutdown
 				return nil
 			}
 		}

@@ -18,7 +18,7 @@
 //   - Prompt injection fuzzing (repeated scanner hits)
 //   - DoS via rate limit boundary riding
 //
-// Bans auto-expire. No persistence (restart = clean slate).
+// Bans auto-expire. When Redis is configured, bans persist across restarts.
 // For production: integrate with fail2ban or WAF for IP-level blocks.
 // =============================================================
 
@@ -28,6 +28,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -47,16 +49,24 @@ type BruteForceGuard struct {
 	baseBan   time.Duration
 	cleanupT  *time.Ticker
 	stopCh    chan struct{}
+	redis     *RedisClient // optional; nil = in-memory only
 }
 
 // NewBruteForceGuard creates a guard that bans after threshold strikes.
 func NewBruteForceGuard(threshold int, baseBan time.Duration) *BruteForceGuard {
+	return NewBruteForceGuardWithRedis(threshold, baseBan, nil)
+}
+
+// NewBruteForceGuardWithRedis creates a guard with optional Redis persistence.
+// When redis is non-nil, bans are persisted and survive gateway restarts.
+func NewBruteForceGuardWithRedis(threshold int, baseBan time.Duration, redis *RedisClient) *BruteForceGuard {
 	g := &BruteForceGuard{
 		strikes:   make(map[string]*banEntry),
 		threshold: threshold,
 		baseBan:   baseBan,
 		cleanupT:  time.NewTicker(5 * time.Minute),
 		stopCh:    make(chan struct{}),
+		redis:     redis,
 	}
 
 	go func() {
@@ -93,6 +103,7 @@ func (g *BruteForceGuard) RecordFailure(ip, reason string) bool {
 		entry.bannedAt = time.Now()
 		log.Printf("[SECURITY] IP BANNED ip=%s strikes=%d duration=%v reason=%s",
 			ip, entry.strikes, entry.duration, reason)
+		g.persistBan(ip, entry)
 		return true
 	}
 
@@ -105,6 +116,14 @@ func (g *BruteForceGuard) IsBanned(ip string) (bool, string, time.Duration) {
 	defer g.mu.Unlock()
 
 	entry, exists := g.strikes[ip]
+	if !exists {
+		// Cache miss — check Redis
+		if e := g.loadBan(ip); e != nil {
+			g.strikes[ip] = e
+			entry = e
+			exists = true
+		}
+	}
 	if !exists {
 		return false, "", 0
 	}
@@ -126,6 +145,7 @@ func (g *BruteForceGuard) Reset(ip string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	delete(g.strikes, ip)
+	g.deleteBan(ip)
 }
 
 // Decrement reduces the strike counter for an IP by one on successful auth.
@@ -141,6 +161,7 @@ func (g *BruteForceGuard) Decrement(ip string) {
 	entry.strikes--
 	if entry.strikes <= 0 {
 		delete(g.strikes, ip)
+		g.deleteBan(ip)
 	}
 }
 
@@ -224,4 +245,53 @@ func BruteForceMiddleware(guard *BruteForceGuard, next http.Handler) http.Handle
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// ── Redis persistence helpers ─────────────────────────────────
+
+const banKeyPrefix = "safepaw:ban:"
+
+// persistBan writes a ban entry to Redis. Caller must hold g.mu.
+func (g *BruteForceGuard) persistBan(ip string, e *banEntry) {
+	if g.redis == nil {
+		return
+	}
+	val := fmt.Sprintf("%d|%d|%d|%s", e.strikes, e.bannedAt.Unix(), int64(e.duration.Seconds()), e.reason)
+	if err := g.redis.Set(banKeyPrefix+ip, val, e.duration); err != nil {
+		log.Printf("[BRUTEFORCE] Redis persist failed ip=%s: %v", ip, err)
+	}
+}
+
+// loadBan reads a ban entry from Redis. Caller must hold g.mu.
+func (g *BruteForceGuard) loadBan(ip string) *banEntry {
+	if g.redis == nil {
+		return nil
+	}
+	val, err := g.redis.Get(banKeyPrefix + ip)
+	if err != nil || val == "" {
+		return nil
+	}
+	parts := strings.SplitN(val, "|", 4)
+	if len(parts) < 4 {
+		return nil
+	}
+	strikes, _ := strconv.Atoi(parts[0])
+	bannedUnix, _ := strconv.ParseInt(parts[1], 10, 64)
+	durSecs, _ := strconv.ParseInt(parts[2], 10, 64)
+	return &banEntry{
+		strikes:  strikes,
+		bannedAt: time.Unix(bannedUnix, 0),
+		duration: time.Duration(durSecs) * time.Second,
+		reason:   parts[3],
+	}
+}
+
+// deleteBan removes a ban entry from Redis. Caller must hold g.mu.
+func (g *BruteForceGuard) deleteBan(ip string) {
+	if g.redis == nil {
+		return
+	}
+	if err := g.redis.Del(banKeyPrefix + ip); err != nil {
+		log.Printf("[BRUTEFORCE] Redis delete failed ip=%s: %v", ip, err)
+	}
 }

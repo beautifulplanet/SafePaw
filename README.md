@@ -62,6 +62,8 @@ HMAC auth, per-IP rate limiting, brute-force banning, origin validation, TLS ter
 <td align="center" width="33%">
 <h3>🔍 AI Defense Scanning</h3>
 14-pattern prompt injection body scanner + output scanner (XSS, secret leaks). Heuristic, versioned, auditable. Risk headers on every response.
+<br/><br/>
+<strong>⚠️ Tripwire, not a wall.</strong> Pattern-based scanning catches common attacks but cannot prevent all prompt injection. Treat it as one layer in defense-in-depth — not a guarantee. See <a href="THREAT-MODEL.md">THREAT-MODEL.md</a>.
 </td>
 <td align="center" width="33%">
 <h3>🧙 Setup Wizard</h3>

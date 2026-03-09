@@ -62,7 +62,7 @@ func (rc *RedisClient) connect() error {
 
 	if rc.password != "" {
 		if err := rc.auth(); err != nil {
-			conn.Close()
+			conn.Close() // #nosec G104 -- cleanup on auth failure
 			rc.conn = nil
 			return fmt.Errorf("auth: %w", err)
 		}
@@ -164,7 +164,7 @@ func (rc *RedisClient) readResponse() (string, error) {
 
 func (rc *RedisClient) reconnectAndRetry(args ...string) (string, error) {
 	if rc.conn != nil {
-		rc.conn.Close()
+		rc.conn.Close() // #nosec G104 -- cleanup before reconnect
 		rc.conn = nil
 	}
 	if err := rc.connect(); err != nil {
@@ -218,7 +218,7 @@ func (rc *RedisClient) Close() {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if rc.conn != nil {
-		rc.conn.Close()
+		rc.conn.Close() // #nosec G104 -- best-effort cleanup
 		rc.conn = nil
 	}
 }

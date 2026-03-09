@@ -148,22 +148,20 @@ jobs:
         working-directory: services/gateway
 
       - name: gosec (gateway)
-        run: gosec -exclude=G104,G706 -exclude-dir=tools ./...
+        run: gosec -exclude-dir=tools ./...
         working-directory: services/gateway
 
       - name: gosec (wizard)
-        run: gosec -exclude=G115,G704,G706 ./...
+        run: gosec ./...
         working-directory: services/wizard
 
       - name: govulncheck (gateway)
         run: govulncheck ./...
         working-directory: services/gateway
-        continue-on-error: true  # advisory-only until stabilized — see #13
 
       - name: govulncheck (wizard)
         run: govulncheck ./...
         working-directory: services/wizard
-        continue-on-error: true  # advisory-only until stabilized — see #13
 
   # ── Docker Build ─────────────────────────────────────
   docker:

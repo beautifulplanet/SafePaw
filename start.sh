@@ -82,6 +82,15 @@ generate_secret() {
   openssl rand -base64 "$1" 2>/dev/null || head -c "$1" /dev/urandom | base64 | tr -d '=/+' | head -c "$1"
 }
 
+# Portable sed -i (macOS requires '' argument, GNU sed does not)
+sed_inplace() {
+  if [[ "$OSTYPE" == darwin* ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
 if [ "$MODE" = "full" ] && [ ! -f .env ]; then
   info "Generating .env with secure defaults..."
 
@@ -94,12 +103,12 @@ if [ "$MODE" = "full" ] && [ ! -f .env ]; then
   cp .env.example .env
 
   # Replace placeholder values with generated secrets
-  sed -i "s|REDIS_PASSWORD=CHANGE_ME_generate_a_random_password|REDIS_PASSWORD=${REDIS_PW}|" .env
-  sed -i "s|POSTGRES_PASSWORD=CHANGE_ME_generate_a_random_password|POSTGRES_PASSWORD=${POSTGRES_PW}|" .env
-  sed -i "s|AUTH_SECRET=CHANGE_ME_run_openssl_rand_base64_48|AUTH_SECRET=${AUTH_SECRET}|" .env
-  sed -i "s|OPENCLAW_GATEWAY_TOKEN=CHANGE_ME_run_openssl_rand_hex_24|OPENCLAW_GATEWAY_TOKEN=${GW_TOKEN}|" .env
+  sed_inplace "s|REDIS_PASSWORD=CHANGE_ME_generate_a_random_password|REDIS_PASSWORD=${REDIS_PW}|" .env
+  sed_inplace "s|POSTGRES_PASSWORD=CHANGE_ME_generate_a_random_password|POSTGRES_PASSWORD=${POSTGRES_PW}|" .env
+  sed_inplace "s|AUTH_SECRET=CHANGE_ME_run_openssl_rand_base64_48|AUTH_SECRET=${AUTH_SECRET}|" .env
+  sed_inplace "s|OPENCLAW_GATEWAY_TOKEN=CHANGE_ME_run_openssl_rand_hex_24|OPENCLAW_GATEWAY_TOKEN=${GW_TOKEN}|" .env
   # Set wizard password (uncomment and set)
-  sed -i "s|# WIZARD_ADMIN_PASSWORD=|WIZARD_ADMIN_PASSWORD=${WIZARD_PW}|" .env
+  sed_inplace "s|# WIZARD_ADMIN_PASSWORD=|WIZARD_ADMIN_PASSWORD=${WIZARD_PW}|" .env
 
   ok "Generated .env with secure defaults"
 elif [ "$MODE" = "full" ]; then
@@ -133,7 +142,13 @@ detect_profile() {
 
 if [ "$MODE" = "full" ]; then
   PROFILE=$(detect_profile)
-  MEM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
+  if [ -f /proc/meminfo ]; then
+    MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+  elif command -v sysctl &>/dev/null; then
+    MEM_KB=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 ))
+  else
+    MEM_KB=0
+  fi
   MEM_GB=$(( MEM_KB / 1024 / 1024 ))
   ok "Detected ${MEM_GB}GB RAM → ${PROFILE} profile"
 
@@ -162,6 +177,11 @@ docker compose -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; 
       ;;
   esac
 done
+# Check if docker compose failed (PIPESTATUS[0] holds its exit code)
+COMPOSE_EXIT=${PIPESTATUS[0]}
+if [ "${COMPOSE_EXIT:-0}" -ne 0 ]; then
+  fail "docker compose exited with status $COMPOSE_EXIT — run 'docker compose -f $COMPOSE_FILE logs' for details"
+fi
 
 # ── Wait for healthchecks ─────────────────────────────────────
 
