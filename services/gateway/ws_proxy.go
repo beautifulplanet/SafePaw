@@ -101,9 +101,13 @@ func wsProxy(target *url.URL, ledger *middleware.Ledger) http.Handler {
 		// Without this, the entire WebSocket tunnel is killed after
 		// WriteTimeout (default 30s), causing black screen mid-conversation.
 		if tc, ok := clientConn.(*net.TCPConn); ok {
-			tc.SetDeadline(time.Time{})
+			if err := tc.SetDeadline(time.Time{}); err != nil {
+				log.Printf("[WS] Failed to clear TCP deadline: %v", err)
+			}
 		} else {
-			clientConn.SetDeadline(time.Time{})
+			if err := clientConn.SetDeadline(time.Time{}); err != nil {
+				log.Printf("[WS] Failed to clear deadline: %v", err)
+			}
 		}
 
 		// Replay the original HTTP request to the backend (the upgrade handshake)
