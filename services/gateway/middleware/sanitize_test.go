@@ -226,19 +226,19 @@ func TestPromptInjection_RegressionSuite(t *testing.T) {
 		{"word_new_no_instructions", "this is new to me"},
 
 		// Non-English benign text that must NOT trigger false positives
-		{"zh_benign_weather", "今天北京的天气怎么样"},                        // "What's the weather in Beijing today"
-		{"zh_benign_poem", "请写一首关于猫的诗"},                             // "Please write a poem about cats"
-		{"zh_benign_cooking", "忽然想起来要买菜"},                            // "Suddenly remembered to buy groceries" (contains 忽)
-		{"es_benign_greeting", "hola, ¿cómo estás hoy?"},                   // "hello, how are you today?"
-		{"es_benign_question", "¿puedes ayudarme con mi tarea?"},            // "can you help me with my homework?"
-		{"es_benign_ignore_noise", "ignora el ruido de afuera"},             // "ignore the noise outside" (contains ignora)
-		{"ar_benign_greeting", "مرحبًا، كيف حالك اليوم؟"},                  // "hello, how are you today?"
-		{"ar_benign_question", "ما هو الطقس في القاهرة؟"},                  // "What's the weather in Cairo?"
-		{"hi_benign_greeting", "नमस्ते, आज आप कैसे हैं?"},                 // "Hello, how are you today?"
-		{"hi_benign_question", "दिल्ली में मौसम कैसा है?"},                 // "What's the weather in Delhi?"
+		{"zh_benign_weather", "今天北京的天气怎么样"},                      // "What's the weather in Beijing today"
+		{"zh_benign_poem", "请写一首关于猫的诗"},                          // "Please write a poem about cats"
+		{"zh_benign_cooking", "忽然想起来要买菜"},                        // "Suddenly remembered to buy groceries" (contains 忽)
+		{"es_benign_greeting", "hola, ¿cómo estás hoy?"},         // "hello, how are you today?"
+		{"es_benign_question", "¿puedes ayudarme con mi tarea?"}, // "can you help me with my homework?"
+		{"es_benign_ignore_noise", "ignora el ruido de afuera"},  // "ignore the noise outside" (contains ignora)
+		{"ar_benign_greeting", "مرحبًا، كيف حالك اليوم؟"},        // "hello, how are you today?"
+		{"ar_benign_question", "ما هو الطقس في القاهرة؟"},        // "What's the weather in Cairo?"
+		{"hi_benign_greeting", "नमस्ते, आज आप कैसे हैं?"},        // "Hello, how are you today?"
+		{"hi_benign_question", "दिल्ली में मौसम कैसा है?"},       // "What's the weather in Delhi?"
 		{"ja_benign_greeting", "こんにちは、元気ですか？"},                   // "Hello, how are you?"
 		{"ja_benign_question", "東京の天気はどうですか？"},                   // "What's the weather in Tokyo?"
-		{"ja_benign_cooking", "新しいレシピを教えてください"},                // "Please teach me a new recipe" (contains 新しい and 教えて)
+		{"ja_benign_cooking", "新しいレシピを教えてください"},                  // "Please teach me a new recipe" (contains 新しい and 教えて)
 	}
 	for _, tc := range benign {
 		t.Run("benign_"+tc.name, func(t *testing.T) {
