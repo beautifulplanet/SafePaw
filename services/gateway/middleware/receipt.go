@@ -35,12 +35,12 @@ import (
 
 // Receipt actions — the lifecycle of an agent session.
 const (
-	ActionSessionStart  = "session_start"  // WebSocket tunnel opened
-	ActionToolCall      = "tool_call"      // Agent invoked a tool
-	ActionToolResult    = "tool_result"    // Tool returned a result
-	ActionAgentText     = "agent_text"     // Agent produced text output
-	ActionSessionEnd    = "session_end"    // WebSocket tunnel closed
-	ActionQualityFlag   = "quality_flag"   // Output risk detected
+	ActionSessionStart = "session_start" // WebSocket tunnel opened
+	ActionToolCall     = "tool_call"     // Agent invoked a tool
+	ActionToolResult   = "tool_result"   // Tool returned a result
+	ActionAgentText    = "agent_text"    // Agent produced text output
+	ActionSessionEnd   = "session_end"   // WebSocket tunnel closed
+	ActionQualityFlag  = "quality_flag"  // Output risk detected
 )
 
 // Receipt is a single immutable entry in the ledger.
@@ -69,9 +69,9 @@ const (
 type Ledger struct {
 	mu      sync.RWMutex
 	entries []Receipt
-	head    int    // next write position in ring buffer
-	count   int    // current number of valid entries (≤ maxSize)
-	maxSize int    // ring buffer capacity
+	head    int // next write position in ring buffer
+	count   int // current number of valid entries (≤ maxSize)
+	maxSize int // ring buffer capacity
 	seq     atomic.Uint64
 }
 
