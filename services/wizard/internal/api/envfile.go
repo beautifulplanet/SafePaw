@@ -47,6 +47,10 @@ func ReadEnvFile(path string) (map[string]string, error) {
 		}
 		if len(val) >= 2 && (val[0] == '"' && val[len(val)-1] == '"' || val[0] == '\'' && val[len(val)-1] == '\'') {
 			val = val[1 : len(val)-1]
+			// Unescape sequences written by escapeEnvValue
+			val = strings.ReplaceAll(val, `\"`, `"`)
+			val = strings.ReplaceAll(val, `\n`, "\n")
+			val = strings.ReplaceAll(val, `\r`, "\r")
 		}
 		out[key] = val
 	}
