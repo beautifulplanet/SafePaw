@@ -9,11 +9,6 @@ const BASE = '/api/v1'
 
 let token: string | null = null
 
-/** Set the auth token for subsequent requests. */
-export function setToken(t: string) {
-  token = t
-}
-
 /** Clear the auth token (logout). */
 export function clearToken() {
   token = null
@@ -22,6 +17,11 @@ export function clearToken() {
 /** Check if we have a stored token. */
 export function hasToken(): boolean {
   return token !== null
+}
+
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)csrf=([^;]+)/)
+  return match?.[1] ?? ''
 }
 
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
@@ -33,7 +33,16 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers })
+  // Add CSRF token for mutating requests using cookie-based auth
+  const method = (opts.method ?? 'GET').toUpperCase()
+  if (!token && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+    const csrf = getCsrfToken()
+    if (csrf) {
+      headers['X-CSRF-Token'] = csrf
+    }
+  }
+
+  const res = await fetch(`${BASE}${path}`, { ...opts, headers, credentials: 'same-origin' })
 
   if (res.status === 401) {
     clearToken()
@@ -66,8 +75,8 @@ export interface HealthResponse {
 }
 
 export interface LoginResponse {
-  token: string
   expires_in: number
+  role: string
 }
 
 export interface PrerequisiteCheck {
