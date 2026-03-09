@@ -266,7 +266,7 @@ func (r PromptInjectionRisk) String() string {
 // PatternVersion tracks the prompt injection pattern set.
 // Increment on every pattern addition/modification.
 // This version is exposed via /health and /metrics for monitoring.
-const PatternVersion = "2.0.0"
+const PatternVersion = "3.0.0"
 
 // PatternChangelog documents pattern set evolution.
 // Review quarterly or when new attack techniques emerge.
