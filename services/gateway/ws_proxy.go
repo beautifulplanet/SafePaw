@@ -123,6 +123,18 @@ func wsProxy(target *url.URL, ledger *middleware.Ledger) http.Handler {
 			r.URL.RawQuery = q.Encode()
 		}
 
+		// Rewrite Origin header to match backend — the gateway already
+		// validated the origin (OriginCheck middleware), so we translate
+		// to an origin the backend accepts. Without this, OpenClaw rejects
+		// connections from Codespaces/external origins.
+		if origin := r.Header.Get("Origin"); origin != "" {
+			scheme := "http"
+			if target.Scheme == "https" || target.Scheme == "wss" {
+				scheme = "https"
+			}
+			r.Header.Set("Origin", scheme+"://"+target.Host)
+		}
+
 		// Strip internal headers that clients could spoof
 		r.Header.Del("X-SafePaw-Risk")
 		r.Header.Del("X-SafePaw-Triggers")
