@@ -66,11 +66,14 @@ var outputPatterns = []struct {
 	// XSS payloads the LLM might generate
 	{regexp.MustCompile(`(?i)<\s*script\b[^>]*>`), OutputRiskHigh, "script_tag"},
 	{regexp.MustCompile(`(?i)<\s*iframe\b[^>]*>`), OutputRiskHigh, "iframe_tag"},
-	{regexp.MustCompile(`(?i)\bon\w+\s*=\s*["']`), OutputRiskMedium, "event_handler"},
+	// Event handlers — require HTML tag context (< ... on*=")
+	{regexp.MustCompile(`(?i)<[^>]+\bon\w+\s*=\s*["']`), OutputRiskMedium, "event_handler"},
 	{regexp.MustCompile(`(?i)javascript\s*:`), OutputRiskMedium, "javascript_uri"},
 
-	// System prompt / secret leakage
-	{regexp.MustCompile(`(?i)(system\s*prompt|internal\s*instructions?)\s*[:=]`), OutputRiskHigh, "system_prompt_leak"},
+	// System prompt / secret leakage — require verbatim leak indicators:
+	// "my system prompt is:", "here are my internal instructions:"
+	// but NOT general discussion like "What is a system prompt?"
+	{regexp.MustCompile(`(?i)(my|the|here\s+are|following)\s+(system\s*prompt|internal\s*instructions?)\s*(is|are|:)\s*[:=]?`), OutputRiskHigh, "system_prompt_leak"},
 	{regexp.MustCompile(`(?i)(sk-[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16})`), OutputRiskHigh, "api_key_leak"},
 
 	// Data exfiltration (LLM told to embed URLs to external servers)
@@ -283,9 +286,14 @@ func (cw *captureWriter) Write(b []byte) (int, error) {
 
 func (cw *captureWriter) isScannable() bool {
 	ct := strings.ToLower(cw.contentType)
+	// Skip text/html — those are the backend's own UI pages (static assets),
+	// not LLM-generated content. Scanning them destroys legitimate <script>,
+	// <link>, <meta>, and <style> tags that the UI needs to function.
+	if strings.Contains(ct, "html") {
+		return false
+	}
 	return strings.Contains(ct, "json") ||
-		strings.Contains(ct, "text/") ||
-		strings.Contains(ct, "html")
+		strings.Contains(ct, "text/")
 }
 
 func (cw *captureWriter) shouldScan() bool {
@@ -305,6 +313,13 @@ func NewScanningReader(source io.Reader, reqID, path string) *ScanningReader {
 	return &ScanningReader{source: source, reqID: reqID, path: path}
 }
 
+// Read scans WebSocket stream data for dangerous patterns.
+// IMPORTANT: This is LOG-ONLY for WebSocket streams. Unlike HTTP
+// responses, WebSocket data is framed binary — modifying the payload
+// length without updating frame headers corrupts the stream and causes
+// black screens in the client. We log the risk but pass data through
+// unmodified. The HTTP OutputScanner middleware handles sanitization
+// for non-WebSocket responses.
 func (sr *ScanningReader) Read(p []byte) (int, error) {
 	n, err := sr.source.Read(p)
 	if n > 0 {
@@ -312,15 +327,11 @@ func (sr *ScanningReader) Read(p []byte) (int, error) {
 		risk, triggers := ScanOutput(chunk)
 		if risk > OutputRiskNone {
 			log.Printf("[OUTPUT-SCAN:WS] risk=%s triggers=%v path=%s chunk_len=%d request_id=%s",
-				risk, triggers, sr.path, n, sr.reqID)
+				risk, triggers, SanitizeLogValue(sr.path), n, sr.reqID)
 		}
-		if risk >= OutputRiskHigh {
-			sanitized := SanitizeOutput(chunk)
-			copy(p, sanitized)
-			if len(sanitized) < n {
-				n = len(sanitized)
-			}
-		}
+		// DO NOT sanitize WebSocket frames — modifying payload length
+		// without updating frame headers corrupts the binary stream.
+		// Risk is logged above for audit; the receipt ledger tracks details.
 	}
 	return n, err
 }

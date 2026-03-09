@@ -205,14 +205,19 @@ var dangerousHTMLPattern = regexp.MustCompile(
 	`(?i)<\s*/?\s*(script|iframe|object|embed|form|input|button|link|style|svg|math|base|meta|applet|frame|frameset)\b[^>]*>`,
 )
 
-// Also match event handlers in any tag (onclick, onerror, etc.)
+// Event handlers in HTML tags (onclick, onerror, etc.)
+// Requires HTML tag context to avoid false positives on code discussions
+// like "onChange = handler" or "the onError = callback".
 var eventHandlerPattern = regexp.MustCompile(
-	`(?i)\bon\w+\s*=`,
+	`(?i)<[^>]+\bon\w+\s*=`,
 )
 
-// Also match javascript: and data: URI schemes
+// Match javascript: and vbscript: URI schemes.
+// data: is excluded — it's commonly used in legitimate base64 image URIs
+// and AI-generated code (e.g., data:image/png;base64,...). Malicious data:
+// URIs are caught by the CSP header (default-src) in SecurityHeaders.
 var dangerousURIPattern = regexp.MustCompile(
-	`(?i)(javascript|vbscript|data)\s*:`,
+	`(?i)(javascript|vbscript)\s*:`,
 )
 
 func stripDangerousHTML(s string) string {

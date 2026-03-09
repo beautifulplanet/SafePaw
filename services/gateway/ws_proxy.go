@@ -97,6 +97,15 @@ func wsProxy(target *url.URL, ledger *middleware.Ledger) http.Handler {
 		}
 		defer clientConn.Close()
 
+		// Clear the inherited WriteTimeout deadline from http.Server.
+		// Without this, the entire WebSocket tunnel is killed after
+		// WriteTimeout (default 30s), causing black screen mid-conversation.
+		if tc, ok := clientConn.(*net.TCPConn); ok {
+			tc.SetDeadline(time.Time{})
+		} else {
+			clientConn.SetDeadline(time.Time{})
+		}
+
 		// Replay the original HTTP request to the backend (the upgrade handshake)
 		// Rewrite the Host header to match the backend
 		r.Host = target.Host

@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -267,6 +268,15 @@ func AuthRequiredWithGuard(auth *Authenticator, requiredScope string, revocation
 			return
 		}
 
+		// Exempt static assets from auth — the backend UI's JS/CSS/images are loaded
+		// by the browser via <script src> and <link href> tags, which cannot carry
+		// the auth token. These are bundled files with content-hashed filenames and
+		// contain no sensitive data.
+		if isStaticAsset(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		ip := extractIP(r)
 		reqID := r.Header.Get("X-Request-ID")
 
@@ -419,6 +429,31 @@ func splitToken(token string) (payload, signature string, ok bool) {
 // ================================================================
 // Error Response
 // ================================================================
+
+// isStaticAsset returns true for paths that serve the backend UI's static
+// assets (JS bundles, CSS, images, fonts). These are loaded by the browser
+// via <script src> and <link href> which cannot carry auth tokens.
+// The files have content-hashed filenames and contain no sensitive data.
+func isStaticAsset(path string) bool {
+	if strings.HasPrefix(path, "/assets/") {
+		return true
+	}
+	// Common static files served from the root
+	switch {
+	case strings.HasSuffix(path, ".js"),
+		strings.HasSuffix(path, ".css"),
+		strings.HasSuffix(path, ".svg"),
+		strings.HasSuffix(path, ".png"),
+		strings.HasSuffix(path, ".ico"),
+		strings.HasSuffix(path, ".woff"),
+		strings.HasSuffix(path, ".woff2"),
+		strings.HasSuffix(path, ".ttf"),
+		strings.HasSuffix(path, ".webp"),
+		strings.HasSuffix(path, ".webmanifest"):
+		return true
+	}
+	return false
+}
 
 // writeAuthError sends a structured 401 JSON response.
 func writeAuthError(w http.ResponseWriter, code, message string) {

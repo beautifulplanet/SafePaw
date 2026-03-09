@@ -162,7 +162,32 @@ func TestOutputScanner_BinaryPassthrough(t *testing.T) {
 	}
 }
 
+func TestOutputScanner_HTMLPassthrough(t *testing.T) {
+	// The backend's own HTML pages (e.g. OpenClaw control UI) contain legitimate
+	// <script>, <link>, <meta> tags. The output scanner must NOT sanitize these.
+	htmlPage := `<!doctype html><html><head><meta charset="UTF-8"><script type="module" src="./app.js"></script><link rel="stylesheet" href="./style.css"></head><body><openclaw-app></openclaw-app></body></html>`
+	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(htmlPage))
+	})
+
+	handler := OutputScanner(1024*1024, backend)
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if body != htmlPage {
+		t.Errorf("HTML page should pass through unsanitized.\ngot:  %q\nwant: %q", body, htmlPage)
+	}
+}
+
 func TestScanningReader(t *testing.T) {
+	// ScanningReader is LOG-ONLY for WebSocket streams.
+	// Modifying payload length without updating WebSocket frame headers
+	// corrupts the binary stream and causes black screens in clients.
+	// Data must pass through unmodified; risk is logged for audit.
 	input := `backend says: <script>evil()</script> and more text`
 	sr := NewScanningReader(strings.NewReader(input), "test-id", "/ws")
 
@@ -171,8 +196,8 @@ func TestScanningReader(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := string(out)
-	if strings.Contains(result, "<script>") {
-		t.Errorf("script tag should be sanitized in stream: %q", result)
+	if result != input {
+		t.Errorf("ScanningReader must not modify WS stream data: got %q, want %q", result, input)
 	}
 }
 
@@ -327,13 +352,14 @@ func TestNormalizeForScan_Base64NoPadding(t *testing.T) {
 }
 
 func TestScanningReader_MaliciousContent(t *testing.T) {
+	// ScanningReader is LOG-ONLY — data passes through unmodified to
+	// avoid corrupting WebSocket frame headers. Risk is logged for audit.
 	malicious := `<script>alert("xss")</script>`
 	reader := NewScanningReader(strings.NewReader(malicious), "req1", "/chat")
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
-	// Content should be sanitized (script tags removed)
 	result := string(buf[:n])
-	if strings.Contains(result, "<script>") {
-		t.Errorf("expected script tags to be sanitized, got %q", result)
+	if result != malicious {
+		t.Errorf("ScanningReader must not modify WS stream data: got %q, want %q", result, malicious)
 	}
 }

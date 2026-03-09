@@ -17,16 +17,19 @@ func TestSecurityHeaders(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	checks := map[string]string{
-		"X-Frame-Options":         "DENY",
-		"X-Content-Type-Options":  "nosniff",
-		"Content-Security-Policy": "default-src 'self'",
-		"Referrer-Policy":         "no-referrer",
+		"X-Frame-Options":        "DENY",
+		"X-Content-Type-Options": "nosniff",
+		"Referrer-Policy":        "no-referrer",
 	}
 	for header, want := range checks {
 		got := rec.Header().Get(header)
 		if got != want {
 			t.Errorf("%s = %q, want %q", header, got, want)
 		}
+	}
+	// CSP should NOT be set by SecurityHeaders — the backend provides its own
+	if csp := rec.Header().Get("Content-Security-Policy"); csp != "" {
+		t.Errorf("Content-Security-Policy should not be set by SecurityHeaders, got %q", csp)
 	}
 	if hsts := rec.Header().Get("Strict-Transport-Security"); hsts != "" {
 		t.Errorf("HSTS should not be set over plain HTTP, got %q", hsts)

@@ -10,6 +10,17 @@
       "version": "20"
     }
   },
+  "forwardPorts": [3000, 8080],
+  "portsAttributes": {
+    "3000": {
+      "label": "SafePaw Wizard",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "SafePaw Gateway",
+      "onAutoForward": "notify"
+    }
+  },
   "customizations": {
     "vscode": {
       "settings": {
