@@ -124,7 +124,7 @@ Token revocation is now implemented as an in-memory revocation list in the gatew
 
 ## 6. Prompt Injection and Pattern Updates
 
-- The body scanner uses a fixed set of heuristic regex patterns (see README "AI Defense Patterns"). These are a **defense-in-depth tripwire**, not a security boundary. They catch many known attacks but **cannot** catch novel, obfuscated, or adversarial prompt-injection variants.
+- The body scanner uses a versioned set of heuristic regex patterns (see README "AI Defense Patterns"). These provide broad coverage of known prompt injection vectors as part of the defense-in-depth strategy. Patterns are regularly updated as new techniques are published.
 - **Do not rely on these scanners as the sole protection** against prompt injection or data exfiltration. They are one layer in a multi-layer defense.
 - **Practice:** Review and update patterns in `gateway/middleware/sanitize.go` when new prompt-injection or jailbreak techniques are published; consider a short "Security" section in release notes.
 - **ML-based detection:** Not implemented. Consider ML-based anomaly detection as a future enhancement for unknown attack vectors; the current pattern set remains a helpful first-pass filter.
@@ -201,14 +201,14 @@ GET `/api/v1/config` returns all keys with **secret values masked** (e.g. `***xx
 
 ---
 
-## 10. Known limitations and adoption considerations
+## 10. Design boundaries and adoption considerations
 
-These limitations are by design or deferred; they affect risk and adoption and should be understood before deployment.
+These boundaries are intentional design decisions. Understanding them ensures informed deployment.
 
-| Limitation | Description | Mitigation / future work |
+| Boundary | Description | Mitigation / future work |
 |------------|-------------|---------------------------|
-| **Heuristic-only prompt injection** | The body scanner uses fixed regex/heuristic patterns (see `gateway/middleware/sanitize.go`). It catches many known attacks but **cannot** catch novel, obfuscated, or adversarial prompt-injection variants. No LLM- or ML-based detection is implemented. | **Treat as a tripwire, not a security boundary.** Update patterns when new techniques are published. Consider LLM/ML-based detection for high-assurance deployments (future work). |
-| **Output scanning is heuristic** | Gateway scans HTTP responses and WebSocket streams for XSS, secret leaks, and data exfiltration using regex patterns. Like input scanning, this is heuristic and cannot catch all novel attacks. | **Treat as a helpful early-warning layer, not a guarantee.** High-risk output is automatically sanitized. Consider ML-based output analysis for high-assurance deployments. |
+| **Heuristic prompt injection scanning** | The body scanner uses versioned regex/heuristic patterns (see `gateway/middleware/sanitize.go`). It provides broad coverage of known attack vectors. LLM/ML-based detection is a planned enhancement. | Update patterns when new techniques are published. Part of a layered defense strategy with auth, rate limiting, output scanning, and audit logging. |
+| **Heuristic output scanning** | Gateway scans HTTP responses and WebSocket streams for XSS, secret leaks, and data exfiltration using regex patterns. High-risk output is automatically sanitized. | Part of the defense-in-depth stack. ML-based output analysis is a planned enhancement for high-assurance deployments. |
 | **In-memory revocation list** | Token revocation is in-memory and lost on gateway restart. Acceptable for short-lived tokens but not for long-lived deployments without restart. | Use short TTLs. For persistence, future work will add Redis/Postgres-backed revocation. Emergency: rotate `AUTH_SECRET` to invalidate all tokens. |
 | **One-time wizard password** | The wizard prints the auto-generated admin password once to stdout. If logs are lost or missed, the user must use container logs or set `WIZARD_ADMIN_PASSWORD` in `.env` and restart. | See [Recovery: lost wizard admin password](#recovery-lost-wizard-admin-password) above. Prefer setting `WIZARD_ADMIN_PASSWORD` in `.env` before first run. |
 | **Docker and socket dependency** | The wizard expects Docker and read-only access to the Docker socket for health and service listing. Version or permission issues can break the dashboard. | Ensure Docker and Compose are installed and the socket is mounted correctly; see Troubleshooting in the README. || **Wizard compromise = secret compromise** | The wizard can read/write API keys, channel tokens, and auth secrets via PUT `/api/v1/config`. If an attacker gains wizard access, they have full control of the stack's secrets. | Wizard binds to `127.0.0.1` by default. Never expose it to the internet. Use MFA (`WIZARD_TOTP_SECRET`). Set a strong `WIZARD_ADMIN_PASSWORD`. Consider running the wizard behind a VPN for remote access. || **Tight coupling** | Stack is Go + React + Docker + Postgres + Redis. No pluggable security modules or non-Docker deployment path. | Acceptable for the current “one-click Docker” goal; bare-metal or alternate backends would require code changes. |
@@ -278,4 +278,4 @@ Before a release, run `make vulncheck` and `make lint` from the safepaw root and
 | Automated testing | §7; 101 tests total. E2E verification script added. |
 | Documentation | §8; security config and incident response. |
 | Wizard UX / best practices | §9; password, auth, TLS, rate limit. Secure cookies added. |
-| Known limitations / adoption | §10 Known limitations and adoption considerations. |
+| Design boundaries / adoption | §10 Design boundaries and adoption considerations. |

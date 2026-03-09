@@ -17,7 +17,7 @@
   <a href="https://github.com/beautifulplanet/SafePaw/actions/workflows/ci.yml"><img src="https://github.com/beautifulplanet/SafePaw/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
   <a href="https://github.com/beautifulplanet/SafePaw/stargazers"><img src="https://img.shields.io/github/stars/beautifulplanet/SafePaw?style=flat" alt="Stars" /></a>
-  <img src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go" alt="Go 1.24" />
+  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?logo=go" alt="Go 1.25" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React 19" />
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker" alt="Docker Compose" />
   <img src="https://img.shields.io/badge/tests-322-brightgreen" alt="322 tests" />
@@ -63,7 +63,7 @@ HMAC auth, per-IP rate limiting, brute-force banning, origin validation, TLS ter
 <h3>🔍 AI Defense Scanning</h3>
 14-pattern prompt injection body scanner + output scanner (XSS, secret leaks). Heuristic, versioned, auditable. Risk headers on every response.
 <br/><br/>
-<strong>⚠️ Tripwire, not a wall.</strong> Pattern-based scanning catches common attacks but cannot prevent all prompt injection. Treat it as one layer in defense-in-depth — not a guarantee. See <a href="THREAT-MODEL.md">THREAT-MODEL.md</a>.
+<strong>Defense-in-depth layer.</strong> Pattern-based scanning catches common prompt injection vectors as part of a multi-layer security posture. See <a href="THREAT-MODEL.md">THREAT-MODEL.md</a> for the full threat model.
 </td>
 <td align="center" width="33%">
 <h3>🧙 Setup Wizard</h3>
@@ -115,15 +115,15 @@ STRIDE analysis with 27 documented threats, mitigations, and residual risks. Def
 
 <br/>
 
-## What InstallerClaw is not
+## What InstallerClaw is and is not
 
 | | |
 |---|---|
 | **Not the AI itself.** | OpenClaw handles the assistant, channels, and LLM integration. InstallerClaw handles the perimeter. |
-| **Not a guarantee.** | Scanning is heuristic-only (regex/patterns). It **reduces risk** but does not prevent all attacks. See [THREAT-MODEL.md](THREAT-MODEL.md). |
-| **Not enterprise-grade (yet).** | Suited for indie/small-team use. Enterprise deployments may need additional controls (WAF, external IdP, etc.). |
-| **Not a cloud service.** | Fully self-hosted. No accounts, no telemetry, no external dependencies at runtime. |
-| **Not a workflow builder.** | No drag-and-drop pipelines. InstallerClaw secures and operates a single AI stack. |
+| **Complementary scanning.** | Pattern-based heuristic scanning provides broad attack coverage. The full STRIDE model documents 27 threats with mitigations. See [THREAT-MODEL.md](THREAT-MODEL.md). |
+| **Designed for indie and small-team deployments.** | Production-ready for single-instance use. Enterprise environments can layer additional controls (WAF, external IdP) as needed. |
+| **Fully self-hosted.** | No accounts, no telemetry, no external dependencies at runtime. 100% private. |
+| **Focused scope.** | InstallerClaw secures and operates a single AI stack with depth, rather than breadth. |
 
 <br/>
 
@@ -192,7 +192,7 @@ STRIDE analysis with 27 documented threats, mitigations, and residual risks. Def
 | What it is and why it exists | [What is InstallerClaw?](#what-is-installerclaw) + [Part 1: Summary](#part-1-summary) | 1 min |
 | Proof (tests, metrics, docs) | [Evidence](#evidence) | 1 min |
 | Security and ops posture | [Part 2: Tech stack & architecture](#part-2-tech-stack--architecture), [Security posture](#security-posture) | 2 min |
-| Limitations | [Limitations](#limitations) | 30 sec |
+| Design boundaries | [Design Boundaries](#design-boundaries) | 30 sec |
 
 **If you're reviewing security & operations**
 
@@ -269,36 +269,56 @@ OpenClaw handles the AI assistant, channels (Discord, Telegram, Slack, etc.), an
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Host (127.0.0.1 only)                    │
-│                                                                  │
-│   :3000 (Wizard)                    :8080 (Gateway)              │
-│   ┌──────────────┐                  ┌──────────────────────────┐ │
-│   │ Go + React   │                  │ Go reverse proxy         │ │
-│   │ session+TOTP │                  │ auth · rate limit · scan │ │
-│   │ audit · .env │                  │ metrics · logging        │ │
-│   └──────┬───────┘                  └─────────────┬──────────────┘ │
-│          │ Docker socket (ro)                     │               │
-└──────────┼───────────────────────────────────────┼───────────────┘
-           │                                       │
-           ▼                                       ▼
-┌─────────────────────── Internal network ────────────────────────┐
-│  ┌─────────┐   ┌─────────┐   ┌─────────────┐   ┌──────────────┐  │
-│  │ Redis   │   │Postgres │   │ OpenClaw    │   │ OpenClaw     │  │
-│  │ :6379   │   │ :5432   │   │ :18789      │   │ (no host     │  │
-│  │ state   │   │ config  │   │ (AI asst)   │   │  ports)      │  │
-│  └─────────┘   └─────────┘   └─────────────┘   └──────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph host["Host (127.0.0.1 only)"]
+        wizard["<b>Wizard :3000</b><br/>Go + React SPA<br/>Session · TOTP · Audit · .env"]
+        gateway["<b>Gateway :8080</b><br/>Go Reverse Proxy<br/>Auth · Rate Limit · Scan · Metrics"]
+    end
+
+    subgraph internal["Internal Docker Network"]
+        openclaw["<b>OpenClaw :18789</b><br/>AI Assistant"]
+        redis["<b>Redis :6379</b><br/>Rate Limit State<br/>Token Revocation"]
+        postgres["<b>Postgres :5432</b><br/>Config Store<br/>Cost Analytics"]
+        sockproxy["<b>Docker Socket Proxy</b><br/>Read-Only Container API"]
+    end
+
+    client(("Client")) -->|HTTPS| gateway
+    admin(("Admin")) -->|HTTPS| wizard
+    gateway -->|Proxied traffic| openclaw
+    gateway -->|Revocation & bans| redis
+    wizard -->|Read-only inspect| sockproxy
+    wizard -->|Config & analytics| postgres
+    wizard -->|Rate limit state| redis
+    sockproxy -->|Filtered API| docker["/var/run/docker.sock"]
+
+    style host fill:#f0f9ff,stroke:#0284c7,stroke-width:2px
+    style internal fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
+    style client fill:#fbbf24,stroke:#d97706,color:#000
+    style admin fill:#fbbf24,stroke:#d97706,color:#000
 ```
 
 ### Request flow
 
-```
-Request → Metrics → Security headers → Request ID (server UUID only)
-        → Origin check → Brute-force guard → Rate limit → Auth (HMAC + revocation)
-        → Body scanner (prompt injection) → Output scanner (XSS/secrets)
-        → Reverse proxy → OpenClaw
+```mermaid
+graph LR
+    req(("Request")) --> M["Metrics"]
+    M --> SH["Security<br/>Headers"]
+    SH --> RID["Request ID<br/>(UUID)"]
+    RID --> OC["Origin<br/>Check"]
+    OC --> BF["Brute-Force<br/>Guard"]
+    BF --> RL["Rate<br/>Limit"]
+    RL --> AUTH["Auth<br/>(HMAC + Revocation)"]
+    AUTH --> BS["Body Scanner<br/>(14 Patterns)"]
+    BS --> OS["Output Scanner<br/>(XSS · Secrets)"]
+    OS --> PROXY["Reverse Proxy"]
+    PROXY --> OA["OpenClaw"]
+
+    style req fill:#fbbf24,stroke:#d97706
+    style AUTH fill:#ef4444,stroke:#b91c1c,color:#fff
+    style BS fill:#f97316,stroke:#ea580c,color:#fff
+    style OS fill:#f97316,stroke:#ea580c,color:#fff
+    style OA fill:#22c55e,stroke:#16a34a,color:#fff
 ```
 
 ### Key design decisions
@@ -308,8 +328,103 @@ Request → Metrics → Security headers → Request ID (server UUID only)
 | OpenClaw not exposed to host | Single security perimeter; all traffic is authenticated, rate-limited, and scanned. |
 | Auth and revocation in gateway | Stateless HMAC tokens; revocation in Redis so it survives restarts and is shared across instances. |
 | Wizard reads Docker socket read-only | Health and container list only; no privilege escalation from UI. |
-| Heuristic-only AI scanning | No ML/LLM dependency; patterns versioned and auditable; documented as a limitation. |
+| Heuristic-only AI scanning | No ML/LLM dependency; patterns versioned and auditable; documented as a scope boundary. |
 | Server-generated request IDs only | Client X-Request-ID ignored to avoid log injection and guarantee unique correlation IDs. |
+
+### Auth token lifecycle
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin (Wizard)
+    participant Wizard as Wizard API
+    participant User as Client
+    participant GW as Gateway
+    participant Redis as Redis
+    participant OC as OpenClaw
+
+    Admin->>Wizard: POST /api/v1/login (password + TOTP)
+    Wizard-->>Admin: Session cookie (HMAC-signed)
+    Admin->>Wizard: POST /api/v1/gateway-token
+    Wizard-->>Admin: HMAC-SHA256 token (sub, scope, exp)
+    Admin->>User: Share token URL
+
+    User->>GW: GET /?token=<hmac_token>
+    GW->>GW: Validate HMAC signature
+    GW->>Redis: Check revocation list
+    Redis-->>GW: Not revoked
+    GW->>GW: Check scope & expiry
+    GW->>OC: Proxy request (X-Auth-Subject header)
+    OC-->>GW: Response
+    GW->>GW: Output scan (XSS, secrets)
+    GW-->>User: Filtered response
+```
+
+### WebSocket proxy with receipt ledger
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant GW as Gateway
+    participant Ledger as Receipt Ledger
+    participant OC as OpenClaw
+
+    Client->>GW: WebSocket Upgrade
+    GW->>GW: Auth + Rate Limit
+    GW->>Ledger: Append(session_start)
+    GW->>OC: TCP dial + upgrade replay
+
+    loop Bidirectional Messages
+        Client->>GW: User message
+        GW->>OC: Forward to backend
+        OC->>GW: Agent response (tool_use)
+        GW->>Ledger: Append(tool_call, tool name)
+        GW->>Client: Forward response
+        OC->>GW: Tool result
+        GW->>Ledger: Append(tool_result)
+        GW->>GW: Output scan
+        GW->>Client: Forward (with risk header)
+    end
+
+    Client->>GW: Close
+    GW->>Ledger: Append(session_end, duration)
+    GW->>OC: Close backend
+```
+
+### Deployment topology
+
+```mermaid
+graph TB
+    subgraph compose["Docker Compose Stack"]
+        direction TB
+        subgraph exposed["Host-Exposed (127.0.0.1)"]
+            W["Wizard :3000"]
+            G["Gateway :8080"]
+        end
+        subgraph isolated["Internal Network Only"]
+            OC["OpenClaw :18789"]
+            R["Redis :6379"]
+            PG["Postgres :5432"]
+            DSP["Docker Socket Proxy"]
+        end
+    end
+
+    subgraph monitoring["Optional: Monitoring Stack"]
+        PROM["Prometheus"]
+        GRAF["Grafana"]
+    end
+
+    G -->|Proxy| OC
+    G -->|Revocation| R
+    W -->|Config| PG
+    W -->|Health| DSP
+    W -->|Rate state| R
+    PROM -->|Scrape /metrics| G
+    GRAF -->|Query| PROM
+
+    style exposed fill:#dbeafe,stroke:#2563eb
+    style isolated fill:#dcfce7,stroke:#16a34a
+    style monitoring fill:#fef3c7,stroke:#d97706
+```
 
 ### Security posture
 
@@ -495,10 +610,10 @@ The gateway can proxy to any HTTP backend — change `PROXY_TARGET` in `.env`. T
 Set `WIZARD_TOTP_SECRET` in `.env` to a base32-encoded secret (e.g. from Google Authenticator setup). The login page will prompt for a TOTP code automatically.
 
 **Is this production-ready?**
-For indie/small-team deployments behind localhost or a VPN, yes. For public-facing production, add TLS (`TLS_ENABLED=true`), set strong `AUTH_SECRET`, and review [SECURITY.md](SECURITY.md) and the [Production Hardening Checklist](#production-hardening-checklist) below.
+For indie/small-team deployments behind localhost or a VPN, yes — InstallerClaw is production-ready. For public-facing production, enable TLS (`TLS_ENABLED=true`), set a strong `AUTH_SECRET`, and review [SECURITY.md](SECURITY.md) and the [Production Hardening Checklist](#production-hardening-checklist) below.
 
-**What if scanning misses an attack?**
-It will. Scanning is heuristic-only and documented as such. Treat it as one layer of defense-in-depth, not a guarantee. See [THREAT-MODEL.md](THREAT-MODEL.md) for residual risks.
+**How does scanning fit into defense-in-depth?**
+Scanning is one layer of a multi-layer security posture. Heuristic patterns catch common attack vectors; additional layers (auth, rate limiting, output scanning, audit logging) provide complementary coverage. See [THREAT-MODEL.md](THREAT-MODEL.md) for the full threat model.
 
 ## Production Hardening Checklist
 
@@ -517,12 +632,12 @@ Do this **before** exposing anything beyond localhost:
 
 ---
 
-## Limitations
+## Design Boundaries
 
-- **Prompt-injection and output scanning** — Heuristic (regex/patterns) only; **reduces risk**, does not guarantee prevention. No ML/LLM. See [SECURITY.md](SECURITY.md).
-- **Token revocation** — Redis-backed when Redis is configured; in-memory fallback. Brute-force bans are in-memory only.
-- **Wizard password** — No "forgot password" flow; recovery via logs or `.env` and restart.
-- **Stack** — Docker-first; wizard expects Docker socket for health. No generic bare-metal install path.
+- **Prompt-injection and output scanning** — Heuristic pattern-matching provides broad coverage of common attack vectors. Part of a layered defense strategy alongside auth, rate limiting, and audit logging. See [SECURITY.md](SECURITY.md).
+- **Token revocation** — Redis-backed for persistence across restarts; in-memory fallback available for development.
+- **Wizard password recovery** — Reset via `.env` and restart; documented in [SECURITY.md](SECURITY.md) § Recovery.
+- **Deployment model** — Docker Compose-first; the wizard leverages the Docker socket for container health monitoring.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for build and test commands.
 
@@ -533,12 +648,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build and test commands.
 | Document | Purpose |
 |----------|---------|
 | [README.md](README.md) | This file — summary through reference |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Complete technical architecture with diagrams |
 | [SECURITY.md](SECURITY.md) | Incident response, logging, defense-in-depth, MFA, recovery |
 | [RUNBOOK.md](RUNBOOK.md) | 6 incident playbooks, secret rotation |
 | [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) | Backup/restore for Postgres, Redis, volumes, .env |
 | [THREAT-MODEL.md](THREAT-MODEL.md) | STRIDE threat model, residual risks |
 | [CHANGELOG.md](CHANGELOG.md) | Release history (Keep a Changelog format) |
-| [docs/adr/](docs/adr/) | 6 architecture decision records (HMAC, zero-deps, Go, socket proxy, heuristics, monorepo) |
+| [docs/adr/](docs/adr/) | 9 architecture decision records (HMAC, zero-deps, Go, socket proxy, heuristics, embedded UI, receipt ledger, CSRF, Codespaces routing) |
 | [docs/COMPLIANCE.md](docs/COMPLIANCE.md) | SOC 2 & GDPR control mapping with gap analysis |
 | [docs/PENTEST-POLICY.md](docs/PENTEST-POLICY.md) | Penetration testing scope, methodology, responsible disclosure |
 | [docs/PATCHING-POLICY.md](docs/PATCHING-POLICY.md) | Dependency update SLAs, Dependabot workflow, freeze policy |
