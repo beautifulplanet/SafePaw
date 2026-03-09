@@ -372,17 +372,34 @@ func bodyScanner(maxSize int64, next http.Handler) http.Handler {
 			return
 		}
 
+		// Reject requests that declare a body larger than maxSize
+		if r.ContentLength > maxSize {
+			log.Printf("[SCANNER] Request too large: content_length=%d max=%d remote=%s request_id=%s",
+				r.ContentLength, maxSize, r.RemoteAddr, r.Header.Get("X-Request-ID"))
+			http.Error(w, "Request Entity Too Large", http.StatusRequestEntityTooLarge)
+			return
+		}
+
 		// Read body (with size limit)
 		if r.Body == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxSize))
+		// Read up to maxSize+1 to detect truncation
+		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxSize+1))
 		r.Body.Close() // #nosec G104 -- body already read
 		if err != nil {
 			log.Printf("[SCANNER] Body read error: %v (remote=%s request_id=%s)", err, r.RemoteAddr, r.Header.Get("X-Request-ID"))
 			next.ServeHTTP(w, r)
+			return
+		}
+
+		// If we read more than maxSize, the body exceeded the limit
+		if int64(len(bodyBytes)) > maxSize {
+			log.Printf("[SCANNER] Request body too large: read=%d max=%d remote=%s request_id=%s",
+				len(bodyBytes), maxSize, r.RemoteAddr, r.Header.Get("X-Request-ID"))
+			http.Error(w, "Request Entity Too Large", http.StatusRequestEntityTooLarge)
 			return
 		}
 

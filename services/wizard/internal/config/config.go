@@ -15,12 +15,14 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds all wizard configuration.
 type Config struct {
 	// Server
-	Port int
+	Port     int
+	BindAddr string // Address to bind to (default: 127.0.0.1)
 
 	// Security
 	AdminPassword         string // Required — auto-generated if not set
@@ -54,7 +56,8 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		Port:             getEnvInt("WIZARD_PORT", 3000),
-		AllowedOrigins:   []string{"http://localhost:3000"},
+		BindAddr:         getEnv("WIZARD_BIND_ADDR", "127.0.0.1"),
+		AllowedOrigins:   parseAllowedOrigins(getEnv("WIZARD_ALLOWED_ORIGINS", "")),
 		SecureCookies:    getEnv("SECURE_COOKIES", "false") == "true",
 		DockerHost:       getEnv("DOCKER_HOST", defaultDockerHost()),
 		ComposeFilePath:  getEnv("COMPOSE_FILE_PATH", "/app/docker-compose.yml"),
@@ -125,4 +128,23 @@ func defaultDockerHost() string {
 		return "npipe:////./pipe/docker_engine"
 	}
 	return "unix:///var/run/docker.sock"
+}
+
+// parseAllowedOrigins parses a comma-separated list of origins.
+// Falls back to http://localhost:<port> if empty or unset.
+func parseAllowedOrigins(val string) []string {
+	if val == "" {
+		return []string{"http://localhost:3000"}
+	}
+	var origins []string
+	for _, o := range strings.Split(val, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			origins = append(origins, o)
+		}
+	}
+	if len(origins) == 0 {
+		return []string{"http://localhost:3000"}
+	}
+	return origins
 }

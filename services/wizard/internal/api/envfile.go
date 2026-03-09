@@ -67,6 +67,13 @@ func maskValue(key, value string) string {
 	return "***" + value[len(value)-4:]
 }
 
+// criticalKeys are keys that must not be set to an empty string via PUT /config.
+// Setting these empty would brick the gateway or auth system on restart.
+var criticalKeys = map[string]bool{
+	"AUTH_SECRET":           true,
+	"WIZARD_ADMIN_PASSWORD": true,
+}
+
 // allowedConfigKeys is the set of keys that PUT /api/v1/config may update.
 // Excludes REDIS_PASSWORD, POSTGRES_* to avoid breaking the stack by accident.
 var allowedConfigKeys = map[string]bool{
@@ -128,8 +135,11 @@ func escapeEnvValue(v string) string {
 	if v == "" {
 		return ""
 	}
-	if strings.ContainsAny(v, " \t\n\"#'") {
-		return `"` + strings.ReplaceAll(v, `"`, `\"`) + `"`
+	if strings.ContainsAny(v, " \t\n\r\"#'") {
+		escaped := strings.ReplaceAll(v, `"`, `\"`)
+		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+		escaped = strings.ReplaceAll(escaped, "\r", `\r`)
+		return `"` + escaped + `"`
 	}
 	return v
 }

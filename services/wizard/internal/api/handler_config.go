@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -88,6 +89,11 @@ func (h *Handler) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[WARN] Config PUT rejected unknown key: %q", k)
 			continue
 		}
+		// Reject empty values for critical security keys
+		if v == "" && criticalKeys[k] {
+			writeJSON(w, http.StatusBadRequest, errorResponse{k + " cannot be empty"})
+			return
+		}
 		updates[k] = v
 	}
 	if len(updates) == 0 {
@@ -132,7 +138,11 @@ func (h *Handler) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 
 	configIP := r.RemoteAddr
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		configIP = fwd
+		if ip, _, ok := strings.Cut(fwd, ","); ok {
+			configIP = strings.TrimSpace(ip)
+		} else {
+			configIP = strings.TrimSpace(fwd)
+		}
 	}
 	keys := make([]string, 0, len(updates))
 	for k := range updates {

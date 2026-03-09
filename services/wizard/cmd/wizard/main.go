@@ -99,7 +99,7 @@ func main() {
 
 	// ── Step 5: Configure HTTP server ──
 	srv := &http.Server{
-		Addr:           fmt.Sprintf(":%d", cfg.Port),
+		Addr:           fmt.Sprintf("%s:%d", cfg.BindAddr, cfg.Port),
 		Handler:        chain,
 		ReadTimeout:    15 * time.Second,
 		WriteTimeout:   30 * time.Second,

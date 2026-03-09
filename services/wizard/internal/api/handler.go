@@ -41,6 +41,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -61,12 +62,19 @@ type Handler struct {
 	docker      *docker.Client
 	audit       *audit.Logger
 	sessionGen  atomic.Uint64
-	costQuerier costhistory.Querier // nil when Postgres unavailable
+	costQuerier costhistory.Querier    // nil when Postgres unavailable
+	credMu      sync.RWMutex           // protects cfg credential fields (AdminPassword, OperatorPassword, ViewerPassword, TOTPSecret)
+	loginGuard  *middleware.LoginGuard  // per-IP login rate limit and lockout
 }
 
 // NewHandler creates a new API handler.
 func NewHandler(cfg *config.Config, dc *docker.Client) (*Handler, error) {
-	return &Handler{cfg: cfg, docker: dc, audit: audit.New()}, nil
+	return &Handler{
+		cfg:        cfg,
+		docker:     dc,
+		audit:      audit.New(),
+		loginGuard: middleware.NewLoginGuard(5, time.Minute, 15*time.Minute),
+	}, nil
 }
 
 // SetCostQuerier sets the cost history query interface.
@@ -117,6 +125,8 @@ func (h *Handler) ReloadCredsFromEnv() {
 		log.Printf("[WARN] ReloadCredsFromEnv: read failed: %v", err)
 		return
 	}
+	h.credMu.Lock()
+	defer h.credMu.Unlock()
 	if v, ok := env["WIZARD_ADMIN_PASSWORD"]; ok {
 		h.cfg.AdminPassword = v
 	}
@@ -225,6 +235,14 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Limit request body to 1KB to prevent memory exhaustion attacks
 	r.Body = http.MaxBytesReader(w, r.Body, 1024)
 
+	// Check login lockout before processing
+	ip := clientIP(r)
+	if locked, remaining := h.loginGuard.IsLockedOut(ip); locked {
+		w.Header().Set("Retry-After", fmt.Sprintf("%.0f", remaining.Seconds()))
+		writeJSON(w, http.StatusTooManyRequests, errorResponse{"too many login attempts, try again later"})
+		return
+	}
+
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{"invalid request body"})
@@ -234,24 +252,27 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Determine role by matching password (check all configured passwords)
 	role := h.matchPasswordToRole(req.Password)
 	if role == "" {
-		ip := clientIP(r)
 		log.Printf("[WARN] Failed login attempt from %s", sanitizeLog(ip))
 		h.audit.LoginFailure(ip, "invalid_password")
+		h.loginGuard.RecordFailure(ip)
 		time.Sleep(500 * time.Millisecond)
 		writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid password"})
 		return
 	}
 
 	// When MFA is enabled, require and validate TOTP code (admin and operator only)
-	if h.cfg.TOTPSecret != "" && role != "viewer" {
+	h.credMu.RLock()
+	totpSecret := h.cfg.TOTPSecret
+	h.credMu.RUnlock()
+	if totpSecret != "" && role != "viewer" {
 		if req.TOTP == "" {
 			writeJSON(w, http.StatusUnauthorized, errorResponse{"totp_required"})
 			return
 		}
-		if !totp.Validate(h.cfg.TOTPSecret, req.TOTP) {
-			ip := clientIP(r)
+		if !totp.Validate(totpSecret, req.TOTP) {
 			log.Printf("[WARN] Failed TOTP verification from %s", sanitizeLog(ip))
 			h.audit.LoginFailure(ip, "invalid_totp")
+			h.loginGuard.RecordFailure(ip)
 			time.Sleep(500 * time.Millisecond)
 			writeJSON(w, http.StatusUnauthorized, errorResponse{"invalid totp code"})
 			return
@@ -267,7 +288,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := clientIP(r)
+	h.loginGuard.ResetIP(ip)
 	h.audit.LoginSuccess(ip)
 
 	http.SetCookie(w, &http.Cookie{
@@ -307,16 +328,22 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 // and returns the corresponding role. Returns "" if no match.
 // Uses constant-time comparison for all checks to prevent timing attacks.
 func (h *Handler) matchPasswordToRole(password string) string {
-	adminMatch := subtle.ConstantTimeCompare([]byte(password), []byte(h.cfg.AdminPassword)) == 1
+	h.credMu.RLock()
+	adminPW := h.cfg.AdminPassword
+	opPW := h.cfg.OperatorPassword
+	viewerPW := h.cfg.ViewerPassword
+	h.credMu.RUnlock()
+
+	adminMatch := subtle.ConstantTimeCompare([]byte(password), []byte(adminPW)) == 1
 
 	operatorMatch := false
-	if h.cfg.OperatorPassword != "" {
-		operatorMatch = subtle.ConstantTimeCompare([]byte(password), []byte(h.cfg.OperatorPassword)) == 1
+	if opPW != "" {
+		operatorMatch = subtle.ConstantTimeCompare([]byte(password), []byte(opPW)) == 1
 	}
 
 	viewerMatch := false
-	if h.cfg.ViewerPassword != "" {
-		viewerMatch = subtle.ConstantTimeCompare([]byte(password), []byte(h.cfg.ViewerPassword)) == 1
+	if viewerPW != "" {
+		viewerMatch = subtle.ConstantTimeCompare([]byte(password), []byte(viewerPW)) == 1
 	}
 
 	// Priority: admin > operator > viewer (in case same password used for multiple roles)
