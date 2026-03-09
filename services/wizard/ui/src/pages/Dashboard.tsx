@@ -69,7 +69,16 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
     setOpeningAssistant(true)
     try {
       const { token } = await api.gatewayToken('wizard-user', 'proxy', 1)
-      const url = `${window.location.protocol}//${window.location.hostname}:8080/?token=${encodeURIComponent(token)}`
+      // Build gateway URL — handle Codespaces forwarded ports (port is in subdomain)
+      const host = window.location.host
+      let gatewayBase: string
+      if (host.includes('.app.github.dev')) {
+        // Codespaces: replace port in subdomain (e.g. -3000. → -8080.)
+        gatewayBase = `${window.location.protocol}//${host.replace(/-\d+\.app\.github\.dev/, '-8080.app.github.dev')}`
+      } else {
+        gatewayBase = `${window.location.protocol}//${window.location.hostname}:8080`
+      }
+      const url = `${gatewayBase}/?token=${encodeURIComponent(token)}`
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to open AI assistant')
