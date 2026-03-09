@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 )
 
@@ -138,14 +137,7 @@ func (h *Handler) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		h.BumpSessionGen()
 	}
 
-	configIP := r.RemoteAddr
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		if ip, _, ok := strings.Cut(fwd, ","); ok {
-			configIP = strings.TrimSpace(ip)
-		} else {
-			configIP = strings.TrimSpace(fwd)
-		}
-	}
+	configIP := clientIP(r)
 	keys := make([]string, 0, len(updates))
 	for k := range updates {
 		keys = append(keys, k)
