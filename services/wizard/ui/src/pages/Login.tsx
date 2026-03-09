@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { api, setToken, ApiError } from '../api'
+import { api, ApiError } from '../api'
 
 interface LoginProps {
   onSuccess: () => void
@@ -19,8 +19,7 @@ export function Login({ onSuccess }: LoginProps) {
     setLoading(true)
 
     try {
-      const res = await api.login(password, totp || undefined)
-      setToken(res.token)
+      await api.login(password, totp || undefined)
       onSuccess()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
