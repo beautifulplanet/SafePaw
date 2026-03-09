@@ -435,5 +435,5 @@ func writeAuthError(w http.ResponseWriter, code, message string) {
 		"error":   code,
 		"message": message,
 	}
-	json.NewEncoder(w).Encode(resp)
+	json.NewEncoder(w).Encode(resp) // #nosec G104 -- best-effort HTTP error response
 }

@@ -230,7 +230,7 @@ func OutputScanner(maxScanSize int64, next http.Handler) http.Handler {
 		if !cw.headerWritten {
 			w.WriteHeader(cw.statusCode)
 		}
-		w.Write([]byte(body))
+		w.Write([]byte(body)) // #nosec G104 -- best-effort scanned response write
 	})
 }
 
@@ -272,7 +272,7 @@ func (cw *captureWriter) Write(b []byte) (int, error) {
 			cw.ResponseWriter.WriteHeader(cw.statusCode)
 		}
 		if cw.buf.Len() > 0 {
-			cw.ResponseWriter.Write(cw.buf.Bytes())
+			cw.ResponseWriter.Write(cw.buf.Bytes()) // #nosec G104 -- flushing buffered data on passthrough
 			cw.buf.Reset()
 		}
 		return cw.ResponseWriter.Write(b)
