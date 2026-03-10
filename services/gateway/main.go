@@ -126,6 +126,16 @@ func main() {
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimit, cfg.RateLimitWindow)
 	defer rateLimiter.Stop()
 
+	// Per-endpoint rate limits (CO-001)
+	var epLimits []middleware.EndpointLimit
+	for _, el := range cfg.EndpointRateLimits {
+		epLimits = append(epLimits, middleware.EndpointLimit{Prefix: el.Prefix, Limit: el.Limit})
+	}
+	epRateLimiter := middleware.NewEndpointRateLimiter(epLimits, cfg.RateLimitWindow)
+	if epRateLimiter != nil {
+		defer epRateLimiter.Stop()
+	}
+
 	// Shared Redis client for revocation + brute-force persistence
 	var redisClient *middleware.RedisClient
 	if cfg.RedisAddr != "" {
@@ -320,6 +330,7 @@ func main() {
 	}
 
 	handler = middleware.RateLimitWithGuard(rateLimiter, bruteForce, handler)
+	handler = middleware.EndpointRateLimit(epRateLimiter, handler) // CO-001: per-endpoint limits before global
 	handler = middleware.BruteForceMiddleware(bruteForce, handler)
 	handler = middleware.OriginCheck(cfg.AllowedOrigins, handler)
 	handler = middleware.AuditEmitter(handler)

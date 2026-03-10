@@ -34,6 +34,9 @@ type Config struct {
 	RateLimit       int           // Max requests per window per IP
 	RateLimitWindow time.Duration // Time window for rate limiting
 
+	// Per-endpoint rate limits (CO-001)
+	EndpointRateLimits []EndpointLimit // Per-prefix overrides; longest match wins
+
 	// Authentication
 	AuthSecret     []byte        // HMAC-SHA256 signing secret (min 32 bytes)
 	AuthEnabled    bool          // If false, all requests pass through (dev only)
@@ -64,6 +67,13 @@ type Config struct {
 	OpenClawGatewayToken string  // Auth token for OpenClaw WS API
 	CostAlertDailyWarn   float64 // Daily cost warning threshold (USD)
 	CostAlertDailyCrit   float64 // Daily cost critical threshold (USD)
+}
+
+// EndpointLimit maps a URL prefix to a per-IP request limit.
+// The global RateLimitWindow applies to all endpoints.
+type EndpointLimit struct {
+	Prefix string
+	Limit  int
 }
 
 // Load reads config from environment variables with safe defaults.
@@ -152,7 +162,46 @@ func Load() (*Config, error) {
 		cfg.AllowedOrigins = origins
 	}
 
+	// Parse per-endpoint rate limits (CO-001)
+	// Format: "/prefix=limit;/prefix2=limit2"
+	cfg.EndpointRateLimits = parseEndpointLimits(envStr("ENDPOINT_RATE_LIMITS", ""))
+
 	return cfg, nil
+}
+
+// parseEndpointLimits parses "prefix=limit;prefix=limit" into a sorted slice
+// (longest prefix first for correct matching).
+func parseEndpointLimits(raw string) []EndpointLimit {
+	if raw == "" {
+		return nil
+	}
+	var limits []EndpointLimit
+	for _, part := range splitString(raw, ";") {
+		part = trimSpace(part)
+		if part == "" {
+			continue
+		}
+		eq := indexOf(part, "=")
+		if eq < 1 {
+			continue // skip malformed entries
+		}
+		prefix := trimSpace(part[:eq])
+		limitStr := trimSpace(part[eq+1:])
+		n, err := strconv.Atoi(limitStr)
+		if err != nil || n < 1 || prefix == "" {
+			continue
+		}
+		limits = append(limits, EndpointLimit{Prefix: prefix, Limit: n})
+	}
+	// Sort by prefix length descending (longest match first)
+	for i := 0; i < len(limits); i++ {
+		for j := i + 1; j < len(limits); j++ {
+			if len(limits[j].Prefix) > len(limits[i].Prefix) {
+				limits[i], limits[j] = limits[j], limits[i]
+			}
+		}
+	}
+	return limits
 }
 
 // --- Helper functions ---

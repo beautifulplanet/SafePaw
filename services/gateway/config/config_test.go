@@ -225,3 +225,50 @@ func TestLoad_ProxyTargetNoScheme(t *testing.T) {
 		t.Error("expected error for PROXY_TARGET without scheme")
 	}
 }
+
+// ── Per-Endpoint Rate Limits (CO-001) ─────────────────
+
+func TestParseEndpointLimits(t *testing.T) {
+	limits := parseEndpointLimits("/api/v1/chat=10;/api/v1/models=30;/admin/=5")
+	if len(limits) != 3 {
+		t.Fatalf("expected 3 limits, got %d", len(limits))
+	}
+	// Should be sorted longest prefix first
+	if limits[0].Prefix != "/api/v1/models" {
+		t.Errorf("expected longest prefix first, got %q", limits[0].Prefix)
+	}
+	if limits[0].Limit != 30 {
+		t.Errorf("expected limit=30 for /api/v1/models, got %d", limits[0].Limit)
+	}
+	if limits[1].Prefix != "/api/v1/chat" {
+		t.Errorf("expected /api/v1/chat second, got %q", limits[1].Prefix)
+	}
+}
+
+func TestParseEndpointLimits_Empty(t *testing.T) {
+	limits := parseEndpointLimits("")
+	if limits != nil {
+		t.Error("expected nil for empty string")
+	}
+}
+
+func TestParseEndpointLimits_Malformed(t *testing.T) {
+	limits := parseEndpointLimits("noequals;=5;/ok=10;/bad=NaN;=;")
+	if len(limits) != 1 {
+		t.Fatalf("expected 1 valid limit, got %d", len(limits))
+	}
+	if limits[0].Prefix != "/ok" || limits[0].Limit != 10 {
+		t.Errorf("expected /ok=10, got %s=%d", limits[0].Prefix, limits[0].Limit)
+	}
+}
+
+func TestLoad_EndpointRateLimits(t *testing.T) {
+	t.Setenv("ENDPOINT_RATE_LIMITS", "/api/chat=10;/admin/=5")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.EndpointRateLimits) != 2 {
+		t.Fatalf("expected 2 endpoint limits, got %d", len(cfg.EndpointRateLimits))
+	}
+}
