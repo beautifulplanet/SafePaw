@@ -58,7 +58,8 @@ func headerContains(header, token string) bool {
 // It hijacks the client connection and creates a raw TCP tunnel to the backend,
 // then copies data bidirectionally until either side closes.
 // If ledger is non-nil, tool calls are recorded in the append-only receipt ledger.
-func wsProxy(target *url.URL, ledger *middleware.Ledger) http.Handler {
+// If signer is non-nil, X-SafePaw-User is HMAC-signed (PL2).
+func wsProxy(target *url.URL, ledger *middleware.Ledger, signer *middleware.ProxySigner) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Determine backend address
 		backendAddr := target.Host
@@ -155,6 +156,11 @@ func wsProxy(target *url.URL, ledger *middleware.Ledger) http.Handler {
 		// connection without requiring a gateway token from the browser.
 		// SafePaw gateway has already authenticated the user.
 		r.Header.Set("X-SafePaw-User", "safepaw-gateway")
+
+		// PL2: Sign the identity header with HMAC so OpenClaw can verify
+		if signer != nil {
+			r.Header.Set(middleware.ProxySignatureHeader, signer.Sign("safepaw-gateway"))
+		}
 
 		// Strip proxy/forwarded headers — if present, OpenClaw detects
 		// "proxy headers from untrusted address" and applies stricter

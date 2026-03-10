@@ -53,6 +53,12 @@ type Config struct {
 	RedisAddr     string
 	RedisPassword string
 
+	// Proxy signing (PL2 — trusted-proxy shared secret)
+	ProxySecret []byte // HMAC-SHA256 signing secret for gateway→OpenClaw (optional)
+
+	// Persistent audit ledger (PL4)
+	LedgerPath string // File path for hash-chained NDJSON ledger (optional)
+
 	// Cost monitoring — OpenClaw usage collector
 	OpenClawWSURL        string  // WebSocket endpoint for OpenClaw control plane
 	OpenClawGatewayToken string  // Auth token for OpenClaw WS API
@@ -122,6 +128,15 @@ func Load() (*Config, error) {
 	if authSecret != "" {
 		cfg.AuthSecret = []byte(authSecret)
 	}
+
+	// Load proxy signing secret (optional — enables HMAC signing of X-SafePaw-User)
+	proxySecret := os.Getenv("GATEWAY_PROXY_SECRET")
+	if proxySecret != "" {
+		cfg.ProxySecret = []byte(proxySecret)
+	}
+
+	// Load persistent ledger path (PL4)
+	cfg.LedgerPath = envStr("LEDGER_PATH", "")
 
 	// Validate TLS config if enabled
 	if cfg.TLSEnabled {

@@ -28,6 +28,7 @@
 package middleware
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -66,13 +67,15 @@ const (
 // Ledger is an append-only, bounded, in-memory receipt store.
 // It uses a ring buffer: when full, the oldest entries are overwritten.
 // Sequence numbers are globally monotonic and never reset.
+// Optionally backs to a persistent NDJSON file with hash-chain integrity (PL4).
 type Ledger struct {
-	mu      sync.RWMutex
-	entries []Receipt
-	head    int // next write position in ring buffer
-	count   int // current number of valid entries (≤ maxSize)
-	maxSize int // ring buffer capacity
-	seq     atomic.Uint64
+	mu          sync.RWMutex
+	entries     []Receipt
+	head        int // next write position in ring buffer
+	count       int // current number of valid entries (≤ maxSize)
+	maxSize     int // ring buffer capacity
+	seq         atomic.Uint64
+	fileBackend *LedgerFile // optional persistent backend (PL4)
 }
 
 // NewLedger creates a receipt ledger with the given capacity.
@@ -85,6 +88,29 @@ func NewLedger(maxSize int) *Ledger {
 		entries: make([]Receipt, maxSize),
 		maxSize: maxSize,
 	}
+}
+
+// NewLedgerWithFile creates a ledger backed by a persistent NDJSON file (PL4).
+// The in-memory ring buffer is still used for fast queries; the file provides
+// durable, tamper-evident storage that survives container restarts.
+func NewLedgerWithFile(maxSize int, filePath string) (*Ledger, error) {
+	l := NewLedger(maxSize)
+
+	backend, err := OpenLedgerFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	l.fileBackend = backend
+
+	return l, nil
+}
+
+// Close cleans up the ledger's resources (closes the file backend if present).
+func (l *Ledger) Close() error {
+	if l.fileBackend != nil {
+		return l.fileBackend.Close()
+	}
+	return nil
 }
 
 // Append adds an immutable receipt to the ledger.
@@ -105,6 +131,13 @@ func (l *Ledger) Append(r Receipt) uint64 {
 		l.count++
 	}
 	l.mu.Unlock()
+
+	// PL4: persist to hash-chained NDJSON file (best-effort — don't block in-memory)
+	if l.fileBackend != nil {
+		if _, err := l.fileBackend.WriteEntry(r); err != nil {
+			log.Printf("[LEDGER] Persistent write failed (seq=%d): %v", r.Seq, err)
+		}
+	}
 
 	return r.Seq
 }

@@ -65,6 +65,16 @@ func main() {
 	// --------------------------------------------------------
 	// Step 2: Create reverse proxy to OpenClaw
 	// --------------------------------------------------------
+
+	// PL2: Create proxy signer for gateway→OpenClaw HMAC (must be before Director closure)
+	var proxySigner *middleware.ProxySigner
+	if len(cfg.ProxySecret) > 0 {
+		proxySigner = middleware.NewProxySigner(cfg.ProxySecret)
+		log.Println("[CONFIG] Proxy signer enabled (GATEWAY_PROXY_SECRET set)")
+	} else {
+		log.Println("[WARN] GATEWAY_PROXY_SECRET not set — X-SafePaw-User header is unsigned")
+	}
+
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = cfg.ProxyTarget.Scheme
@@ -79,6 +89,12 @@ func main() {
 			// Strip hop-by-hop headers that shouldn't be forwarded
 			req.Header.Del("X-SafePaw-Risk")     // Don't let clients spoof risk headers
 			req.Header.Del("X-SafePaw-Triggers") // Don't let clients spoof trigger headers
+
+			// Inject trusted-proxy identity for HTTP requests (PL2)
+			req.Header.Set("X-SafePaw-User", "safepaw-gateway")
+			if proxySigner != nil {
+				req.Header.Set(middleware.ProxySignatureHeader, proxySigner.Sign("safepaw-gateway"))
+			}
 
 			// Strip original auth credentials — backend uses X-Auth-Subject/X-Auth-Scope
 			req.Header.Del("Authorization")
@@ -136,6 +152,18 @@ func main() {
 	// --------------------------------------------------------
 	receiptLedger := middleware.NewLedger(0) // default 10k capacity
 	log.Println("[CONFIG] Receipt ledger enabled (append-only, in-memory)")
+
+	// PL4: Attach persistent file backend if LEDGER_PATH is set
+	if cfg.LedgerPath != "" {
+		persistentLedger, err := middleware.NewLedgerWithFile(0, cfg.LedgerPath)
+		if err != nil {
+			log.Printf("[WARN] Persistent ledger failed: %v (falling back to in-memory)", err)
+		} else {
+			receiptLedger = persistentLedger
+			defer receiptLedger.Close()
+			log.Printf("[CONFIG] Persistent ledger enabled (path=%s, hash-chained NDJSON)", cfg.LedgerPath)
+		}
+	}
 
 	// --------------------------------------------------------
 	// Step 4: Build HTTP routes with middleware stack
@@ -201,7 +229,7 @@ func main() {
 	// Everything else -> reverse proxy to OpenClaw
 	// WebSocket upgrades get the dedicated WS tunnel handler;
 	// regular HTTP gets body scanning then reverse proxy.
-	wsHandler := wsProxy(cfg.ProxyTarget, receiptLedger)
+	wsHandler := wsProxy(cfg.ProxyTarget, receiptLedger, proxySigner)
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isWebSocketUpgrade(r) {
 			wsHandler.ServeHTTP(w, r)

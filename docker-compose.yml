@@ -148,6 +148,10 @@ services:
       # Auth (enabled by default in Docker deploy — disable with AUTH_ENABLED=false for dev only)
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
       AUTH_SECRET: ${AUTH_SECRET:-}
+      # Gateway→OpenClaw HMAC signing (PL2: trusted-proxy shared secret)
+      GATEWAY_PROXY_SECRET: ${GATEWAY_PROXY_SECRET:-}
+      # Persistent audit ledger (PL4: hash-chained NDJSON)
+      LEDGER_PATH: "/data/ledger/gateway-audit.ndjson"
       AUTH_DEFAULT_TTL_HOURS: ${AUTH_DEFAULT_TTL_HOURS:-24}
       AUTH_MAX_TTL_HOURS: ${AUTH_MAX_TTL_HOURS:-168}
       # TLS (optional)
@@ -170,6 +174,8 @@ services:
       - "127.0.0.1:8080:8080"  # Bind to localhost ONLY (not 0.0.0.0)
     networks:
       - safepaw-internal
+    volumes:
+      - gateway-ledger:/data/ledger  # PL4: persistent hash-chained audit ledger
     depends_on:
       openclaw:
         condition: service_started
@@ -306,3 +312,4 @@ volumes:
   postgres-data:
   openclaw-home:       # Persists OpenClaw config (~/.openclaw)
   openclaw-workspace:  # Persists agent workspace
+  gateway-ledger:      # PL4: persistent tamper-evident audit ledger

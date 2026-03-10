@@ -34,9 +34,10 @@ Every gateway request gets a unique `X-Request-ID` (UUID). Use it to correlate l
 ### If the gateway is compromised
 
 1. Rotate `AUTH_SECRET` and re-issue all tokens.
-2. Enable revocation (Phase 2) and revoke compromised tokens.
-3. Rotate Wizard admin password (`WIZARD_ADMIN_PASSWORD`).
-4. Review gateway and wizard logs for suspicious requests (search for `[AUTH]`, `[SCANNER]`, `[RATELIMIT]`).
+2. Rotate `GATEWAY_PROXY_SECRET` and restart both gateway and OpenClaw.
+3. Enable revocation (Phase 2) and revoke compromised tokens.
+4. Rotate Wizard admin password (`WIZARD_ADMIN_PASSWORD`).
+5. Review gateway and wizard logs for suspicious requests (search for `[AUTH]`, `[SCANNER]`, `[RATELIMIT]`).
 
 ### If OpenClaw is exposed without the gateway
 
@@ -81,6 +82,7 @@ The gateway sets `X-Request-ID` on every request (or preserves the one from the 
 
 - **OpenClaw is not exposed.** It has no `ports:` on the host; only the gateway and wizard have host ports (and only on `127.0.0.1`). If the gateway fails, OpenClaw does not become reachable from outside.
 - **Layers:** Security headers → Request ID → Origin check → Rate limit → Auth (if enabled) → Body scanner → Proxy. A failure in one layer does not bypass the others.
+- **Proxy signing (PL2):** When `GATEWAY_PROXY_SECRET` is set, the gateway HMAC-signs every `X-SafePaw-User` header with a timestamped signature (`X-SafePaw-Signature: t=<unix>,sig=<hmac>`). OpenClaw can verify requests actually came from the gateway, not from a compromised container on the Docker network. Generate with `openssl rand -base64 48`.
 - **Wizard:** Only listens on localhost; admin auth and rate limiting protect the setup UI.
 
 ---
@@ -193,6 +195,7 @@ Only the keys below are accepted by PUT `/api/v1/config`; all others are ignored
 |-----|--------|
 | `WIZARD_ADMIN_PASSWORD`, `WIZARD_TOTP_SECRET` | Wizard login; changing them invalidates existing sessions. |
 | `AUTH_ENABLED`, `AUTH_SECRET`, `AUTH_DEFAULT_TTL_HOURS`, `AUTH_MAX_TTL_HOURS` | Gateway HMAC auth and token TTL. |
+| `GATEWAY_PROXY_SECRET` | Gateway→OpenClaw HMAC signing (PL2). Generate with `openssl rand -base64 48`. |
 | `TLS_ENABLED`, `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_PORT` | Gateway TLS. |
 | `RATE_LIMIT`, `RATE_LIMIT_WINDOW_SEC` | Gateway per-IP rate limit. |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SIGNAL_CLI_PATH` | OpenClaw/integration config. |

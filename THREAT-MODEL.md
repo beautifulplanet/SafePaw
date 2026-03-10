@@ -1,7 +1,7 @@
 # SafePaw — Threat Model (STRIDE)
 
-> **Version**: 1.1  
-> **Last reviewed**: 2026-03-08  
+> **Version**: 1.2  
+> **Last reviewed**: 2026-03-10  
 > **Methodology**: [Microsoft STRIDE](https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats)  
 > **Scope**: SafePaw Gateway + Wizard + OpenClaw orchestration
 
@@ -63,6 +63,8 @@
 | T4 | Config file tampering | Wizard | Allowlisted config keys only, mutex-protected writes | ✅ Implemented |
 | T5 | Supply chain compromise (npm) | Docker | Image pinned by SHA256 digest | ✅ Implemented |
 | T6 | Docker socket abuse | Wizard | Read-only mount, container ops only | ✅ Implemented |
+| T7 | Indirect prompt injection via browsed web pages | Gateway/OpenClaw | Attacker embeds instructions in page content AI visits. Sanitizer scans fetched text; URL allowlisting + sandboxed browsing recommended. | ⚠️ Partial |
+| T8 | Visual prompt injection (QR code, steganographic image, encoded file) | OpenClaw | Attacker encodes instructions in images or files. No image-content scanning. Recommend: strip EXIF, limit image URLs, scan OCR text. | ❌ Not yet |
 
 ### R — Repudiation
 
@@ -83,6 +85,7 @@
 | I4 | Secrets exposed in config API | Wizard | Sensitive values masked in GET /config | ✅ Implemented |
 | I5 | Internal network topology exposed | Docker | OpenClaw/Redis/Postgres have no host-exposed ports | ✅ Implemented |
 | I6 | Error messages reveal internals | Both | Structured errors with codes, not stack traces | ✅ Implemented |
+| I7 | Data exfiltration via AI browsing tool | Gateway/OpenClaw | AI reads sensitive page and leaks content in response. URL allowlisting + output scanning mitigate. | ⚠️ Partial |
 
 ### D — Denial of Service
 
@@ -134,7 +137,7 @@ WebSocket streams are scanned in real-time via `ScanningReader`.
 
 ## 4. Residual Risks & Known Gaps
 
-> **Last updated**: 2026-03-08 (post security-gap review)
+> **Last updated**: 2026-03-10 (PL2 proxy signing, PL3 browsing threats)
 
 | # | Risk | Severity | Status | Notes |
 |---|------|----------|--------|-------|
@@ -147,6 +150,8 @@ WebSocket streams are scanned in real-time via `ScanningReader`.
 | G7 | Docker socket access grants container management | Medium | **Mitigated** | Replaced raw socket with tecnativa/docker-socket-proxy (read-only, allowlisted endpoints). |
 | G8 | No request/response logging of full bodies | Low | **Accepted** | Logging full bodies would store PII/secrets. Structured metadata logging (request ID, risk score, path) considered sufficient. |
 | G9 | Supply chain: govulncheck not enforced in CI | Low | **Mitigated** | govulncheck runs in CI (advisory mode, `continue-on-error`). Tracked in [#13](https://github.com/beautifulplanet/SafePaw/issues/13) to promote to hard-fail. |
+| G10 | **Autonomous browsing / indirect prompt injection** | High | **Open** | If OpenClaw's browsing tool visits attacker-controlled pages, embedded instructions execute as AI context. **Attack vectors**: (a) plaintext instructions in HTML/comments, (b) QR codes / encoded images with injected prompts (visual prompt injection), (c) SEO-optimized pages designed to be surfaced by search tools. **Partial mitigations**: gateway sanitizer scans text in proxied responses; output scanner catches leaked secrets. **Recommended**: URL allowlisting, sandboxed browsing with content scanning, strip EXIF/metadata from fetched images, OCR text scanning for visual injection, refuse to follow instructions found in fetched content. |
+| G11 | **Gateway→OpenClaw header spoofing** | Medium | **Mitigated (PL2)** | `GATEWAY_PROXY_SECRET` enables HMAC-SHA256 signing of `X-SafePaw-User`. Without the secret, any container on `safepaw-internal` can impersonate the gateway. |
 
 ---
 
