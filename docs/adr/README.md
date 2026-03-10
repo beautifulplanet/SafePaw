@@ -2,7 +2,7 @@
 
 This directory contains Architecture Decision Records (ADRs) for the SafePaw
 project. ADRs document significant technical decisions — the **why** behind the
-**what** — so future contributors (and interviewers) can understand the
+**what** — so future contributors (and reviewers) can understand the
 reasoning without reading every commit.
 
 ## Format
