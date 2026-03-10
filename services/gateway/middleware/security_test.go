@@ -370,3 +370,241 @@ func TestRateLimiter_WindowExpiry(t *testing.T) {
 		t.Error("request should be allowed after window expiry")
 	}
 }
+
+// ================================================================
+// Per-Endpoint Rate Limiter Tests (CO-001)
+// ================================================================
+
+func TestEndpointRateLimiter_NilWhenEmpty(t *testing.T) {
+	erl := NewEndpointRateLimiter(nil, time.Minute)
+	if erl != nil {
+		t.Error("expected nil for empty limits")
+	}
+}
+
+func TestEndpointRateLimiter_AllowsUnderLimit(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/api/v1/chat", Limit: 3},
+	}, time.Minute)
+	defer erl.Stop()
+
+	bucket := erl.match("/api/v1/chat/completions")
+	if bucket == nil {
+		t.Fatal("expected matching bucket for /api/v1/chat/completions")
+	}
+
+	for i := 0; i < 3; i++ {
+		ok, _ := bucket.allow("10.0.0.1")
+		if !ok {
+			t.Errorf("request %d should be allowed (limit=3)", i+1)
+		}
+	}
+}
+
+func TestEndpointRateLimiter_DeniesOverLimit(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/api/v1/chat", Limit: 2},
+	}, time.Minute)
+	defer erl.Stop()
+
+	bucket := erl.match("/api/v1/chat")
+	for i := 0; i < 2; i++ {
+		bucket.allow("10.0.0.1")
+	}
+
+	ok, retryAfter := bucket.allow("10.0.0.1")
+	if ok {
+		t.Error("third request should be denied (limit=2)")
+	}
+	if retryAfter < 1 {
+		t.Error("Retry-After should be at least 1 second")
+	}
+}
+
+func TestEndpointRateLimiter_DifferentEndpoints(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/api/v1/chat", Limit: 1},
+		{Prefix: "/api/v1/models", Limit: 1},
+	}, time.Minute)
+	defer erl.Stop()
+
+	chatBucket := erl.match("/api/v1/chat")
+	modelsBucket := erl.match("/api/v1/models")
+
+	ok1, _ := chatBucket.allow("10.0.0.1")
+	ok2, _ := modelsBucket.allow("10.0.0.1")
+
+	if !ok1 || !ok2 {
+		t.Error("first request to each endpoint should be allowed")
+	}
+
+	// Both should be denied on second request
+	denied1, _ := chatBucket.allow("10.0.0.1")
+	denied2, _ := modelsBucket.allow("10.0.0.1")
+
+	if denied1 || denied2 {
+		t.Error("second request to each endpoint should be denied (limit=1)")
+	}
+}
+
+func TestEndpointRateLimiter_LongestPrefixWins(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/api/", Limit: 100},
+		{Prefix: "/api/v1/chat", Limit: 5},
+	}, time.Minute)
+	defer erl.Stop()
+
+	// /api/v1/chat should match the more specific prefix
+	bucket := erl.match("/api/v1/chat/completions")
+	if bucket == nil || bucket.limit != 5 {
+		t.Errorf("expected /api/v1/chat bucket (limit=5), got %v", bucket)
+	}
+
+	// /api/v1/models should match the /api/ prefix
+	bucket2 := erl.match("/api/v1/models")
+	if bucket2 == nil || bucket2.limit != 100 {
+		t.Errorf("expected /api/ bucket (limit=100), got %v", bucket2)
+	}
+}
+
+func TestEndpointRateLimiter_NoMatchPassThrough(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/api/", Limit: 10},
+	}, time.Minute)
+	defer erl.Stop()
+
+	if erl.match("/admin/revoke") != nil {
+		t.Error("expected no match for /admin/revoke")
+	}
+}
+
+func TestEndpointRateLimiter_DifferentIPs(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/api/", Limit: 1},
+	}, time.Minute)
+	defer erl.Stop()
+
+	bucket := erl.match("/api/test")
+	ok1, _ := bucket.allow("10.0.0.1")
+	ok2, _ := bucket.allow("10.0.0.2")
+
+	if !ok1 || !ok2 {
+		t.Error("different IPs should each get their own limit")
+	}
+}
+
+func TestEndpointRateLimitMiddleware_429WithRetryAfter(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/api/", Limit: 1},
+	}, time.Minute)
+	defer erl.Stop()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := EndpointRateLimit(erl, inner)
+
+	// First request — allowed
+	req1 := httptest.NewRequest("GET", "/api/test", nil)
+	req1.RemoteAddr = "10.0.0.1:1234"
+	w1 := httptest.NewRecorder()
+	handler.ServeHTTP(w1, req1)
+	if w1.Code != 200 {
+		t.Errorf("first request: expected 200, got %d", w1.Code)
+	}
+
+	// Second request — denied
+	req2 := httptest.NewRequest("GET", "/api/test", nil)
+	req2.RemoteAddr = "10.0.0.1:1234"
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req2)
+	if w2.Code != 429 {
+		t.Errorf("second request: expected 429, got %d", w2.Code)
+	}
+	retryAfter := w2.Header().Get("Retry-After")
+	if retryAfter == "" {
+		t.Error("expected Retry-After header on 429 response")
+	}
+}
+
+func TestEndpointRateLimitMiddleware_ExemptsHealth(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/", Limit: 1}, // Would match everything
+	}, time.Minute)
+	defer erl.Stop()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := EndpointRateLimit(erl, inner)
+
+	// Health should always pass
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/health", nil)
+		req.RemoteAddr = "10.0.0.1:1234"
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Errorf("health request %d should be exempt, got %d", i+1, w.Code)
+		}
+	}
+}
+
+func TestEndpointRateLimitMiddleware_ExemptsStatic(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/", Limit: 1},
+	}, time.Minute)
+	defer erl.Stop()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := EndpointRateLimit(erl, inner)
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/assets/main.js", nil)
+		req.RemoteAddr = "10.0.0.1:1234"
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Errorf("static asset request %d should be exempt, got %d", i+1, w.Code)
+		}
+	}
+}
+
+func TestEndpointRateLimitMiddleware_NilPassThrough(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := EndpointRateLimit(nil, inner)
+
+	req := httptest.NewRequest("GET", "/anything", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Errorf("nil endpoint limiter should pass through, got %d", w.Code)
+	}
+}
+
+func TestEndpointRateLimitMiddleware_UnmatchedFallsThrough(t *testing.T) {
+	erl := NewEndpointRateLimiter([]EndpointLimit{
+		{Prefix: "/api/", Limit: 1},
+	}, time.Minute)
+	defer erl.Stop()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := EndpointRateLimit(erl, inner)
+
+	// /admin/ doesn't match /api/ prefix — should always pass
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/admin/revoke", nil)
+		req.RemoteAddr = "10.0.0.1:1234"
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Errorf("unmatched path request %d should pass through, got %d", i+1, w.Code)
+		}
+	}
+}

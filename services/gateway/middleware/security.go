@@ -20,6 +20,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -220,6 +221,171 @@ func (rl *RateLimiter) cleanup() {
 // Stop stops the background cleanup goroutine.
 func (rl *RateLimiter) Stop() {
 	rl.cleanupT.Stop()
+}
+
+// ================================================================
+// Layer 3b: Per-Endpoint Rate Limiter (CO-001)
+// ================================================================
+
+// EndpointLimit maps a URL prefix to a per-IP request limit.
+type EndpointLimit struct {
+	Prefix string
+	Limit  int
+}
+
+// endpointBucket tracks per-IP counts for one endpoint prefix.
+type endpointBucket struct {
+	mu      sync.Mutex
+	records map[string]*ipRecord
+	limit   int
+	window  time.Duration
+}
+
+func (b *endpointBucket) allow(ip string) (bool, int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	now := time.Now()
+	rec, exists := b.records[ip]
+
+	if !exists || now.Sub(rec.lastSeen) > b.window {
+		b.records[ip] = &ipRecord{count: 1, lastSeen: now}
+		return true, int(b.window.Seconds())
+	}
+
+	if rec.count >= b.limit {
+		remaining := b.window - now.Sub(rec.lastSeen)
+		return false, int(remaining.Seconds()) + 1
+	}
+
+	rec.count++
+	rec.lastSeen = now
+	return true, int(b.window.Seconds())
+}
+
+func (b *endpointBucket) cleanup(now time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for ip, rec := range b.records {
+		if now.Sub(rec.lastSeen) > b.window {
+			delete(b.records, ip)
+		}
+	}
+}
+
+// EndpointRateLimiter applies different rate limits to different URL prefixes.
+// Unconfigured paths pass through (handled by the global RateLimiter downstream).
+type EndpointRateLimiter struct {
+	buckets  []endpointEntry // sorted longest prefix first
+	window   time.Duration
+	cleanupT *time.Ticker
+}
+
+type endpointEntry struct {
+	prefix string
+	bucket *endpointBucket
+}
+
+// NewEndpointRateLimiter creates per-endpoint rate limiters from config.
+// Returns nil if no limits are configured (caller should skip middleware).
+func NewEndpointRateLimiter(limits []EndpointLimit, window time.Duration) *EndpointRateLimiter {
+	if len(limits) == 0 {
+		return nil
+	}
+
+	// Sort by prefix length descending (longest match first)
+	for i := 0; i < len(limits); i++ {
+		for j := i + 1; j < len(limits); j++ {
+			if len(limits[j].Prefix) > len(limits[i].Prefix) {
+				limits[i], limits[j] = limits[j], limits[i]
+			}
+		}
+	}
+
+	erl := &EndpointRateLimiter{
+		window:   window,
+		cleanupT: time.NewTicker(window),
+	}
+	for _, l := range limits {
+		erl.buckets = append(erl.buckets, endpointEntry{
+			prefix: l.Prefix,
+			bucket: &endpointBucket{
+				records: make(map[string]*ipRecord),
+				limit:   l.Limit,
+				window:  window,
+			},
+		})
+	}
+
+	go func() {
+		for range erl.cleanupT.C {
+			now := time.Now()
+			for _, e := range erl.buckets {
+				e.bucket.cleanup(now)
+			}
+		}
+	}()
+
+	log.Printf("[RATELIMIT] Per-endpoint limits configured: %d prefixes", len(limits))
+	for _, l := range limits {
+		log.Printf("[RATELIMIT]   %s → %d req/%s", l.Prefix, l.Limit, window)
+	}
+
+	return erl
+}
+
+// Stop stops the cleanup goroutine.
+func (erl *EndpointRateLimiter) Stop() {
+	erl.cleanupT.Stop()
+}
+
+// match returns the bucket for the longest matching prefix, or nil.
+func (erl *EndpointRateLimiter) match(path string) *endpointBucket {
+	for _, e := range erl.buckets {
+		if strings.HasPrefix(path, e.prefix) {
+			return e.bucket
+		}
+	}
+	return nil
+}
+
+// EndpointRateLimit middleware checks per-endpoint limits before the global limiter.
+// If a path matches a configured prefix, the endpoint-specific limit is enforced.
+// If no prefix matches, the request passes through to the global limiter.
+func EndpointRateLimit(erl *EndpointRateLimiter, next http.Handler) http.Handler {
+	if erl == nil {
+		return next // no per-endpoint limits configured
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Same exemptions as global limiter
+		if r.URL.Path == "/health" || r.URL.Path == "/metrics" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if isStaticAsset(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		bucket := erl.match(r.URL.Path)
+		if bucket == nil {
+			// No endpoint-specific limit — fall through to global
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		ip := extractIP(r)
+		allowed, retryAfter := bucket.allow(ip)
+		if !allowed {
+			log.Printf("[RATELIMIT] Endpoint DENIED ip=%s path=%s (%d/%d) request_id=%s",
+				SanitizeLogValue(ip), SanitizeLogValue(r.URL.Path),
+				bucket.limit, bucket.limit, SanitizeLogValue(r.Header.Get("X-Request-ID")))
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // RateLimit wraps a handler with per-IP rate limiting.
