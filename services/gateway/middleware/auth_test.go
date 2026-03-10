@@ -736,3 +736,120 @@ func TestValidateToken_MalformedJSON(t *testing.T) {
 		t.Error("expected error for malformed JSON payload")
 	}
 }
+
+// ── isStaticAsset tests ─────────────────────────────────────────
+
+func TestIsStaticAsset(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/assets/main.js", true},
+		{"/assets/styles.css", true},
+		{"/assets/", true},
+		{"/favicon.ico", true},
+		{"/robots.txt", true},
+		{"/manifest.webmanifest", true},
+		{"/api/v1/chat", false},
+		{"/admin/revoke", false},
+		{"/health", false},
+		{"/", false},
+		{"/../assets/secret.js", false},
+		{"/assetsx/foo", false},
+		{"/ASSETS/main.js", false}, // case-sensitive
+	}
+	for _, tc := range tests {
+		got := isStaticAsset(tc.path)
+		if got != tc.want {
+			t.Errorf("isStaticAsset(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// ── Revocation with Redis tests ─────────────────────────────────
+
+func TestRevocationList_PersistToRedis(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	rl := NewRevocationListWithRedis(time.Hour, rc)
+	defer rl.Stop()
+
+	rl.Revoke("admin-user", "compromised")
+
+	// Verify persisted in Redis
+	val, err := rc.Get("safepaw:revoke:admin-user")
+	if err != nil {
+		t.Fatalf("Redis GET failed: %v", err)
+	}
+	if val == "" {
+		t.Error("expected revocation to be persisted in Redis")
+	}
+}
+
+func TestRevocationList_LoadFromRedis(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	// rl1: revoke a subject
+	rl1 := NewRevocationListWithRedis(time.Hour, rc)
+	rl1.Revoke("leaked-user", "key_leaked")
+	revokedAt := time.Now()
+	rl1.Stop()
+
+	// rl2: new list (simulates restart), same Redis
+	rl2 := NewRevocationListWithRedis(time.Hour, rc)
+	defer rl2.Stop()
+
+	// Token issued before revocation should be revoked (loaded from Redis)
+	revoked, reason := rl2.IsRevoked("leaked-user", revokedAt.Add(-time.Minute).Unix())
+	if !revoked {
+		t.Fatal("expected revocation to be loaded from Redis")
+	}
+	if reason != "key_leaked" {
+		t.Errorf("expected reason=key_leaked, got %q", reason)
+	}
+}
+
+func TestRevocationList_CheckRedis_NotRevoked(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	rl := NewRevocationListWithRedis(time.Hour, rc)
+	defer rl.Stop()
+
+	// No revocation exists — should return false
+	revoked, _ := rl.IsRevoked("nonexistent-user", time.Now().Unix())
+	if revoked {
+		t.Error("expected not revoked for unknown subject")
+	}
+}
+
+func TestRevocationList_CheckRedis_TokenAfterRevocation(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	rl := NewRevocationListWithRedis(time.Hour, rc)
+	defer rl.Stop()
+
+	rl.Revoke("timed-user", "test")
+
+	// Token issued AFTER revocation should NOT be revoked
+	futureIssued := time.Now().Add(time.Minute).Unix()
+	revoked, _ := rl.IsRevoked("timed-user", futureIssued)
+	if revoked {
+		t.Error("token issued after revocation should not be revoked")
+	}
+}

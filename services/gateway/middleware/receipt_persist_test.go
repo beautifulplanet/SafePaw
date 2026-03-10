@@ -259,3 +259,18 @@ func TestGenesisHash(t *testing.T) {
 		}
 	}
 }
+
+func TestLedgerFile_Path(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "path-test.ndjson")
+
+	lf, err := OpenLedgerFile(path)
+	if err != nil {
+		t.Fatalf("OpenLedgerFile: %v", err)
+	}
+	defer lf.Close()
+
+	if got := lf.Path(); got != path {
+		t.Errorf("Path() = %q, want %q", got, path)
+	}
+}

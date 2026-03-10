@@ -272,3 +272,151 @@ func TestBruteForceGuard_IsBanned_ExpiredBan(t *testing.T) {
 		t.Error("should not be banned after expiry")
 	}
 }
+
+// ── Redis persistence tests ─────────────────────────────────────
+
+func TestBruteForce_PersistBan_WithRedis(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	g := NewBruteForceGuardWithRedis(2, 5*time.Minute, rc)
+	defer g.Stop()
+
+	// Record failures until banned
+	g.RecordFailure("192.168.1.1", "auth_failure")
+	g.RecordFailure("192.168.1.1", "auth_failure")
+
+	banned, reason, _ := g.IsBanned("192.168.1.1")
+	if !banned {
+		t.Fatal("expected IP to be banned after threshold")
+	}
+	if reason != "auth_failure" {
+		t.Errorf("expected reason=auth_failure, got %q", reason)
+	}
+
+	// Verify it was persisted to Redis
+	val, err := rc.Get("safepaw:ban:192.168.1.1")
+	if err != nil {
+		t.Fatalf("Redis GET failed: %v", err)
+	}
+	if val == "" {
+		t.Error("expected ban to be persisted in Redis")
+	}
+}
+
+func TestBruteForce_LoadBan_FromRedis(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	// Guard 1: ban an IP
+	g1 := NewBruteForceGuardWithRedis(1, 10*time.Minute, rc)
+	g1.RecordFailure("10.0.0.5", "scanner_hit")
+	g1.Stop()
+
+	// Guard 2: new guard (simulates restart), same Redis
+	g2 := NewBruteForceGuardWithRedis(1, 10*time.Minute, rc)
+	defer g2.Stop()
+
+	// Should load ban from Redis on cache miss
+	banned, reason, remaining := g2.IsBanned("10.0.0.5")
+	if !banned {
+		t.Fatal("expected ban to be loaded from Redis after restart")
+	}
+	if reason != "scanner_hit" {
+		t.Errorf("expected reason=scanner_hit, got %q", reason)
+	}
+	if remaining <= 0 {
+		t.Error("expected positive remaining duration")
+	}
+}
+
+func TestBruteForce_DeleteBan_FromRedis(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	g := NewBruteForceGuardWithRedis(1, 5*time.Minute, rc)
+	defer g.Stop()
+
+	// Ban then reset
+	g.RecordFailure("10.0.0.6", "test")
+	g.Reset("10.0.0.6")
+
+	// Verify deleted from Redis
+	val, err := rc.Get("safepaw:ban:10.0.0.6")
+	if err != nil {
+		t.Fatalf("Redis GET failed: %v", err)
+	}
+	if val != "" {
+		t.Errorf("expected ban to be deleted from Redis, got %q", val)
+	}
+}
+
+func TestBruteForce_PersistBan_NilRedis(t *testing.T) {
+	// Should not panic with nil Redis
+	g := NewBruteForceGuardWithRedis(1, 5*time.Minute, nil)
+	defer g.Stop()
+
+	g.RecordFailure("10.0.0.7", "test")
+	banned, _, _ := g.IsBanned("10.0.0.7")
+	if !banned {
+		t.Error("expected ban even without Redis")
+	}
+}
+
+func TestBruteForce_Decrement_WithRedis(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	g := NewBruteForceGuardWithRedis(3, 5*time.Minute, rc)
+	defer g.Stop()
+
+	// Record 2 failures (below threshold)
+	g.RecordFailure("10.0.0.8", "test")
+	g.RecordFailure("10.0.0.8", "test")
+
+	// Decrement on successful auth
+	g.Decrement("10.0.0.8")
+
+	// One more failure should NOT trigger ban (2-1+1=2 < 3)
+	banned := g.RecordFailure("10.0.0.8", "test")
+	if banned {
+		t.Error("expected not banned after decrement + one more failure")
+	}
+}
+
+func TestBruteForce_EscalatedBan_WithRedis(t *testing.T) {
+	srv := newMockRedisServer(t, "")
+	defer srv.Close()
+
+	rc := NewRedisClient(srv.Addr(), "")
+	defer rc.Close()
+
+	g := NewBruteForceGuardWithRedis(1, 5*time.Minute, rc)
+	defer g.Stop()
+
+	// First ban
+	g.RecordFailure("10.0.0.9", "test")
+	banned, _, dur1 := g.IsBanned("10.0.0.9")
+	if !banned {
+		t.Fatal("expected first ban")
+	}
+
+	// Second ban (should escalate)
+	g.RecordFailure("10.0.0.9", "test")
+	_, _, dur2 := g.IsBanned("10.0.0.9")
+	if dur2 <= dur1 {
+		t.Errorf("expected escalated duration: %v should be > %v", dur2, dur1)
+	}
+}
