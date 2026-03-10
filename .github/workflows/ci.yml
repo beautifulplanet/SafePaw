@@ -83,12 +83,12 @@ jobs:
       - name: Test
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
-      - name: Coverage threshold (>=55%)
+      - name: Coverage threshold (>=60%)
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
           echo "Wizard coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 55" | bc -l) )); then
-            echo "::error::Coverage ${COVERAGE}% is below 55% threshold"
+          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below 60% threshold"
             exit 1
           fi
 

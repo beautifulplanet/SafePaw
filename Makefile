@@ -86,6 +86,10 @@ up-monitoring: ## Start with Prometheus + Grafana
 
 # ── E2E ────────────────────────────────────────────────
 
+test-e2e: ## Run Playwright E2E tests (wizard UI)
+	@echo "=== E2E: Wizard login flow ==="
+	cd $(WIZARD_DIR)/ui && npm run test:e2e
+
 verify: ## Run E2E verification against live deployment
 	./scripts/verify-deployment.sh
 

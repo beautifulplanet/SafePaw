@@ -443,3 +443,375 @@ func findSubstring(s, sub string) bool {
 	}
 	return false
 }
+
+// =============================================================
+// CSRF Protection Tests
+// =============================================================
+
+func TestCSRFProtect_SafeMethodsPassThrough(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	for _, method := range []string{"GET", "HEAD", "OPTIONS"} {
+		req := httptest.NewRequest(method, "/api/v1/config", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s should pass through, got %d", method, rec.Code)
+		}
+	}
+}
+
+func TestCSRFProtect_PublicPathSkipsCSRF(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Public POST path should skip CSRF, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtect_NonAPIPathSkipsCSRF(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	req := httptest.NewRequest("POST", "/some-form", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Non-API POST should skip CSRF, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtect_BearerTokenBypassesCSRF(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	req := httptest.NewRequest("POST", "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Bearer auth should bypass CSRF, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtect_MissingCookie(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	req := httptest.NewRequest("POST", "/api/v1/config", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("Missing CSRF cookie should be 403, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtect_EmptyCookie(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	req := httptest.NewRequest("POST", "/api/v1/config", nil)
+	req.AddCookie(&http.Cookie{Name: "csrf", Value: ""})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("Empty CSRF cookie should be 403, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtect_MissingHeader(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	req := httptest.NewRequest("POST", "/api/v1/config", nil)
+	req.AddCookie(&http.Cookie{Name: "csrf", Value: "valid-token"})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("Missing X-CSRF-Token header should be 403, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtect_MismatchedTokens(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	req := httptest.NewRequest("POST", "/api/v1/config", nil)
+	req.AddCookie(&http.Cookie{Name: "csrf", Value: "cookie-token"})
+	req.Header.Set("X-CSRF-Token", "different-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("Mismatched CSRF tokens should be 403, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtect_ValidDoubleSubmit(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	req := httptest.NewRequest("POST", "/api/v1/config", nil)
+	req.AddCookie(&http.Cookie{Name: "csrf", Value: "secret-csrf-token"})
+	req.Header.Set("X-CSRF-Token", "secret-csrf-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Matching CSRF tokens should pass, got %d", rec.Code)
+	}
+}
+
+func TestCSRFProtect_PUTAndDELETEAlsoChecked(t *testing.T) {
+	handler := CSRFProtect(false, ok)
+
+	for _, method := range []string{"PUT", "DELETE"} {
+		// Without CSRF — should block
+		req := httptest.NewRequest(method, "/api/v1/config", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s without CSRF should be 403, got %d", method, rec.Code)
+		}
+
+		// With valid CSRF — should pass
+		req = httptest.NewRequest(method, "/api/v1/config", nil)
+		req.AddCookie(&http.Cookie{Name: "csrf", Value: "tok"})
+		req.Header.Set("X-CSRF-Token", "tok")
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s with valid CSRF should be 200, got %d", method, rec.Code)
+		}
+	}
+}
+
+// =============================================================
+// GenerateCSRFToken Tests
+// =============================================================
+
+func TestGenerateCSRFToken_UniqueAndCorrectLength(t *testing.T) {
+	tok1, err := GenerateCSRFToken()
+	if err != nil {
+		t.Fatalf("GenerateCSRFToken() error: %v", err)
+	}
+	tok2, err := GenerateCSRFToken()
+	if err != nil {
+		t.Fatalf("GenerateCSRFToken() error: %v", err)
+	}
+
+	if len(tok1) != 32 { // 16 bytes = 32 hex chars
+		t.Errorf("token length = %d, want 32", len(tok1))
+	}
+	if tok1 == tok2 {
+		t.Error("two generated tokens should not be identical")
+	}
+}
+
+// =============================================================
+// RequireRole Tests
+// =============================================================
+
+func TestRequireRole_AllowedRole(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := RequireRole([]string{"admin", "operator"}, inner)
+
+	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req = SetRole(req, "admin")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("admin should be allowed, got %d", rec.Code)
+	}
+}
+
+func TestRequireRole_DisallowedRole(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := RequireRole([]string{"admin"}, inner)
+
+	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req = SetRole(req, "viewer")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("viewer should be forbidden for admin-only, got %d", rec.Code)
+	}
+}
+
+func TestRequireRole_NoRole(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := RequireRole([]string{"admin"}, inner)
+
+	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	// No role set in context
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("missing role should be forbidden, got %d", rec.Code)
+	}
+}
+
+func TestGetRole_EmptyContext(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	if role := GetRole(req); role != "" {
+		t.Errorf("GetRole on bare request = %q, want empty", role)
+	}
+}
+
+func TestSetRole_RoundTrip(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req = SetRole(req, "operator")
+	if got := GetRole(req); got != "operator" {
+		t.Errorf("GetRole after SetRole = %q, want %q", got, "operator")
+	}
+}
+
+// =============================================================
+// LoginGuard Tests
+// =============================================================
+
+func TestLoginGuard_AllowsUnderThreshold(t *testing.T) {
+	lg := NewLoginGuard(5, time.Minute, 10*time.Minute)
+	defer lg.Stop()
+
+	for i := 0; i < 4; i++ {
+		locked := lg.RecordFailure("10.0.0.1")
+		if locked {
+			t.Fatalf("Should not lock after %d failures (threshold=5)", i+1)
+		}
+	}
+}
+
+func TestLoginGuard_LocksAtThreshold(t *testing.T) {
+	lg := NewLoginGuard(3, time.Minute, 10*time.Minute)
+	defer lg.Stop()
+
+	for i := 0; i < 2; i++ {
+		lg.RecordFailure("10.0.0.1")
+	}
+	locked := lg.RecordFailure("10.0.0.1")
+	if !locked {
+		t.Error("Should be locked after 3 failures")
+	}
+}
+
+func TestLoginGuard_IsLockedOut(t *testing.T) {
+	lg := NewLoginGuard(2, time.Minute, 5*time.Minute)
+	defer lg.Stop()
+
+	lg.RecordFailure("10.0.0.1")
+	lg.RecordFailure("10.0.0.1") // Now locked
+
+	isLocked, remaining := lg.IsLockedOut("10.0.0.1")
+	if !isLocked {
+		t.Error("Should be locked out")
+	}
+	if remaining <= 0 || remaining > 5*time.Minute {
+		t.Errorf("remaining = %v, want > 0 and <= 5m", remaining)
+	}
+}
+
+func TestLoginGuard_NotLockedIfNoFailures(t *testing.T) {
+	lg := NewLoginGuard(3, time.Minute, 10*time.Minute)
+	defer lg.Stop()
+
+	isLocked, _ := lg.IsLockedOut("10.0.0.1")
+	if isLocked {
+		t.Error("Should not be locked with no failures")
+	}
+}
+
+func TestLoginGuard_ResetIPClearsLockout(t *testing.T) {
+	lg := NewLoginGuard(2, time.Minute, 10*time.Minute)
+	defer lg.Stop()
+
+	lg.RecordFailure("10.0.0.1")
+	lg.RecordFailure("10.0.0.1")
+	isLocked, _ := lg.IsLockedOut("10.0.0.1")
+	if !isLocked {
+		t.Fatal("should be locked first")
+	}
+
+	lg.ResetIP("10.0.0.1")
+	isLocked, _ = lg.IsLockedOut("10.0.0.1")
+	if isLocked {
+		t.Error("Should be cleared after ResetIP")
+	}
+}
+
+func TestLoginGuard_DifferentIPsIndependent(t *testing.T) {
+	lg := NewLoginGuard(2, time.Minute, 10*time.Minute)
+	defer lg.Stop()
+
+	lg.RecordFailure("10.0.0.1")
+	lg.RecordFailure("10.0.0.1") // Locked
+
+	locked := lg.RecordFailure("10.0.0.2") // Different IP, first failure
+	if locked {
+		t.Error("Different IP should not be affected by first IP's lockout")
+	}
+}
+
+func TestLoginGuard_LockoutDuration(t *testing.T) {
+	lg := NewLoginGuard(3, time.Minute, 7*time.Minute)
+	defer lg.Stop()
+
+	if lg.LockoutDuration() != 7*time.Minute {
+		t.Errorf("LockoutDuration() = %v, want 7m", lg.LockoutDuration())
+	}
+}
+
+func TestLoginGuard_Cleanup(t *testing.T) {
+	lg := NewLoginGuard(2, 50*time.Millisecond, 50*time.Millisecond)
+	defer lg.Stop()
+
+	lg.RecordFailure("10.0.0.1")
+	lg.RecordFailure("10.0.0.1") // Locked
+
+	// Wait for lockout to expire + cleanup cycle
+	time.Sleep(200 * time.Millisecond)
+
+	isLocked, _ := lg.IsLockedOut("10.0.0.1")
+	if isLocked {
+		t.Error("Lockout should have expired and been cleaned up")
+	}
+}
+
+// =============================================================
+// extractIP Tests
+// =============================================================
+
+func TestExtractIP_WithPort(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "192.168.1.1:54321"
+	if got := extractIP(req); got != "192.168.1.1" {
+		t.Errorf("extractIP = %q, want %q", got, "192.168.1.1")
+	}
+}
+
+func TestExtractIP_WithoutPort(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "192.168.1.1"
+	if got := extractIP(req); got != "192.168.1.1" {
+		t.Errorf("extractIP = %q, want %q", got, "192.168.1.1")
+	}
+}
+
+func TestExtractIP_IPv6(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "[::1]:8080"
+	if got := extractIP(req); got != "::1" {
+		t.Errorf("extractIP = %q, want %q", got, "::1")
+	}
+}
