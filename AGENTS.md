@@ -59,8 +59,8 @@ Speed without accuracy is waste. One correct pass beats four fast rewrites.
 - **Every significant decision gets an ADR.** Architecture Decision Records live in
   `docs/ADR/`. Format: Context, Decision, Consequences. No exceptions.
 
-- **READMEs are accurate or they're lies.** If the README says "258+ tests" and the
-  actual count is 383, the README is wrong. Verify numbers before writing them.
+- **READMEs are accurate or they're lies.** If the README says "322 tests" and the
+  actual count is 530, the README is wrong. Verify numbers before writing them.
 
 - **Corrections are the most valuable documentation.** When something was wrong and
   got fixed, document WHAT was wrong, WHY it was wrong, and WHAT the fix was.
@@ -90,8 +90,8 @@ If any box is unchecked, the work is not done.
 
 | What Was Written | What Was True | Lesson |
 |-----------------|---------------|--------|
-| "258+ tests" SafePaw | 383 test functions verified via grep | Verify counts against actual code, not docs. |
-| "27 threats" STRIDE model | 34 threats verified via file | Same — verify against the actual file. |
+| "322 tests" SafePaw README | 530 test functions verified via grep (353 gw + 177 wiz) | Verify counts against actual code, not docs. |
+| "27 threats" STRIDE model | 48 threats verified via grep | Same — verify against the actual file. |
 | Sprinted through 4 resume drafts | Should have verified once, correctly | Walk. Don't sprint. One correct pass > four fast rewrites. |
 | Assumed code was correct after generating | Tests revealed bugs on first run | Always run tests before claiming "done." |
 | Embellished feature descriptions | Feature wasn't shipped yet | Don't claim features that aren't done. |
@@ -117,10 +117,10 @@ If any box is unchecked, the work is not done.
 - **Change Orders:** `docs/scope/CO-NNN.md` — no out-of-scope work without one
 - **Architecture:** Security gateway (:8080) + Admin wizard (:3000) + Monitoring
 - **Key principle:** Dmitry doesn't "know Go" — he learns by building. The AI does
-  implementation. Dmitry does architecture, review, and planning.
+  implementation. Dmitry does architecture, review, and planning. 
 - **Modules:** `services/gateway`, `services/wizard`, `services/mockbackend`, `shared/secrets`
 - **CI:** GitHub Actions — build, test, lint, gosec, govulncheck, Trivy, fuzz
-
+Additionally you should question Dmitry as often as you'd like you can disagree with my plans anytime if they make no sense. We want to follow best practices. 
 ---
 
 ## The Philosophy

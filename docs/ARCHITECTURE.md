@@ -384,7 +384,7 @@ graph TB
 
 ### STRIDE Threat Coverage
 
-27 threats identified and mitigated across all STRIDE categories. Full analysis: [THREAT-MODEL.md](../THREAT-MODEL.md).
+48 threats identified and mitigated across all STRIDE categories. Full analysis: [THREAT-MODEL.md](../THREAT-MODEL.md).
 
 | Category | Threats | Status |
 |----------|---------|--------|
@@ -415,9 +415,9 @@ All major architecture decisions are documented as ADRs in [docs/adr/](adr/):
 
 ```mermaid
 graph LR
-    subgraph unit["Unit Tests (258+)"]
-        GT["Gateway: 195+<br/>middleware, config"]
-        WT["Wizard: 63+<br/>session, TOTP, API"]
+    subgraph unit["Unit Tests (530)"]
+        GT["Gateway: 353<br/>middleware, config"]
+        WT["Wizard: 177<br/>session, TOTP, API"]
     end
 
     subgraph fuzz["Fuzz Testing (7 targets)"]
@@ -457,7 +457,7 @@ graph LR
 | [README.md](../README.md) | Project overview, quickstart, feature summary |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | This document — complete technical architecture |
 | [SECURITY.md](../SECURITY.md) | Security posture, incident response, hardening |
-| [THREAT-MODEL.md](../THREAT-MODEL.md) | STRIDE analysis, 27 threats, mitigations |
+| [THREAT-MODEL.md](../THREAT-MODEL.md) | STRIDE analysis, 48 threats, mitigations |
 | [RUNBOOK.md](../RUNBOOK.md) | 6 operational playbooks, secret rotation |
 | [BACKUP-RECOVERY.md](../BACKUP-RECOVERY.md) | Backup/restore procedures |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Development setup, coding standards |
