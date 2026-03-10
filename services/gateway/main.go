@@ -127,7 +127,7 @@ func main() {
 	defer rateLimiter.Stop()
 
 	// Per-endpoint rate limits (CO-001)
-	var epLimits []middleware.EndpointLimit
+	epLimits := make([]middleware.EndpointLimit, 0, len(cfg.EndpointRateLimits))
 	for _, el := range cfg.EndpointRateLimits {
 		epLimits = append(epLimits, middleware.EndpointLimit{Prefix: el.Prefix, Limit: el.Limit})
 	}
