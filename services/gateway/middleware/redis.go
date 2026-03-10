@@ -71,7 +71,12 @@ func (rc *RedisClient) connect() error {
 }
 
 func (rc *RedisClient) auth() error {
-	return rc.sendCommand("AUTH", rc.password)
+	if err := rc.sendCommand("AUTH", rc.password); err != nil {
+		return err
+	}
+	// Must read the AUTH response to clear it from the buffer
+	_, err := rc.readResponse()
+	return err
 }
 
 func (rc *RedisClient) sendCommand(args ...string) error {
