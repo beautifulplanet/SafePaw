@@ -97,6 +97,7 @@ If any box is unchecked, the work is not done.
 | Embellished feature descriptions | Feature wasn't shipped yet | Don't claim features that aren't done. |
 | Rounded numbers to sound better | Real numbers existed in the code | If you can count it, count it. Don't round. |
 | Made unverifiable claims | Couldn't point to evidence | If you can't prove it, don't write it. |
+| redis.go auth() looked correct on read | AUTH response left in socket buffer caused desync | Writing tests found the bug that reading code missed. Always test. |
 
 ### Template for Future Corrections
 
