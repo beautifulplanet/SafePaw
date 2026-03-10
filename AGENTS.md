@@ -9,13 +9,13 @@
 ## Who You're Working With
 
 Dmitry Martynov. 27 years as a solutions architect in physical fabrication, now building
-AI systems. I architect, I QA, I document. I don't hand-code well — I communicate
-precisely and verify output until it's right. That's the skill, not the typing.
+AI systems. I architect, I QA, I document. I communicate precisely and verify output
+until it's right — that's the skill.
 
 I use AI as a tool the way I used AutoCAD: I don't need to know the internals of the
 rendering engine. I need the output to be correct, documented, and buildable.
 
-**If I say "that's bullshit" — I mean fix it, not explain why it's not.**
+**If I say "that's wrong" — I mean fix it, not explain why it's not.**
 
 ---
 
@@ -92,11 +92,11 @@ If any box is unchecked, the work is not done.
 |-----------------|---------------|--------|
 | "322 tests" SafePaw README | 530 test functions verified via grep (353 gw + 177 wiz) | Verify counts against actual code, not docs. |
 | "27 threats" STRIDE model | 48 threats verified via grep | Same — verify against the actual file. |
-| Sprinted through 4 resume drafts | Should have verified once, correctly | Walk. Don't sprint. One correct pass > four fast rewrites. |
+| Wrote 4 drafts before verifying once | Should have verified once, correctly | Walk. Don't sprint. One correct pass > four fast rewrites. |
 | Assumed code was correct after generating | Tests revealed bugs on first run | Always run tests before claiming "done." |
-| Embellished feature descriptions | Feature wasn't shipped yet | Don't claim features that aren't done. |
-| Rounded numbers to sound better | Real numbers existed in the code | If you can count it, count it. Don't round. |
-| Made unverifiable claims | Couldn't point to evidence | If you can't prove it, don't write it. |
+| Claimed features before they shipped | Feature wasn't implemented yet | Don't claim features that aren't done. |
+| Rounded numbers instead of counting | Real numbers existed in the code | If you can count it, count it. Don't round. |
+| Wrote claims without evidence | Couldn't point to a file, test, or commit | If you can't prove it, don't write it. |
 | redis.go auth() looked correct on read | AUTH response left in socket buffer caused desync | Writing tests found the bug that reading code missed. Always test. |
 
 ### Template for Future Corrections
@@ -116,8 +116,8 @@ If any box is unchecked, the work is not done.
 - **SOW:** `docs/scope/SOW-001.md` — contract-grade scope document
 - **Change Orders:** `docs/scope/CO-NNN.md` — no out-of-scope work without one
 - **Architecture:** Security gateway (:8080) + Admin wizard (:3000) + Monitoring
-- **Key principle:** Dmitry doesn't "know Go" — he learns by building. The AI does
-  implementation. Dmitry does architecture, review, and planning. 
+- **Key principle:** Dmitry does architecture, review, and planning. The AI does
+  implementation. Both learn by building. 
 - **Modules:** `services/gateway`, `services/wizard`, `services/mockbackend`, `shared/secrets`
 - **CI:** GitHub Actions — build, test, lint, gosec, govulncheck, Trivy, fuzz
 Additionally you should question Dmitry as often as you'd like you can disagree with my plans anytime if they make no sense. We want to follow best practices. 
