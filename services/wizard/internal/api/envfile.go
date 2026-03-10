@@ -86,7 +86,8 @@ var allowedConfigKeys = map[string]bool{
 	"WIZARD_OPERATOR_PASSWORD": true, // Optional; when set, enables operator role login
 	"WIZARD_VIEWER_PASSWORD":   true, // Optional; when set, enables viewer role login
 	"WIZARD_TOTP_SECRET":       true, // Optional; when set, login requires TOTP code (MFA)
-	"AUTH_ENABLED":             true, "AUTH_SECRET": true, "AUTH_DEFAULT_TTL_HOURS": true, "AUTH_MAX_TTL_HOURS": true,
+	"OWNER_NAME":               true, "USE_CASE": true,
+	"AUTH_ENABLED": true, "AUTH_SECRET": true, "AUTH_DEFAULT_TTL_HOURS": true, "AUTH_MAX_TTL_HOURS": true,
 	"TLS_ENABLED": true, "TLS_CERT_FILE": true, "TLS_KEY_FILE": true, "TLS_PORT": true,
 	"RATE_LIMIT": true, "RATE_LIMIT_WINDOW_SEC": true,
 	"ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true,

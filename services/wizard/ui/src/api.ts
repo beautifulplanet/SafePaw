@@ -166,6 +166,19 @@ export interface UsageResponse {
   totals?: UsageTotals
 }
 
+// ─── Setup Verification ──────────────────────────────────────
+
+export interface VerifyCheck {
+  name: string
+  pass: boolean
+  message: string
+}
+
+export interface VerifyResponse {
+  checks: VerifyCheck[]
+  overall: boolean
+}
+
 // ─── Cost Analytics (Postgres-backed) ────────────────────────
 
 export interface CostDailyRow {
@@ -287,4 +300,8 @@ export const api = {
   /** Get trend analysis (recent vs prior period) from Postgres. */
   costTrends: (days = 7) =>
     request<CostTrendsResponse>(`/cost/trends?days=${days}`),
+
+  /** Run setup verification (API key + gateway + backend round-trip). */
+  setupVerify: () =>
+    request<VerifyResponse>('/setup/verify', { method: 'POST' }),
 }

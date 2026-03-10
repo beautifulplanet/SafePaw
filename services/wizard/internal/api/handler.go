@@ -181,6 +181,7 @@ func (h *Handler) Router() http.Handler {
 	mux.HandleFunc("GET /api/v1/cost/history", middleware.RequireRole(anyRole, h.handleCostHistory))
 	mux.HandleFunc("GET /api/v1/cost/models", middleware.RequireRole(anyRole, h.handleCostModels))
 	mux.HandleFunc("GET /api/v1/cost/trends", middleware.RequireRole(anyRole, h.handleCostTrends))
+	mux.HandleFunc("POST /api/v1/setup/verify", middleware.RequireRole(adminOnly, h.handleSetupVerify))
 
 	// ── SPA Fallback ──
 	// Serve React app for all non-API routes
