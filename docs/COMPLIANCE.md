@@ -41,7 +41,7 @@
 
 | Criterion | SafePaw Control | Evidence | Status |
 |-----------|----------------|----------|--------|
-| CC3.1 Risk identification | STRIDE threat model (27 threats identified) | [THREAT-MODEL.md](../THREAT-MODEL.md) | ✅ Implemented |
+| CC3.1 Risk identification | STRIDE threat model (48 threats identified) | [THREAT-MODEL.md](../THREAT-MODEL.md) | ✅ Implemented |
 | CC3.2 Risk analysis and severity | Residual risk table with severity ratings | THREAT-MODEL.md §4 | ✅ Implemented |
 | CC3.3 Fraud risk consideration | Prompt injection detection, output scanning | `services/gateway/middleware/sanitize.go`, `output_scanner.go` | ✅ Implemented |
 | CC3.4 Change-driven risk assessment | Quarterly threat model review schedule | THREAT-MODEL.md §5 | 📄 Documented |

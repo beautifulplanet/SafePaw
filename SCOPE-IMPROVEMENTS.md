@@ -23,7 +23,7 @@ Many items in the review are **already addressed**. This section records that so
 | 11 | No automated backup/restore | BACKUP-RECOVERY.md with procedures; no automation (cron/scripts) | **Procedures done; automation open** |
 | 12 | No runbooks | RUNBOOK.md: 6 playbooks (token, injection, gateway down, brute force, rotation, disk) | **Done** |
 | 13 | No secret rotation | RUNBOOK INC-5: ordered rotation, one-shot block, link to backup | **Procedures done; automation open** |
-| 14 | No threat model | THREAT-MODEL.md: STRIDE, 27 threats, mitigations, residual risks | **Done** |
+| 14 | No threat model | THREAT-MODEL.md: STRIDE, 48 threats, mitigations, residual risks | **Done** |
 
 So: **the first 10 “critical” issues are largely already covered.** The review is useful for the remaining gaps and for the longer list (21–100 and OPSEC). Below is the **valid** remaining scope only.
 
