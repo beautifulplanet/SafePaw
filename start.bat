@@ -76,6 +76,41 @@ if errorlevel 1 (
 echo Waiting for services to become healthy...
 timeout /t 30 /nobreak >nul
 
+:: ── Session logging setup ───────────────────────────────────
+:: Create logs directory if it doesn't exist
+if not exist logs mkdir logs
+
+:: Generate timestamped session log filename
+for /f "tokens=1-3 delims=/ " %%a in ("%date%") do set DSTAMP=%%c-%%a-%%b
+for /f "tokens=1-3 delims=:." %%a in ("%time: =0%") do set TSTAMP=%%a%%b%%c
+set SESSION_LOG=logs\session-%DSTAMP%-%TSTAMP%.txt
+
+:: Write session header
+echo === SAFEPAW SESSION START === > "%SESSION_LOG%"
+echo Date: %date% %time% >> "%SESSION_LOG%"
+echo Mode: %MODE% >> "%SESSION_LOG%"
+echo ================================ >> "%SESSION_LOG%"
+echo. >> "%SESSION_LOG%"
+
+:: ── Start log aggregation (background) ──────────────────────
+:: Pipes all container logs to the session file in real time.
+:: Runs in a hidden window; stop.bat kills it by title.
+start "SafePaw — Log Aggregator" /min cmd /c "docker compose logs -f --timestamps >> \"%~dp0%SESSION_LOG%\" 2>&1"
+
+echo [OK] Session log: %SESSION_LOG%
+
+:: ── Open Window 1: Process Monitor ──────────────────────────
+:: Refreshes container status every 5 seconds in a dedicated window.
+start "SafePaw — Process Monitor" cmd /c "powershell -NoProfile -Command \"while ($true) { Clear-Host; Write-Host '  SafePaw — Process Monitor' -ForegroundColor Cyan; Write-Host '  =========================' -ForegroundColor Cyan; Write-Host ''; docker ps -a --filter 'name=safepaw-' --format 'table {{.Names}}\t{{.State}}\t{{.Status}}\t{{.Ports}}' 2>$null; Write-Host ''; Write-Host '  Resources:' -ForegroundColor Yellow; docker stats --no-stream --filter 'name=safepaw-' --format '  {{.Name}}: CPU {{.CPUPerc}} / Mem {{.MemUsage}}' 2>$null; Write-Host ''; Write-Host '  (Refreshes every 5s | Close with stop.bat)' -ForegroundColor DarkGray; Start-Sleep 5 }\""
+
+echo [OK] Process Monitor window opened
+
+:: ── Open Window 2: Live Log Viewer ──────────────────────────
+:: Tails the session log file in real time.
+start "SafePaw — Live Logs" cmd /c "powershell -NoProfile -Command \"Write-Host '  SafePaw — Live Log Viewer' -ForegroundColor Green; Write-Host '  Tailing: %SESSION_LOG%' -ForegroundColor Green; Write-Host '  (Close with stop.bat)' -ForegroundColor DarkGray; Write-Host ''; Get-Content -Path '%~dp0%SESSION_LOG%' -Wait -Tail 200\""
+
+echo [OK] Live Log Viewer window opened
+
 :: ── Print summary ───────────────────────────────────────────
 
 echo.
@@ -88,6 +123,7 @@ if "%MODE%"=="demo" (
     for /f "tokens=1,* delims==" %%a in ('findstr "^WIZARD_ADMIN_PASSWORD=" .env 2^>nul') do echo   Password: %%b
 )
 echo   Gateway:  http://localhost:8080
+echo   Session:  %SESSION_LOG%
 echo ==========================================
 echo.
 
@@ -97,6 +133,6 @@ echo Opening browser...
 start http://localhost:3000
 
 echo.
-echo To stop:  start.bat --stop
+echo To stop:  stop.bat  (or start.bat --stop)
 echo.
 pause

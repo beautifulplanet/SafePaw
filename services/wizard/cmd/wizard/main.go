@@ -122,26 +122,43 @@ func main() {
 	}
 
 	// ── Step 7: Graceful shutdown ──
+	// WHY: Docker sends SIGTERM on `docker compose down`.
+	// Without this handler, in-flight API requests get dropped
+	// and database connections are abandoned without cleanup.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case sig := <-quit:
-		log.Printf("[INFO] Received %s, shutting down...", sig)
+		log.Printf("[SHUTDOWN] ╔══════════════════════════════════════════════════════╗")
+		log.Printf("[SHUTDOWN] ║  Received %s — beginning graceful shutdown          ║", sig)
+		log.Printf("[SHUTDOWN] ╚══════════════════════════════════════════════════════╝")
 	case err := <-errCh:
-		log.Printf("[ERROR] Server error: %v", err)
+		log.Printf("[SHUTDOWN] Server error triggered shutdown: %v", err)
 	}
 
+	// Step 7a: Drain in-flight HTTP requests
+	log.Println("[SHUTDOWN] Draining in-flight requests (10s timeout)...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("[ERROR] Shutdown error: %v", err)
+		log.Printf("[SHUTDOWN] Server drain error: %v", err)
+	} else {
+		log.Println("[SHUTDOWN] HTTP server stopped — all requests drained")
 	}
 
+	// Step 7b: Close handler resources (sessions, DB connections)
+	log.Println("[SHUTDOWN] Closing API handler resources...")
 	handler.Close()
+	log.Println("[SHUTDOWN] API handler closed")
+
+	// Step 7c: Stop cost poller
 	if costPoller != nil {
+		log.Println("[SHUTDOWN] Stopping cost poller...")
 		costPoller.Stop()
+		log.Println("[SHUTDOWN] Cost poller stopped")
 	}
-	log.Println("[INFO] Wizard stopped")
+
+	log.Println("[SHUTDOWN] === SafePaw Wizard stopped ===")
 }

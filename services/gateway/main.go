@@ -387,20 +387,41 @@ func main() {
 	// --------------------------------------------------------
 	// Step 6: Graceful shutdown
 	// --------------------------------------------------------
+	// WHY: Docker sends SIGTERM on `docker compose down`.
+	// Without this handler, in-flight HTTP requests get dropped
+	// and WebSocket connections vanish without cleanup.
+	// The 15-second timeout gives active requests time to complete.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
 	shutdownStart := time.Now()
-	log.Printf("[SHUTDOWN] Received signal: %v", sig)
+	log.Printf("[SHUTDOWN] ╔══════════════════════════════════════════════════════════════╗")
+	log.Printf("[SHUTDOWN] ║  Received %v — beginning graceful shutdown                  ║", sig)
+	log.Printf("[SHUTDOWN] ╚══════════════════════════════════════════════════════════════╝")
 
+	// Step 6a: Stop accepting new connections, drain in-flight requests
+	log.Println("[SHUTDOWN] Draining in-flight requests (15s timeout)...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("[SHUTDOWN] Server shutdown error: %v", err)
+		log.Printf("[SHUTDOWN] Server drain error: %v", err)
+	} else {
+		log.Println("[SHUTDOWN] HTTP server stopped — all requests drained")
 	}
 
-	log.Printf("=== SafePaw Gateway stopped (shutdown: %v) ===",
+	// Step 6b: Close Redis connection (explicit, before defer cleanup)
+	if redisClient != nil {
+		log.Println("[SHUTDOWN] Closing Redis connection...")
+		redisClient.Close()
+		log.Println("[SHUTDOWN] Redis connection closed")
+	}
+
+	// Step 6c: Flush usage collector
+	log.Println("[SHUTDOWN] Stopping usage collector...")
+	usageCollector.Stop()
+
+	log.Printf("[SHUTDOWN] === SafePaw Gateway stopped (took %v) ===",
 		time.Since(shutdownStart).Round(time.Millisecond))
 }
 

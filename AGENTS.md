@@ -44,6 +44,14 @@ Speed without accuracy is waste. One correct pass beats four fast rewrites.
 5. **When you're stuck, say so.** Confident wrong output is worse than admitting
    uncertainty. "I don't know" is an acceptable answer. "I made this up" is not.
 
+6. **Follow logical procedure.** Every session has a structure: read context,
+   confirm scope, plan, execute, verify. Don't skip steps. Don't start coding
+   before understanding the current state.
+
+7. **No rushing. Ever.** If the human says "no rush," they mean it. Prioritize
+   thoroughness over speed even when not asked. One verified deliverable beats
+   three half-checked ones.
+
 ---
 
 ## Documentation Is Not Optional
@@ -98,6 +106,7 @@ If any box is unchecked, the work is not done.
 | Rounded numbers instead of counting | Real numbers existed in the code | If you can count it, count it. Don't round. |
 | Wrote claims without evidence | Couldn't point to a file, test, or commit | If you can't prove it, don't write it. |
 | redis.go auth() looked correct on read | AUTH response left in socket buffer caused desync | Writing tests found the bug that reading code missed. Always test. |
+| "Zero SIGTERM handlers in gateway or wizard" (2026-03-10) | Both had full graceful shutdown since v0.1.0 | grep returned false negative due to regex escaping. Always READ the actual file — don't trust grep alone for critical claims. |
 
 ### Template for Future Corrections
 
@@ -113,14 +122,38 @@ If any box is unchecked, the work is not done.
 
 - **Repo:** github.com/beautifulplanet/SafePaw
 - **Stack:** Go, React 19, Docker, Redis, Prometheus, Grafana
-- **SOW:** `docs/scope/SOW-001.md` — contract-grade scope document
-- **Change Orders:** `docs/scope/CO-NNN.md` — no out-of-scope work without one
 - **Architecture:** Security gateway (:8080) + Admin wizard (:3000) + Monitoring
 - **Key principle:** Dmitry does architecture, review, and planning. The AI does
-  implementation. Both learn by building. 
+  implementation. Both learn by building.
 - **Modules:** `services/gateway`, `services/wizard`, `services/mockbackend`, `shared/secrets`
 - **CI:** GitHub Actions — build, test, lint, gosec, govulncheck, Trivy, fuzz
-Additionally you should question Dmitry as often as you'd like you can disagree with my plans anytime if they make no sense. We want to follow best practices. 
+- **Disagreement is welcome.** Question Dmitry's plans if they don't make sense.
+  We follow best practices over personal preference.
+
+---
+
+## Scope Document Hierarchy
+
+> Like construction: the SOW is the contract, Change Orders are amendments,
+> Work Orders are the actual jobs, Session Logs are the daily diary.
+
+```
+AGENTS.md (this file — behavioral rules + process definitions)
+  ├── docs/scope/SOW-NNN.md    — Statements of Work (the contract)
+  ├── docs/scope/CO-NNN.md     — Change Orders (amendments to the SOW)
+  ├── docs/scope/WO-NNN.md     — Work Orders (specific scoped jobs)
+  └── plan/YYYY-MM-DD-NNN.md   — Session Logs (what happened each session)
+```
+
+### Rules:
+
+- **No work without a Work Order.** Every session has a WO that defines its scope.
+- **No out-of-scope work without a Change Order.** Per SOW-001 §6.
+- **Session Logs are append-only.** One per session, never edit previous ones.
+- **If these folders don't exist, create them on first use.**
+- **Template:** `docs/scope/WO-TEMPLATE.md`
+- **Workflow:** `.agents/workflows/work-orders.md`
+
 ---
 
 ## The Philosophy
