@@ -86,6 +86,9 @@ Before considering ANY piece of work complete, verify:
 - [ ] Does the code compile / run without errors?
 - [ ] Did you READ the output you generated (don't just assume it's right)?
 - [ ] For coverage claims: did you run `go test -cover` and verify the number?
+- [ ] **One logical change per commit.** Don't bundle unrelated work. Each commit
+  should be one deliverable, one fix, or one feature. If the commit message needs
+  "and" more than once, it's probably too big.
 
 If any box is unchecked, the work is not done.
 
