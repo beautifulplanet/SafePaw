@@ -6,6 +6,17 @@ Structured playbooks for operational incidents. Each runbook follows a standard 
 
 ---
 
+## Graceful shutdown verification
+
+After running **Stop** (e.g. `LAUNCH.bat` [3] or `start.bat --stop` or `docker compose down`), verify that services shut down cleanly:
+
+1. **Gateway:** `docker compose logs gateway --tail=5` — look for `[SHUTDOWN] Received signal` and `SafePaw Gateway stopped`.
+2. **Wizard:** `docker compose logs wizard --tail=5` — look for shutdown or exit message from the Go server.
+
+If you see those, the stack shut down gracefully (SIGTERM handled, no orphan processes). If a container was already crashed, `docker compose down` still removes it; the one-button off is the authoritative way to bring everything down.
+
+---
+
 ## INC-1: Token Compromise (Leaked API Token)
 
 ### Detect

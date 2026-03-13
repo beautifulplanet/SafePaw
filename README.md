@@ -49,6 +49,9 @@ cd SafePaw
 ./start.sh          # Windows: start.bat | Demo: ./start.sh --demo
 ```
 
+**Windows:** Use **LAUNCH.bat** for a one-click menu (Full / Demo / Shut down / Show processes). Use **STOP-SAFEPAW.bat** for an emergency stop (can be shortcut on desktop).  
+**macOS/Linux:** Use **LAUNCH.sh** for the same menu (`./LAUNCH.sh`). See `docs/VERIFY-LAUNCHER.md` to verify.
+
 That's it. The script checks Docker, generates secrets, picks a memory profile for your system, starts everything, and opens your browser at `http://localhost:3000`.
 
 ### What happens

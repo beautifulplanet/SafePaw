@@ -249,10 +249,24 @@ jobs:
         if: always()
         run: docker rm -f openclaw-test 2>/dev/null || true
 
+  # ── Launcher smoke test ─────────────────────────────
+  launcher:
+    name: Launcher (LAUNCH.sh)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Launcher runs and exits 0
+        run: |
+          chmod +x LAUNCH.sh
+          printf 'Q\n' | ./LAUNCH.sh
+          echo "Launcher smoke test passed (exit 0)"
+
   # ── Summary ──────────────────────────────────────────
   ci-pass:
     name: CI Pass
-    needs: [gateway, wizard, lint, security, docker, openclaw-compat]
+    needs: [gateway, wizard, lint, security, docker, openclaw-compat, launcher]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -263,7 +277,8 @@ jobs:
              [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.security.result }}" != "success" ]] || \
              [[ "${{ needs.docker.result }}" != "success" ]] || \
-             [[ "${{ needs.openclaw-compat.result }}" != "success" ]]; then
+             [[ "${{ needs.openclaw-compat.result }}" != "success" ]] || \
+             [[ "${{ needs.launcher.result }}" != "success" ]]; then
             echo "One or more CI jobs failed"
             exit 1
           fi

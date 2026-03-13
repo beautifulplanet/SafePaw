@@ -1,9 +1,9 @@
 @echo off
-title SafePaw — One-Command Start
+title SafePaw - One-Command Start
 cd /d "%~dp0"
 
 echo.
-echo   SafePaw — Starting up...
+echo   SafePaw - Starting up...
 echo.
 
 :: ── Check Docker ────────────────────────────────────────────
