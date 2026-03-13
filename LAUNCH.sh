@@ -77,6 +77,12 @@ run_full() {
     read -r
     return
   fi
+  if [ -f .env ] && grep -q 'CHANGE_ME' .env 2>/dev/null; then
+    echo ""
+    echo "  .env contains CHANGE_ME placeholders. Replace with real secrets before production."
+    read -r -p "  Start anyway? [y/N]: " env_anyway
+    if [[ ! "${env_anyway:-}" =~ ^[yY]$ ]]; then return; fi
+  fi
   echo ""
   echo "  Starting full stack (SafePaw + OpenClaw)..."
   ./start.sh
@@ -92,6 +98,12 @@ run_demo() {
     echo "  Press Enter to return to menu..."
     read -r
     return
+  fi
+  if [ -f .env ] && grep -q 'CHANGE_ME' .env 2>/dev/null; then
+    echo ""
+    echo "  .env contains CHANGE_ME placeholders. Replace with real secrets before production."
+    read -r -p "  Start anyway? [y/N]: " env_anyway
+    if [[ ! "${env_anyway:-}" =~ ^[yY]$ ]]; then return; fi
   fi
   echo ""
   echo "  Starting demo (SafePaw only)..."

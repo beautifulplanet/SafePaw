@@ -13,7 +13,7 @@ Use this checklist before starting the stack (full or demo). All boxes should be
 | 1 | Docker installed and running | **Y** | start.sh / start.bat / LAUNCH.bat — script fails with clear message if Docker is not running. |
 | 2 | Ports 3000 and 8080 free | **Y** (launcher) | LAUNCH.bat checks before [1]/[2]; if in use, warns and asks "Start anyway? [y/N]". Manual fallback: `netstat -ano \| findstr ":3000 :8080"` (Windows). See [VERIFY-LAUNCHER.md](VERIFY-LAUNCHER.md), [SAFEGUARDS.md](../SAFEGUARDS.md) §4. |
 | 3 | .env exists or is generated with strong secrets | **Y** | start.sh / start.bat generate .env from .env.example with secure random (openssl/PowerShell). First run only. |
-| 4 | No placeholder secrets in .env (e.g. CHANGE_ME) | **N** | Manual: after first run, confirm .env has no CHANGE_ME. Generated .env does not contain placeholders; if you edited .env.example and copied by hand, check. Optional future: script could refuse to start if CHANGE_ME present. |
+| 4 | No placeholder secrets in .env (e.g. CHANGE_ME) | **Y** (launcher) | LAUNCH.bat / LAUNCH.sh check before [1]/[2]; if .env contains CHANGE_ME, warn and ask "Start anyway? [y/N]". Generated .env has no placeholders; if you copied .env.example by hand, fix or acknowledge. |
 | 5 | VPN / network conflict | **N** | Manual: disconnect VPN before start or add Docker subnet (172.16.0.0/12) to VPN split-tunnel. See [SAFEGUARDS.md](../SAFEGUARDS.md) §2. |
 | 6 | Docker Desktop resource limits (Windows) | **N** | Manual: Settings > Resources — CPUs 2, Memory 4 GB max, Swap 1 GB, Disk 40 GB. See [SAFEGUARDS.md](../SAFEGUARDS.md) §1. |
 | 7 | Disk space (e.g. ≥5 GB free) | **N** | Manual: `Get-PSDrive C` (PowerShell) or `df -h` (Unix). See [SAFEGUARDS.md](../SAFEGUARDS.md) §3. |
@@ -30,10 +30,16 @@ Use this checklist before starting the stack (full or demo). All boxes should be
 
 ---
 
+## Windows notes
+
+- **start.bat** uses a fixed 30s wait (no health loop like start.sh). Use launcher **[5] Quick health check** after start to confirm wizard and gateway are up. See [ACCEPTED-LIMITATIONS.md](ACCEPTED-LIMITATIONS.md).
+- **SYSTEM_PROFILE** (RAM-based resource limits) is not set by start.bat. Set it in `.env` manually (e.g. `SYSTEM_PROFILE=large`) if you want higher limits on Windows.
+
 ## References
 
 - [SAFEGUARDS.md](../SAFEGUARDS.md) — Pre-run and while-running safeguards (VPN, ports, resources, emergency stop).
 - [SECURITY.md](../SECURITY.md) — Defense-in-depth, recovery, hardening.
 - [RUNBOOK.md](../RUNBOOK.md) — Incident playbooks; includes graceful shutdown verification.
+- [ACCEPTED-LIMITATIONS.md](ACCEPTED-LIMITATIONS.md) — start.bat vs start.sh (health wait, SYSTEM_PROFILE).
 
 **Rule:** If a new risk is found, add it to this checklist (automated or manual), then plan mitigation or acceptance before the next start.
