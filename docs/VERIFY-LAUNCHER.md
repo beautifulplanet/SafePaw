@@ -102,7 +102,9 @@ Run in this order to confirm everything works:
 
 ---
 
-## 7. Logging failure and port check (SOW-002-B, SOW-002-C)
+## 7. Logging failure, port check, .env CHANGE_ME (SOW-002-B, SOW-002-C)
+
+- **.env CHANGE_ME:** Before [1] or [2], if `.env` exists and contains `CHANGE_ME`, the launcher shows ".env contains CHANGE_ME placeholders..." and asks "Start anyway? [y/N]"; only **y** continues. **Manual test:** ensure .env has a line with CHANGE_ME (or copy from .env.example), run [2]; you should see the warning and prompt. Press **N** to return to menu.
 
 - **Logging failure:** If Log-Launch.ps1 fails, the launcher shows "Warning: launcher log could not be written. Check logs\launcher-errors.txt" and appends a line to `logs\launcher-errors.txt`. **Manual test:** rename `Log-Launch.ps1` to `Log-Launch.ps1.bak`, run LAUNCH.bat and choose any option; you should see the warning and a new line in `logs\launcher-errors.txt`. Restore the script afterward.
 - **Port check:** Before [1] or [2], the launcher checks if port 3000 or 8080 is in use (`netstat`). If so, it shows "Port 3000 or 8080 is in use..." and asks "Start anyway? [y/N]"; only **y** continues. **Manual test:** bind one port (e.g. run `python -m http.server 3000` in another window), then LAUNCH.bat → [2]; you should see the warning and prompt. Press **N** to return to menu.
@@ -117,6 +119,7 @@ Run in this order to confirm everything works:
 | **Health check from launcher** | Done — option [5] in LAUNCH.bat and LAUNCH.sh; hits wizard :3000 and gateway :8080, reports 200 or unreachable. |
 | **Unix launcher** | Done — **LAUNCH.sh** (SOW-002-D). Run `./LAUNCH.sh` on macOS/Linux for same menu as LAUNCH.bat. |
 | **CI smoke test** | Done — job `launcher` in CI runs `printf 'Q\n' | ./LAUNCH.sh` and expects exit 0 (SOW-002-D). |
+| **.env CHANGE_ME check** | Done — before [1]/[2], if .env contains CHANGE_ME, launcher warns and asks "Start anyway? [y/N]" (§7). |
 
 To verify the launcher "works fully": run section **6** above, then §7 manual tests if you want to confirm log-failure and port-check behavior.
 

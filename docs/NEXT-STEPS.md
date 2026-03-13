@@ -12,19 +12,18 @@ Launcher work (SOW-002 A–D) is complete. Below are the next optional improveme
 
 ---
 
-## 2. .env CHANGE_ME check (small)
+## 2. .env CHANGE_ME check (small) ✅ Done
 
-- **What:** Before [1] or [2] start, if `.env` contains `CHANGE_ME`, warn and optionally refuse to start (or ask "Start anyway? [y/N]").
-- **Where:** LAUNCH.bat / LAUNCH.sh (and optionally start.bat / start.sh) before calling compose.
-- **Value:** START-CHECKLIST already lists "No placeholder secrets"; this automates the check.
+- **What:** Before [1] or [2] start, if `.env` contains `CHANGE_ME`, warn and ask "Start anyway? [y/N]"; only **y** continues.
+- **Where:** LAUNCH.bat (findstr) and LAUNCH.sh (grep); runs only when .env exists. No check when .env is missing (start generates it without placeholders).
+- **Value:** START-CHECKLIST "No placeholder secrets" is now automated at launcher start.
 
 ---
 
-## 3. start.bat parity (medium)
+## 3. start.bat parity (medium) ✅ Documented as accepted
 
 - **What:** On Windows, (a) wait for wizard/gateway health (loop like start.sh) instead of fixed 30s; (b) set SYSTEM_PROFILE in .env from RAM (like start.sh detect_profile).
-- **Alternative:** Document as accepted limitation (start.bat stays simple; launcher + START-CHECKLIST cover risk).
-- **Value:** Closer parity with start.sh; fewer "started but not ready" cases on Windows.
+- **Decision:** Documented as **accepted limitation** in **docs/ACCEPTED-LIMITATIONS.md**. start.bat stays simple; launcher [5] and START-CHECKLIST cover the risk. Users can increase the 30s timeout in start.bat or set SYSTEM_PROFILE in .env manually if needed.
 
 ---
 
@@ -36,4 +35,4 @@ Launcher work (SOW-002 A–D) is complete. Below are the next optional improveme
 
 ---
 
-**Recommendation:** Do **1** (health check) next — small, self-contained, improves launcher UX. Then **2** if you want automated safety; **3** only if you want full Windows parity.
+**Recommendation:** **1**, **2**, and **3** are done (3 = documented as accepted). Next: **4** (Phase 2 — cost monitoring, SCOPE-IMPROVEMENTS, or set current task in WORKSTATE.md).

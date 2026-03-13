@@ -97,6 +97,18 @@ if defined PORTS_USED (
     if /i not "!PORT_ANYWAY!"=="y" endlocal & goto menu
 )
 endlocal
+:: Pre-check: .env placeholder secrets (CHANGE_ME)
+if exist "%ROOT%.env" (
+    findstr /C:"CHANGE_ME" "%ROOT%.env" >nul 2>&1
+    if not errorlevel 1 (
+        setlocal enabledelayedexpansion
+        echo.
+        echo  .env contains CHANGE_ME placeholders. Replace with real secrets before production.
+        set /p ENV_ANYWAY="  Start anyway? [y/N]: "
+        if /i not "!ENV_ANYWAY!"=="y" endlocal & goto menu
+        endlocal
+    )
+)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%Log-Launch.ps1" -Date "%TODAY%" -Action full -Message "Full stack start requested" >nul 2>&1
 if errorlevel 1 (
     echo   Warning: launcher log could not be written. Check logs\launcher-errors.txt
@@ -134,6 +146,18 @@ if defined PORTS_USED (
     if /i not "!PORT_ANYWAY!"=="y" endlocal & goto menu
 )
 endlocal
+:: Pre-check: .env placeholder secrets (CHANGE_ME)
+if exist "%ROOT%.env" (
+    findstr /C:"CHANGE_ME" "%ROOT%.env" >nul 2>&1
+    if not errorlevel 1 (
+        setlocal enabledelayedexpansion
+        echo.
+        echo  .env contains CHANGE_ME placeholders. Replace with real secrets before production.
+        set /p ENV_ANYWAY="  Start anyway? [y/N]: "
+        if /i not "!ENV_ANYWAY!"=="y" endlocal & goto menu
+        endlocal
+    )
+)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%Log-Launch.ps1" -Date "%TODAY%" -Action demo -Message "Demo start requested" >nul 2>&1
 if errorlevel 1 (
     echo   Warning: launcher log could not be written. Check logs\launcher-errors.txt
