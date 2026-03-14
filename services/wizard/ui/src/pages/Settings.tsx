@@ -24,8 +24,10 @@ const SECTIONS: { title: string; description: string; keys: { key: string; label
     keys: [
       { key: 'AUTH_ENABLED', label: 'Require Login', placeholder: 'true', type: 'toggle', help: 'When ON, users need a token (like a password) to use the AI. Strongly recommended.' },
       { key: 'AUTH_SECRET', label: 'Secret Key', placeholder: 'min 32 characters', type: 'password', help: 'A long random string used to create login tokens. Like a master key — keep it safe.' },
-      { key: 'WIZARD_ADMIN_PASSWORD', label: 'Admin Panel Password', placeholder: 'Set a strong password', type: 'password', help: 'The password you use to log into this control panel.' },
-      { key: 'WIZARD_TOTP_SECRET', label: 'Two-Factor Code (Optional)', placeholder: 'base32 secret', type: 'password', help: 'Adds a 6-digit code from an authenticator app on top of your password.' },
+      { key: 'WIZARD_ADMIN_PASSWORD', label: 'Admin Panel Password', placeholder: 'Set a strong password', type: 'password', help: 'Full access: config, tokens, restart. One admin account.' },
+      { key: 'WIZARD_OPERATOR_PASSWORD', label: 'Operator Password (Optional)', placeholder: 'Leave empty to disable', type: 'password', help: 'Operator can view and restart services; cannot change config or issue tokens.' },
+      { key: 'WIZARD_VIEWER_PASSWORD', label: 'Viewer Password (Optional)', placeholder: 'Leave empty to disable', type: 'password', help: 'Viewer can only see dashboard and activity; no Settings or Restart.' },
+      { key: 'WIZARD_TOTP_SECRET', label: 'Two-Factor Code (Optional)', placeholder: 'base32 secret', type: 'password', help: 'Adds a 6-digit code from an authenticator app on top of your password (admin and operator only).' },
     ],
   },
   {

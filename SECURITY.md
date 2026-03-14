@@ -76,6 +76,10 @@ The JSON adapter automatically parses SafePaw's log prefix convention (`[AUTH]`,
 
 The gateway sets `X-Request-ID` on every request (or preserves the one from the client). This ID is passed along the middleware chain and should be included in security and proxy log lines for incident response.
 
+### Log sanitization (O4)
+
+We never log passwords, tokens, API keys, or full request/response bodies. User-controlled and network-derived strings (IP, path, Origin) are sanitized (control-character strip) before logging to prevent log injection. Full audit: [docs/LOG-SANITIZATION.md](docs/LOG-SANITIZATION.md).
+
 ---
 
 ## 3. Defense in Depth
@@ -183,7 +187,8 @@ The setup wizard should guide users toward secure defaults:
 
 - **Strong admin password:** Prefer setting `WIZARD_ADMIN_PASSWORD` in `.env` to a strong value instead of relying on the one-time auto-generated password (which is only in logs).
 - **Optional MFA (TOTP):** Set `WIZARD_TOTP_SECRET` in `.env` to a base32 TOTP secret; login will then require password + 6-digit code from an authenticator app. See `.env.example` for generation hints.
-- **Session invalidation on credential change:** When `WIZARD_ADMIN_PASSWORD` or `WIZARD_TOTP_SECRET` is updated via PUT `/api/v1/config`, the wizard reloads credentials from `.env` and bumps the session generation; all existing session tokens are invalidated and users must log in again.
+- **RBAC (S1):** Three roles — **admin** (full access: config, gateway tokens, restart), **operator** (view + restart services; no config or token generation), **viewer** (read-only: dashboard and activity). Set `WIZARD_OPERATOR_PASSWORD` and `WIZARD_VIEWER_PASSWORD` in Settings (or `.env`) to enable; login with the matching password. The UI hides Settings tab and Restart for viewer, and "Chat with AI" (token) for non-admin. `GET /api/v1/auth/me` returns the current session role for the frontend.
+- **Session invalidation on credential change (S4):** When `WIZARD_ADMIN_PASSWORD` or `WIZARD_TOTP_SECRET` is updated via PUT `/api/v1/config`, the wizard bumps the session generation and all existing session tokens are invalidated. The same applies when you change these values in `.env` and restart the wizard: the wizard persists a session generation in `.safepaw_session_gen` (same directory as `.env`); on startup it detects credential changes and bumps the generation so old cookies no longer validate.
 - **Enable security layers:** In production, set `AUTH_ENABLED=true`, provide `AUTH_SECRET`, and enable `TLS_ENABLED` with valid certs.
 - **Rate limiting:** Document that `RATE_LIMIT` controls gateway request rate per IP and that it can be tuned for abuse protection.
 

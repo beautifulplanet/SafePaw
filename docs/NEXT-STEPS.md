@@ -36,3 +36,15 @@ Launcher work (SOW-002 A–D) is complete. Below are the next optional improveme
 ---
 
 **Recommendation:** **1**, **2**, and **3** are done (3 = documented as accepted). Next: **4** (Phase 2 — cost monitoring, SCOPE-IMPROVEMENTS, or set current task in WORKSTATE.md).
+
+---
+
+## Next part (after current scope)
+
+When Phase 2 (current scope) is complete, the next part is defined in **WORKSTATE.md** at repo root:
+
+- **Phase 3** — Hardening & compliance (pentest policy, compliance docs, Vault/secrets, secure backups, patching policy).
+- **Phase 4** — Nice-to-have (abuse detection, tracing, chaos tests, UI E2E, multi-admin, etc.).
+- **Optional** — UX improvements (easier first-run, fewer steps to working AI) when we choose to prioritize.
+
+Continue scope in WORKSTATE; when done, update WORKSTATE and pick the next part from that list.

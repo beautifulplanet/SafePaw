@@ -7,15 +7,33 @@ import { Activity } from './pages/Activity'
 import { Settings } from './pages/Settings'
 import { Setup } from './pages/Setup'
 import { Layout } from './components/Layout'
-import { hasToken, clearToken, api } from './api'
+import { clearToken, setUserRole, api } from './api'
 
 type Page = 'login' | 'prerequisites' | 'dashboard' | 'config' | 'activity' | 'settings' | 'setup'
 
 export function App() {
-  const [page, setPage] = useState<Page>(hasToken() ? 'prerequisites' : 'login')
+  const [page, setPage] = useState<Page>('login')
+  const [sessionChecked, setSessionChecked] = useState(false)
+
+  // Restore session on load: if we have a valid cookie, GET /auth/me gives us role and we go to dashboard (S1 RBAC).
+  useEffect(() => {
+    if (sessionChecked) return
+    setSessionChecked(true)
+    api.authMe()
+      .then((me) => {
+        setUserRole(me.role)
+        return api.health()
+      })
+      .then((health) => {
+        if (health.needs_setup) setPage('setup')
+        else setPage('dashboard')
+      })
+      .catch(() => {
+        // No session or expired — stay on login
+      })
+  }, [sessionChecked])
 
   // On login, skip prerequisites if this is a first-run (needs_setup).
-  // start.sh already validated Docker/ports, so go straight to Setup wizard.
   const handleLogin = useCallback(async () => {
     try {
       const health = await api.health()
@@ -50,6 +68,7 @@ export function App() {
   const handleLogout = useCallback(() => {
     clearToken()
     setPage('login')
+    setSessionChecked(false)
   }, [])
 
   const handleBackToPrereqs = useCallback(() => {

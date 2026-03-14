@@ -43,6 +43,8 @@ InstallerClaw wraps [OpenClaw](https://github.com/nicepkg/openclaw) (or any HTTP
 
 ## Quick start
 
+**New here? Try the demo in 3 steps:** (1) Clone the repo, (2) run **LAUNCH.bat** (Windows) or **./LAUNCH.sh** (Mac/Linux), (3) press **2** for Demo → browser opens at http://localhost:3000. Sign in with the password shown in the launcher window. No API keys or OpenClaw required. [Full steps →](docs/HOW-TO-TEST-AND-WHERE-WE-ARE.md)
+
 ```bash
 git clone https://github.com/beautifulplanet/SafePaw.git
 cd SafePaw
@@ -51,6 +53,8 @@ cd SafePaw
 
 **Windows:** Use **LAUNCH.bat** for a one-click menu (Full / Demo / Shut down / Show processes). Use **STOP-SAFEPAW.bat** for an emergency stop (can be shortcut on desktop).  
 **macOS/Linux:** Use **LAUNCH.sh** for the same menu (`./LAUNCH.sh`). See `docs/VERIFY-LAUNCHER.md` to verify.
+
+**First time testing or demoing?** See [docs/HOW-TO-TEST-AND-WHERE-WE-ARE.md](docs/HOW-TO-TEST-AND-WHERE-WE-ARE.md) for a minimal test path and what “working product” means.
 
 That's it. The script checks Docker, generates secrets, picks a memory profile for your system, starts everything, and opens your browser at `http://localhost:3000`.
 

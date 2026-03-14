@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Tour } from './Tour'
+import { getUserRole } from '../api'
 
 type Page = 'login' | 'prerequisites' | 'dashboard' | 'config' | 'activity' | 'settings' | 'setup'
 
@@ -56,10 +57,14 @@ export function Layout({ children, page, onLogout, onNavigate, onNavigateTo }: L
               </nav>
             )}
 
-            {/* Tab pills for main pages */}
+            {/* Tab pills for main pages (viewer: hide Settings) */}
             {showTabs && onNavigateTo && (
               <nav className="hidden sm:flex items-center gap-1 bg-gray-800/50 rounded-lg p-1">
-                {mainTabs.map(tab => {
+                {mainTabs.filter(tab => {
+                  const role = getUserRole()
+                  if (tab.id === 'settings' && role === 'viewer') return false
+                  return true
+                }).map(tab => {
                   const active = page === tab.id || (tab.id === 'settings' && page === 'config')
                   return (
                     <button

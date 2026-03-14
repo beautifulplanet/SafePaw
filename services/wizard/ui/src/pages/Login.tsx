@@ -48,7 +48,7 @@ export function Login({ onSuccess }: LoginProps) {
           </div>
           <h2 className="text-2xl font-bold tracking-tight">Welcome to SafePaw</h2>
           <p className="text-gray-400 mt-2">
-            Your private AI assistant's control panel. Enter your admin password to get started.
+            Your private AI assistant's control panel. Sign in with your password (admin, operator, or viewer).
           </p>
         </div>
 
@@ -56,7 +56,7 @@ export function Login({ onSuccess }: LoginProps) {
         <form onSubmit={handleSubmit} className="card space-y-5">
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1.5">
-              Admin Password
+              Password
             </label>
             <input
               id="password"

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, type ServiceInfo, type StatusResponse, type GatewayMetrics, type UsageResponse, type CostHistoryResponse, type CostModelsResponse, type CostTrendsResponse } from '../api'
+import { api, getUserRole, type ServiceInfo, type StatusResponse, type GatewayMetrics, type UsageResponse, type CostHistoryResponse, type CostModelsResponse, type CostTrendsResponse } from '../api'
 
 const POLL_INTERVAL = 5000 // ms
 
@@ -10,6 +10,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
+  const role = getUserRole()
   const [data, setData] = useState<StatusResponse | null>(null)
   const [metrics, setMetrics] = useState<GatewayMetrics | null>(null)
   const [usage, setUsage] = useState<UsageResponse | null>(null)
@@ -138,14 +139,16 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
         </div>
         <div className="flex items-center gap-3">
           {data && <OverallBadge overall={data.overall} />}
-          <button
-            onClick={handleOpenAssistant}
-            disabled={openingAssistant}
-            className="btn-primary text-sm py-1.5 px-4 flex items-center gap-2"
-          >
-            <span>💬</span>
-            {openingAssistant ? 'Opening…' : 'Chat with AI'}
-          </button>
+          {role === 'admin' && (
+            <button
+              onClick={handleOpenAssistant}
+              disabled={openingAssistant}
+              className="btn-primary text-sm py-1.5 px-4 flex items-center gap-2"
+            >
+              <span>💬</span>
+              {openingAssistant ? 'Opening…' : 'Chat with AI'}
+            </button>
+          )}
           <button onClick={fetchStatus} className="btn-secondary text-sm py-1.5 px-3">
             Refresh
           </button>
@@ -173,7 +176,7 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
 
       {/* Getting Started (show on fresh installs when no conversations yet) */}
       {metrics && metrics.total_requests === 0 && (
-        <GettingStartedCard onChat={handleOpenAssistant} onOpenSettings={onOpenSettings} />
+        <GettingStartedCard onChat={role === 'admin' ? handleOpenAssistant : undefined} onOpenSettings={role !== 'viewer' ? onOpenSettings : undefined} />
       )}
 
       {/* No-API-key banner (usage unavailable but system running) */}
@@ -210,6 +213,7 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
               onRestart={handleRestart}
               restarting={restarting}
               index={i}
+              showRestart={role !== 'viewer'}
             />
           ))}
         </div>
@@ -242,7 +246,7 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
             📊 View Activity
           </button>
         )}
-        {onOpenSettings && (
+        {onOpenSettings && role !== 'viewer' && (
           <button onClick={onOpenSettings} className="btn-secondary text-sm py-2 px-4 flex-1">
             ⚙️ Settings
           </button>
@@ -274,12 +278,12 @@ const SERVICE_INFO: Record<string, { label: string; emoji: string; desc: string 
 
 const RESTARTABLE_SERVICES = ['wizard', 'gateway', 'openclaw', 'redis', 'postgres']
 
-function ServiceCard({ service, onRestart, restarting, index }: { service: ServiceInfo; onRestart: (name: string) => void; restarting: string | null; index: number }) {
+function ServiceCard({ service, onRestart, restarting, index, showRestart = true }: { service: ServiceInfo; onRestart: (name: string) => void; restarting: string | null; index: number; showRestart?: boolean }) {
   const stateColor = getStateColor(service.state)
   const healthColor = getHealthColor(service.health)
   const name = service.name || 'unknown'
   const friendly = SERVICE_INFO[name] || { label: name, emoji: '📦', desc: '' }
-  const canRestart = RESTARTABLE_SERVICES.includes(name)
+  const canRestart = showRestart && RESTARTABLE_SERVICES.includes(name)
   const isRestarting = restarting === name
 
   return (

@@ -267,6 +267,43 @@ func TestAdmin_CanCreateGatewayToken(t *testing.T) {
 	}
 }
 
+// ─── GET /api/v1/auth/me (current session role for UI) ───────
+
+func TestAuthMe_ReturnsRole(t *testing.T) {
+	h, _ := newRBACHandler(t)
+	router := h.Router()
+
+	for _, role := range []string{"admin", "operator", "viewer"} {
+		req := httptest.NewRequest("GET", "/api/v1/auth/me", nil)
+		req = withRole(req, role)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET /auth/me as %s: status = %d, want 200", role, rec.Code)
+			continue
+		}
+		var out struct{ Role string `json:"role"` }
+		if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+			t.Errorf("decode response: %v", err)
+			continue
+		}
+		if out.Role != role {
+			t.Errorf("GET /auth/me as %s: role = %q, want %q", role, out.Role, role)
+		}
+	}
+}
+
+func TestAuthMe_NoRole_Forbidden(t *testing.T) {
+	h, _ := newRBACHandler(t)
+	router := h.Router()
+	req := httptest.NewRequest("GET", "/api/v1/auth/me", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("GET /auth/me without role: status = %d, want 403", rec.Code)
+	}
+}
+
 // ─── No role → 403 ──────────────────────────────────────────
 
 func TestNoRole_Forbidden(t *testing.T) {

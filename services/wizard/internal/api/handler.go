@@ -30,6 +30,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,6 +40,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -148,9 +150,94 @@ func (h *Handler) ReloadCredsFromEnv() {
 	}
 }
 
+// sessionGenFilePath returns the path to the persisted session generation file (same dir as .env).
+// Empty if EnvFilePath is unset (e.g. tests).
+func (h *Handler) sessionGenFilePath() string {
+	if h.cfg.EnvFilePath == "" {
+		return ""
+	}
+	dir := filepath.Dir(h.cfg.EnvFilePath)
+	return filepath.Join(dir, ".safepaw_session_gen")
+}
+
+// credentialHash returns a deterministic hex hash of admin password + TOTP secret for change detection.
+// Used to invalidate sessions when .env credentials change after a restart (S4).
+func credentialHash(adminPassword, totpSecret string) string {
+	sum := sha256.Sum256([]byte(adminPassword + "\x00" + totpSecret))
+	return hex.EncodeToString(sum[:])
+}
+
+// readSessionGenFile reads (gen, credentialHash) from the session gen file. Returns (0, "") if missing or invalid.
+func readSessionGenFile(path string) (gen uint64, storedHash string) {
+	if path == "" {
+		return 0, ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, ""
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(lines) < 2 {
+		return 0, ""
+	}
+	g, err := strconv.ParseUint(strings.TrimSpace(lines[0]), 10, 64)
+	if err != nil {
+		return 0, ""
+	}
+	return g, strings.TrimSpace(lines[1])
+}
+
+// writeSessionGenFile writes gen and credential hash to the session gen file for persistence across restarts.
+func writeSessionGenFile(path string, gen uint64, hash string) {
+	if path == "" {
+		return
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		log.Printf("[WARN] Cannot create session gen dir %q: %v", dir, err)
+		return
+	}
+	content := fmt.Sprintf("%d\n%s\n", gen, hash)
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		log.Printf("[WARN] Cannot write session gen file %q: %v", path, err)
+	}
+}
+
+// InitSessionGenFromFile loads session generation from disk and bumps it if credentials changed (e.g. .env edit + restart).
+// Call once at startup so that changing WIZARD_ADMIN_PASSWORD or WIZARD_TOTP_SECRET in .env and restarting invalidates old sessions.
+func (h *Handler) InitSessionGenFromFile() {
+	path := h.sessionGenFilePath()
+	if path == "" {
+		return
+	}
+	h.credMu.RLock()
+	currentHash := credentialHash(h.cfg.AdminPassword, h.cfg.TOTPSecret)
+	h.credMu.RUnlock()
+
+	gen, storedHash := readSessionGenFile(path)
+	if storedHash != "" && storedHash != currentHash {
+		// Credentials changed on disk; bump gen so existing sessions are invalid
+		gen++
+		writeSessionGenFile(path, gen, currentHash)
+		log.Printf("[INFO] Credentials changed (password/TOTP in .env); session gen bumped to %d", gen)
+	} else if storedHash == "" {
+		// First run or missing file; write current state so next restart can detect changes
+		writeSessionGenFile(path, gen, currentHash)
+	}
+	h.sessionGen.Store(gen)
+}
+
 // BumpSessionGen increments the session generation so all existing tokens fail validation (e.g. after password or TOTP change).
+// Persists to file so that after restart the new gen is still in effect (S4).
 func (h *Handler) BumpSessionGen() {
 	h.sessionGen.Add(1)
+	path := h.sessionGenFilePath()
+	if path != "" {
+		h.credMu.RLock()
+		hash := credentialHash(h.cfg.AdminPassword, h.cfg.TOTPSecret)
+		h.credMu.RUnlock()
+		writeSessionGenFile(path, h.sessionGen.Load(), hash)
+	}
 	log.Println("[INFO] Session generation bumped; existing sessions invalidated")
 }
 
@@ -169,6 +256,7 @@ func (h *Handler) Router() http.Handler {
 	// ── API Routes ──
 	mux.HandleFunc("GET /api/v1/health", h.handleHealth)
 	mux.HandleFunc("POST /api/v1/auth/login", h.handleLogin)
+	mux.HandleFunc("GET /api/v1/auth/me", middleware.RequireRole(anyRole, h.handleAuthMe))
 	mux.HandleFunc("GET /api/v1/prerequisites", middleware.RequireRole(anyRole, h.handlePrerequisites))
 	mux.HandleFunc("GET /api/v1/status", middleware.RequireRole(anyRole, h.handleStatus))
 	mux.HandleFunc("GET /api/v1/config", middleware.RequireRole(anyRole, h.handleGetConfig))
@@ -237,6 +325,16 @@ type loginRequest struct {
 type loginResponse struct {
 	ExpiresIn int    `json:"expires_in"` // seconds
 	Role      string `json:"role"`       // "admin", "operator", or "viewer"
+}
+
+// handleAuthMe returns the current session's role (for UI role-aware hiding). S1 RBAC.
+func (h *Handler) handleAuthMe(w http.ResponseWriter, r *http.Request) {
+	role := middleware.GetRole(r)
+	if role == "" {
+		writeJSON(w, http.StatusForbidden, errorResponse{"not authenticated"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"role": role})
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {

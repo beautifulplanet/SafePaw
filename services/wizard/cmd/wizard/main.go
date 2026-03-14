@@ -82,6 +82,9 @@ func main() {
 		handler.SetCostQuerier(costStore)
 	}
 
+	// Init session gen from file so that .env password/TOTP change + restart invalidates old sessions (S4)
+	handler.InitSessionGenFromFile()
+
 	// ── Step 4: Build middleware chain ──
 	// Order matters: outermost runs first
 	//   SecurityHeaders → CORS → AdminAuth → CSRF → RateLimit → Router
