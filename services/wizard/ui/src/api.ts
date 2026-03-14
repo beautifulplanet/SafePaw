@@ -9,9 +9,23 @@ const BASE = '/api/v1'
 
 let token: string | null = null
 
+/** Current user role from session (admin, operator, viewer). Used for RBAC UI. */
+let userRole: string | null = null
+
 /** Clear the auth token (logout). */
 export function clearToken() {
   token = null
+  userRole = null
+}
+
+/** Set current user role (call after login or from GET /auth/me). */
+export function setUserRole(role: string) {
+  userRole = role
+}
+
+/** Current user role, or null if not known. */
+export function getUserRole(): string | null {
+  return userRole
 }
 
 /** Check if we have a stored token. */
@@ -46,6 +60,7 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     clearToken()
+    userRole = null
     throw new ApiError('Unauthorized', 401)
   }
 
@@ -241,11 +256,18 @@ export const api = {
   health: () =>
     request<HealthResponse>('/health'),
 
-  login: (password: string, totp?: string) =>
-    request<LoginResponse>('/auth/login', {
+  login: async (password: string, totp?: string) => {
+    const res = await request<LoginResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ password, ...(totp && totp.trim() && { totp: totp.trim() }) }),
-    }),
+    })
+    setUserRole(res.role)
+    return res
+  },
+
+  /** Current session role (for RBAC UI). Call on app load to restore session + role. */
+  authMe: () =>
+    request<{ role: string }>('/auth/me'),
 
   prerequisites: () =>
     request<PrerequisitesResponse>('/prerequisites'),
