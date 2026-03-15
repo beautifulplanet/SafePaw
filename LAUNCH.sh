@@ -27,7 +27,7 @@ stack_status() {
 }
 
 show_menu() {
-  clear
+  clear 2>/dev/null || true
   echo ""
   echo "  ============================================================"
   echo "    SAFEPAW - LAUNCHER"
