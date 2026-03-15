@@ -12,6 +12,8 @@ No cloud. No accounts. No telemetry. **We don't collect your data — at all.** 
 
 </div>
 
+**SafePaw Gateway is a standalone security program developed by BeautifulPlanet. It is NOT a fork of OpenPaw and has no affiliation with Flexasaurusrex.**
+
 ---
 
 ## What is this?
