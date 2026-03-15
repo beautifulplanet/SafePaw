@@ -6,9 +6,9 @@
 
 **The security perimeter for self-hosted AI assistants.**
 
-No cloud. No accounts. No telemetry. Just a gateway, a wizard, and 530 tests.
+No cloud. No accounts. No telemetry. **We don't collect your data — at all.** You can scan the repo to verify; see [docs/NO-DATA-COLLECTION.md](docs/NO-DATA-COLLECTION.md). Just a gateway, a wizard, and 534 tests.
 
-[![tests](https://img.shields.io/badge/tests-530-blue)](services/) [![coverage-gw](https://img.shields.io/badge/gateway_coverage-80%25-brightgreen)](#evidence) [![coverage-wiz](https://img.shields.io/badge/wizard_coverage-64%25-green)](#evidence) [![fuzz](https://img.shields.io/badge/fuzz_targets-7-blueviolet)](#evidence) [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
+[![tests](https://img.shields.io/badge/tests-534-blue)](services/) [![coverage-gw](https://img.shields.io/badge/gateway_coverage-80%25-brightgreen)](#evidence) [![coverage-wiz](https://img.shields.io/badge/wizard_coverage-64%25-green)](#evidence) [![fuzz](https://img.shields.io/badge/fuzz_targets-7-blueviolet)](#evidence) [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
 </div>
 
@@ -26,7 +26,7 @@ InstallerClaw wraps [OpenClaw](https://github.com/nicepkg/openclaw) (or any HTTP
 |----------|-------------|----------------------|
 | **Tinkerer** who just got OpenClaw running | It's exposed on a port with no auth, no rate limiting, no scanning | Gateway with HMAC auth, brute-force protection, 14-pattern prompt-injection scanner |
 | **Small-team admin** sharing an AI assistant | No audit trail, no MFA, users share one password | Wizard with session tokens, optional TOTP, per-action audit log |
-| **Security-conscious dev** who reads threat models | You want proof, not promises | 48 STRIDE threats documented, 530 tests, 7 fuzz targets, govulncheck in CI |
+| **Security-conscious dev** who reads threat models | You want proof, not promises | 48 STRIDE threats documented, 534 tests, 7 fuzz targets, govulncheck in CI |
 | **Ops person** who gets paged at 3 AM | Something broke, no runbook | 6 incident playbooks, backup/restore procedures, Grafana dashboards |
 
 ## What you get
@@ -48,7 +48,8 @@ InstallerClaw wraps [OpenClaw](https://github.com/nicepkg/openclaw) (or any HTTP
 ```bash
 git clone https://github.com/beautifulplanet/SafePaw.git
 cd SafePaw
-./start.sh          # Windows: start.bat | Demo: ./start.sh --demo
+# Windows: LAUNCH.bat  |  macOS/Linux: ./LAUNCH.sh  → press 2 for Demo
+./LAUNCH.sh
 ```
 
 **Windows:** Use **LAUNCH.bat** for a one-click menu (Full / Demo / Shut down / Show processes). Use **STOP-SAFEPAW.bat** for an emergency stop (can be shortcut on desktop).  
@@ -84,7 +85,7 @@ Every number in this README is provable. Run the commands yourself.
 
 | Claim | How to verify |
 |-------|--------------|
-| 530 Go tests (353 gateway + 177 wizard) | `cd services/gateway && go test ./... -count=1 -v \| grep -c "=== RUN"` — same for wizard |
+| 534 Go tests (346 gateway + 188 wizard) | `grep -rE '^func Test' services/gateway --include='*.go' | wc -l` (gateway); same path for wizard. Sum = 534. |
 | 7 fuzz targets | `make fuzz` or `grep -r "^func Fuzz" services/gateway/` |
 | Gateway coverage 80.5% (CI gate: >65%) | `cd services/gateway && go test -coverprofile=c.out ./... && go tool cover -func=c.out \| grep total` |
 | Wizard coverage 64.2% (CI gate: ≥60%) | Same command under `services/wizard` |
@@ -139,6 +140,7 @@ Everything deep lives in its own doc. The README is the routing table.
 
 | Document | What's in it |
 |----------|-------------|
+| [docs/PHONE-ACCESS.md](docs/PHONE-ACCESS.md) | Let people use their phone with OpenClaw — expose gateway, auth, tokens, CORS, TLS |
 | [RUNBOOK.md](RUNBOOK.md) | 6 incident playbooks — token compromise, injection detected, gateway down, brute force, secret rotation, disk full |
 | [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) | Backup and restore for Postgres, Redis, Docker volumes, `.env` |
 | [docs/SECRETS-MIGRATION.md](docs/SECRETS-MIGRATION.md) | Migration guide from env vars to Vault / external secrets |
@@ -196,6 +198,7 @@ InstallerClaw secures a single AI stack with depth, not breadth:
 - **Scanning is heuristic.** Pattern-based tripwires, not ML classifiers. Documented as a scope boundary in [THREAT-MODEL.md](THREAT-MODEL.md).
 - **Single-instance.** Designed for indie and small-team deployments. Enterprise can layer WAF and external IdP on top.
 - **Local-first.** No cloud dependencies at runtime. Your data stays on your machine.
+- **No data collection.** No analytics, no tracking, no phone-home. We don't have your data because we never collect it. [How to verify →](docs/NO-DATA-COLLECTION.md)
 
 ---
 
