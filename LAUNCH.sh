@@ -17,7 +17,9 @@ stack_status() {
     echo "Docker not available"
     return
   fi
-  if docker ps --filter "name=safepaw" -q 2>/dev/null | grep -q .; then
+  local q
+  q=$(docker ps --filter "name=safepaw" -q 2>/dev/null) || true
+  if [ -n "$q" ]; then
     echo "RUNNING"
   else
     echo "STOPPED"
@@ -70,7 +72,7 @@ health_check() {
 }
 
 run_full() {
-  if docker ps --filter "name=safepaw" -q 2>/dev/null | grep -q .; then
+  if [ -n "$(docker ps --filter "name=safepaw" -q 2>/dev/null)" ]; then
     echo ""
     echo "  Stack is already running. Use [3] to stop first, or [4] to see processes."
     echo "  Press Enter to return to menu..."
@@ -92,7 +94,7 @@ run_full() {
 }
 
 run_demo() {
-  if docker ps --filter "name=safepaw" -q 2>/dev/null | grep -q .; then
+  if [ -n "$(docker ps --filter "name=safepaw" -q 2>/dev/null)" ]; then
     echo ""
     echo "  Stack is already running. Use [3] to stop first, or [4] to see processes."
     echo "  Press Enter to return to menu..."
@@ -114,7 +116,7 @@ run_demo() {
 }
 
 do_shutdown() {
-  if docker ps --filter "name=safepaw" -q 2>/dev/null | grep -q .; then
+  if [ -n "$(docker ps --filter "name=safepaw" -q 2>/dev/null)" ]; then
     echo ""
     read -r -p "  Stack is running. Shut down all? [y/N]: " confirm
     if [[ ! "${confirm:-}" =~ ^[yY]$ ]]; then
@@ -137,7 +139,7 @@ show_processes() {
   echo "    SAFEPAW / OPENCLAW - RUNNING PROCESSES"
   echo "  ============================================================"
   echo ""
-  if ! docker ps --filter "name=safepaw" -q 2>/dev/null | grep -q .; then
+  if [ -z "$(docker ps --filter "name=safepaw" -q 2>/dev/null)" ]; then
     echo "  No SafePaw or OpenClaw containers running."
     echo "  Start the stack with [1] or [2] to see them here."
     echo ""

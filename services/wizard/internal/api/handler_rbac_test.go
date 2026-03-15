@@ -282,7 +282,9 @@ func TestAuthMe_ReturnsRole(t *testing.T) {
 			t.Errorf("GET /auth/me as %s: status = %d, want 200", role, rec.Code)
 			continue
 		}
-		var out struct{ Role string `json:"role"` }
+		var out struct {
+			Role string `json:"role"`
+		}
 		if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
 			t.Errorf("decode response: %v", err)
 			continue
