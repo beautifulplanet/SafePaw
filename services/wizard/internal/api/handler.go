@@ -172,7 +172,7 @@ func readSessionGenFile(path string) (gen uint64, storedHash string) {
 	if path == "" {
 		return 0, ""
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- path from sessionGenFilePath (operator config, not user input)
 	if err != nil {
 		return 0, ""
 	}
@@ -303,6 +303,10 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 // needsSetup returns true when critical configuration is missing.
 // Checks: at least one LLM API key must be configured.
 func (h *Handler) needsSetup() bool {
+	// E2E: skip setup so tests can reach prerequisites then dashboard
+	if os.Getenv("WIZARD_E2E") != "" {
+		return false
+	}
 	env, err := ReadEnvFile(h.cfg.EnvFilePath)
 	if err != nil {
 		// If we can't read the env file, setup is definitely needed
@@ -509,6 +513,10 @@ func (h *Handler) handlePrerequisites(w http.ResponseWriter, r *http.Request) {
 			allPass = false
 			break
 		}
+	}
+	// E2E: allow tests to reach dashboard without Docker (playwright sets WIZARD_E2E=1)
+	if os.Getenv("WIZARD_E2E") != "" {
+		allPass = true
 	}
 
 	writeJSON(w, http.StatusOK, prerequisitesResponse{

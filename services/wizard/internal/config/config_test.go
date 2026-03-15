@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -82,5 +83,44 @@ func TestGenerateSecurePassword(t *testing.T) {
 	p2, _ := generateSecurePassword(24)
 	if p1 == p2 {
 		t.Error("two generated passwords should be different")
+	}
+}
+
+func TestValidateConfig_PortOutOfRange(t *testing.T) {
+	os.Setenv("WIZARD_ADMIN_PASSWORD", "x")
+	os.Setenv("WIZARD_PORT", "0")
+	defer func() {
+		os.Unsetenv("WIZARD_ADMIN_PASSWORD")
+		os.Unsetenv("WIZARD_PORT")
+	}()
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should fail when WIZARD_PORT=0")
+	}
+	if !strings.Contains(err.Error(), "1-65535") {
+		t.Errorf("error should mention port range, got: %v", err)
+	}
+
+	os.Setenv("WIZARD_PORT", "65536")
+	_, err = Load()
+	if err == nil {
+		t.Fatal("Load() should fail when WIZARD_PORT=65536")
+	}
+	os.Unsetenv("WIZARD_PORT")
+}
+
+func TestValidateConfig_InvalidGatewayURL(t *testing.T) {
+	os.Setenv("WIZARD_ADMIN_PASSWORD", "x")
+	os.Setenv("GATEWAY_URL", "not-a-valid-url")
+	defer func() {
+		os.Unsetenv("WIZARD_ADMIN_PASSWORD")
+		os.Unsetenv("GATEWAY_URL")
+	}()
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should fail when GATEWAY_URL is invalid")
+	}
+	if !strings.Contains(err.Error(), "GATEWAY_URL") {
+		t.Errorf("error should mention GATEWAY_URL, got: %v", err)
 	}
 }
