@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -94,7 +95,27 @@ func Load() (*Config, error) {
 	}
 	cfg.SessionSecret = sessionSecret
 
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
 	return cfg, nil
+}
+
+// validateConfig checks port range and GatewayURL so misconfiguration fails at startup.
+func validateConfig(cfg *Config) error {
+	if cfg.Port < 1 || cfg.Port > 65535 {
+		return fmt.Errorf("WIZARD_PORT must be 1-65535, got %d", cfg.Port)
+	}
+	if cfg.GatewayURL != "" {
+		u, err := url.Parse(cfg.GatewayURL)
+		if err != nil {
+			return fmt.Errorf("GATEWAY_URL invalid: %w", err)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("GATEWAY_URL must have a host (e.g. http://host:port), got %q", cfg.GatewayURL)
+		}
+	}
+	return nil
 }
 
 // generateSecurePassword creates a cryptographically random hex string.
