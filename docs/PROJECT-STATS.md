@@ -19,7 +19,7 @@ Numbers you can verify. Update this file when counts change.
 
 | Claim | How to verify |
 |-------|----------------|
-| **530 Go tests** (353 gateway + 177 wizard) | `cd services/gateway && go test ./... -count=1 -v 2>&1 | grep -c "=== RUN"` (gateway); same for wizard. See README § Evidence. |
+| **534 Go tests** (346 gateway + 188 wizard) | `cd services/gateway && go test ./... -count=1 -v 2>&1 | grep -c "=== RUN"` (gateway); same for wizard. See README § Evidence. |
 | **7 fuzz targets** | `grep -r "^func Fuzz" services/gateway/` or `make fuzz`. |
 | **CI** | GitHub Actions run gateway tests, wizard tests, lint, security, Docker build, OpenClaw compat, launcher smoke (`printf 'Q\n' \| ./LAUNCH.sh`). |
 
@@ -27,7 +27,7 @@ Numbers you can verify. Update this file when counts change.
 
 ## Total time to build SafePaw (from scratch)
 
-Rough estimate for **the full project** (gateway, wizard, Compose stack, STRIDE threat model, 6 runbooks, backup/restore, 530 tests, fuzz, CI, launcher, docs):
+Rough estimate for **the full project** (gateway, wizard, Compose stack, STRIDE threat model, 6 runbooks, backup/restore, 534 tests, fuzz, CI, launcher, docs):
 
 | Team size | Total time (order of magnitude) |
 |-----------|----------------------------------|
@@ -35,7 +35,7 @@ Rough estimate for **the full project** (gateway, wizard, Compose stack, STRIDE 
 | **Small team (2–3)** | **5–8 months** (parallel work on gateway vs wizard, shared ops/docs). |
 | **With dedicated PM/security reviewer** | Add **1–2 months** for threat model, runbooks, and sign-off. |
 
-Includes: Go gateway (auth, rate limits, 14-pattern scanner, output scanner, metrics, revocation); Go wizard + embedded React 19 (login, TOTP, dashboard, .env UI, audit); Docker Compose (5 services, health checks); 48-threat STRIDE model; 6 incident runbooks; backup/restore procedures; 530 tests + 7 fuzz targets; CI (build, test, lint, gosec, govulncheck, Docker, launcher smoke); launcher (menu, emergency stop, port/CHANGE_ME checks, health [5], logging).
+Includes: Go gateway (auth, rate limits, 14-pattern scanner, output scanner, metrics, revocation); Go wizard + embedded React 19 (login, TOTP, dashboard, .env UI, audit); Docker Compose (5 services, health checks); 48-threat STRIDE model; 6 incident runbooks; backup/restore procedures; 534 tests + 7 fuzz targets; CI (build, test, lint, gosec, govulncheck, Docker, launcher smoke); launcher (menu, emergency stop, port/CHANGE_ME checks, health [5], logging).
 
 ---
 
