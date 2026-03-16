@@ -1,0 +1,5 @@
+# Normalize line endings for CI (go mod tidy check)
+go.mod text eol=lf
+go.sum text eol=lf
+**/go.mod text eol=lf
+**/go.sum text eol=lf
