@@ -1,10 +1,12 @@
 <div align="center">
 
-<img src="beautifulplanet/android-chrome-192x192.png" alt="InstallerClaw" width="80" />
+<img src="beautifulplanet/android-chrome-192x192.png" alt="SafePaw Gateway" width="80" />
 
-# InstallerClaw
+# SafePaw Gateway
 
 **The security perimeter for self-hosted AI assistants.**
+
+**Free, open-source OpenClaw security gateway — sandboxed execution with a documented threat model.**
 
 No cloud. No accounts. No telemetry. **We don't collect your data — at all.** You can scan the repo to verify; see [docs/NO-DATA-COLLECTION.md](docs/NO-DATA-COLLECTION.md). Just a gateway, a wizard, and 534 tests.
 
