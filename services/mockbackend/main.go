@@ -10,6 +10,8 @@
 //
 // Endpoints:
 //   GET  /health              → 200 OK (gateway health check)
+//   GET  /v1/models          → 200 OK minimal OpenAI-style models list (for Cursor/demo)
+//   POST /v1/chat/completions → 200 OK minimal OpenAI-style chat response (for Cursor/demo)
 //   GET  /echo                → 200 + query/headers echoed as JSON
 //   POST /echo                → 200 + body echoed (for body-scanner tests)
 //   GET  /status/:code        → status code (e.g. /status/500)
@@ -49,6 +51,8 @@ h1{color:#0ff}li{margin:8px 0}</style></head>
 <p>Available endpoints for T6/T7 gateway integration testing:</p>
 <ul>
 <li><a href="/health">GET /health</a> &mdash; 200 OK health check</li>
+<li><a href="/v1/models">GET /v1/models</a> &mdash; OpenAI-style model list (Cursor demo)</li>
+<li>POST /v1/chat/completions &mdash; OpenAI-style chat stub (Cursor demo)</li>
 <li><a href="/echo?foo=bar">GET /echo</a> &mdash; echo query + headers as JSON</li>
 <li>POST /echo &mdash; echo body as JSON</li>
 <li><a href="/status/200">GET /status/:code</a> &mdash; return any HTTP status (<a href="/status/404">404</a>, <a href="/status/500">500</a>)</li>
@@ -64,6 +68,19 @@ h1{color:#0ff}li{margin:8px 0}</style></head>
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok","service":"mockbackend"}`))
+	})
+
+	// Minimal OpenAI-compatible stubs for Cursor → SafePaw → backend demo
+	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"id":"openclaw:main","object":"model"}]}`))
+	})
+	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Minimal valid OpenAI chat completions response (non-streaming)
+		w.Write([]byte(`{"id":"demo-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"SafePaw demo: request reached the backend through the gateway."},"finish_reason":"stop"}]}`))
 	})
 
 	mux.HandleFunc("GET /echo", echoHandler)

@@ -140,6 +140,66 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# --- Phase 2: Auth and rate limit (restart gateway with AUTH_ENABLED=true) ---
+kill "$GATEWAY_PID" 2>/dev/null || true
+GATEWAY_PID=""
+sleep 1
+
+AUTH_SECRET_INTTEST="integration-test-secret-32-bytes-long!!"
+export PROXY_TARGET="http://localhost:$MOCK_PORT"
+export AUTH_ENABLED="true"
+export AUTH_SECRET="$AUTH_SECRET_INTTEST"
+export GATEWAY_PORT="$GATEWAY_PORT"
+export RATE_LIMIT="2"
+export RATE_LIMIT_WINDOW_SEC="60"
+"$SAFEPAW_ROOT/services/gateway/gateway" &
+GATEWAY_PID=$!
+for i in $(seq 1 15); do
+  if curl -s -o /dev/null --connect-timeout 1 "$GATEWAY_URL/health" 2>/dev/null; then break; fi
+  [ $i -eq 15 ] && { red "Gateway (auth on) did not start"; exit 1; }
+  sleep 0.5
+done
+
+# 6. Without token: protected path returns 401
+code=$(curl -s -o /dev/null -w "%{http_code}" "$GATEWAY_URL/echo")
+if [ "$code" = "401" ]; then
+  green "Auth: /echo without token returns 401"
+  PASS=$((PASS+1))
+else
+  red "Auth: /echo without token got $code (want 401)"
+  FAIL=$((FAIL+1))
+fi
+
+# 7. With valid token: 200
+TOKEN=$(cd "$SAFEPAW_ROOT/services/gateway" && AUTH_SECRET="$AUTH_SECRET_INTTEST" go run ./tools/tokengen -sub inttest -scope proxy 2>/dev/null | tail -1)
+if [ -z "$TOKEN" ]; then
+  red "Auth: could not generate token (tokengen failed)"
+  FAIL=$((FAIL+1))
+else
+  code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "$GATEWAY_URL/echo")
+  if [ "$code" = "200" ]; then
+    green "Auth: /echo with token returns 200"
+    PASS=$((PASS+1))
+  else
+    red "Auth: /echo with token got $code (want 200)"
+    FAIL=$((FAIL+1))
+  fi
+fi
+
+# 8. Rate limit: 3rd request from same IP returns 429 (RATE_LIMIT=2)
+if [ -n "$TOKEN" ]; then
+  code1=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "$GATEWAY_URL/echo")
+  code2=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "$GATEWAY_URL/echo")
+  code3=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "$GATEWAY_URL/echo")
+  if [ "$code3" = "429" ]; then
+    green "Rate limit: 3rd request returns 429"
+    PASS=$((PASS+1))
+  else
+    red "Rate limit: 3rd request got $code3 (want 429; got $code1 $code2 $code3)"
+    FAIL=$((FAIL+1))
+  fi
+fi
+
 echo ""
 echo "Result: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

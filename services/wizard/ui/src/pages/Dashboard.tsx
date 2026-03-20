@@ -176,7 +176,7 @@ export function Dashboard({ onOpenActivity, onOpenSettings }: DashboardProps) {
 
       {/* Getting Started (show on fresh installs when no conversations yet) */}
       {metrics && metrics.total_requests === 0 && (
-        <GettingStartedCard onChat={role === 'admin' ? handleOpenAssistant : undefined} onOpenSettings={role !== 'viewer' ? onOpenSettings : undefined} />
+        <GettingStartedCard onChat={role === 'admin' ? () => { void handleOpenAssistant() } : undefined} onOpenSettings={role !== 'viewer' ? onOpenSettings : undefined} />
       )}
 
       {/* No-API-key banner (usage unavailable but system running) */}
@@ -372,7 +372,7 @@ function EmptyState() {
   )
 }
 
-function GettingStartedCard({ onChat, onOpenSettings }: { onChat: () => void; onOpenSettings?: () => void }) {
+function GettingStartedCard({ onChat, onOpenSettings }: { onChat?: () => void; onOpenSettings?: () => void }) {
   return (
     <div className="card mb-8 card-enter" style={{ animationDelay: '60ms' }}>
       <div className="flex items-center gap-3 mb-4">
@@ -383,11 +383,13 @@ function GettingStartedCard({ onChat, onOpenSettings }: { onChat: () => void; on
         Your AI is up and running! Here are 3 things to try:
       </p>
       <div className="grid sm:grid-cols-3 gap-4">
-        <button onClick={onChat} className="text-left p-4 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-paw-600/50 transition-colors group">
-          <div className="text-lg mb-2">💬</div>
-          <p className="text-sm font-medium text-gray-200 group-hover:text-paw-400 transition-colors">Send a message</p>
-          <p className="text-xs text-gray-500 mt-1">Open the chat and talk to your AI</p>
-        </button>
+        {onChat && (
+          <button onClick={onChat} className="text-left p-4 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-paw-600/50 transition-colors group">
+            <div className="text-lg mb-2">💬</div>
+            <p className="text-sm font-medium text-gray-200 group-hover:text-paw-400 transition-colors">Send a message</p>
+            <p className="text-xs text-gray-500 mt-1">Open the chat and talk to your AI</p>
+          </button>
+        )}
         {onOpenSettings && (
           <button onClick={onOpenSettings} className="text-left p-4 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-paw-600/50 transition-colors group">
             <div className="text-lg mb-2">🔌</div>
@@ -652,6 +654,13 @@ function CostAnalyticsPanel({ history, models, trends }: {
             <span className="text-[10px] text-gray-600">{daily[0]?.date}</span>
           </div>
         </div>
+      )}
+
+      {/* Heartbeat waste tip: high request count, low tokens per request */}
+      {modelAgg.some((m) => m.requestCount >= 50 && m.totalTokens > 0 && m.totalTokens / m.requestCount < 300) && (
+        <p className="text-xs text-amber-500/90 mb-4 rounded px-2 py-1.5 bg-amber-500/10 border border-amber-500/20">
+          💡 One or more models have many requests but few tokens per request — often health checks or heartbeats. Consider routing those to a cheaper model to cut cost.
+        </p>
       )}
 
       {/* Per-model breakdown */}

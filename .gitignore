@@ -81,3 +81,6 @@ coverage.out
 # 10. Context offload — local only, never push (avoids losing context to compaction)
 WORKSTATE.md
 CONTEXT-OFFLOAD.md
+
+# 11. Local workflow directives — personal to this machine, never push
+AGENTS.md

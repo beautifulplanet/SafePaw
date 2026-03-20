@@ -186,6 +186,26 @@ Verify: `crontab -l | grep safepaw`
 
 ---
 
+## Restore verification (O3)
+
+**Why:** Backups are useless if they don't restore. Run a non-destructive check regularly so you know your encrypted backup is decryptable and contains the expected artifacts.
+
+**Encrypted backups:** Use `scripts/backup-encrypted.sh` to create a GPG-encrypted archive (AES-256). Requires `BACKUP_PASSPHRASE`. Output: `backups/safepaw_backup_<timestamp>.tar.gz.gpg`.
+
+**Verify without restoring:** Run `scripts/restore-verify.sh` against a `.tar.gz.gpg` file. It decrypts, extracts to a temp dir, checks for Postgres dump, Redis RDB, and `.env` backup, and verifies wrong passphrase is rejected. It does **not** overwrite any live data.
+
+```bash
+# After creating an encrypted backup:
+BACKUP_PASSPHRASE="<your-passphrase>" ./scripts/restore-verify.sh backups/safepaw_backup_YYYYMMDD_HHMM.tar.gz.gpg
+
+# Or let the script find the latest .gpg in backups/:
+BACKUP_PASSPHRASE="<your-passphrase>" ./scripts/restore-verify.sh
+```
+
+**Recommended:** Run restore-verify at least monthly (e.g. after a backup) or after any change to backup scripts. Store the passphrase in a secrets manager or secure vault; do not commit it.
+
+---
+
 ## Disaster Recovery (full stack on new host)
 
 1. Install Docker and Docker Compose; clone or copy the SafePaw repo (and any custom config).

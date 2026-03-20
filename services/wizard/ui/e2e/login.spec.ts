@@ -41,4 +41,18 @@ test.describe('Login page', () => {
     await expect(page.locator('h2')).toHaveText('Welcome to SafePaw');
     await expect(page.locator('#password')).toBeVisible();
   });
+
+  // Professor-grade: brute-force protection — 5 wrong passwords trigger lockout (429).
+  // Server uses NewLoginGuard(5, 1min, 15min). We submit 6 times so we definitely hit lockout
+  // even if another test (same IP, shared server) already recorded failures.
+  test('lockout after 5 wrong passwords', async ({ page }) => {
+    await page.goto('/');
+    const wrongPassword = 'wrong-password-e2e';
+    for (let i = 0; i < 6; i++) {
+      await page.locator('#password').fill(wrongPassword);
+      await page.getByRole('button', { name: 'Sign In' }).click();
+      await page.waitForTimeout(600); // server has 500ms delay on failure/lockout response
+    }
+    await expect(page.getByText(/too many|locked out/i)).toBeVisible({ timeout: 5_000 });
+  });
 });
