@@ -1,11 +1,11 @@
 # SafePaw Security
 
-Security operations, incident response, and hardening guidance for SafePaw (NOPEnclaw).
+Security operations, incident response, and hardening guidance for SafePaw.
 
 **Related documents:**
 - [RUNBOOK.md](RUNBOOK.md) — Operational playbooks for 6 incident types (token compromise, injection, gateway down, brute force, rotation, disk)
 - [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) — Backup and restore procedures for Postgres, Redis, and volumes
-- [THREAT-MODEL.md](THREAT-MODEL.md) — STRIDE threat analysis (27 identified threats, all mitigated)
+- [THREAT-MODEL.md](THREAT-MODEL.md) — STRIDE threat analysis (48 identified threats, all mitigated)
 - [SCOPE-IMPROVEMENTS.md](SCOPE-IMPROVEMENTS.md) — Triage of review feedback (what’s done vs. open) and prioritized improvement backlog
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Development workflow, coding standards, security review checklist
 
@@ -139,7 +139,7 @@ Token revocation is now implemented as an in-memory revocation list in the gatew
 
 ## 7. Automated Testing
 
-- **Gateway tests (195 tests):** Comprehensive suite covering:
+- **Gateway tests (346 tests):** Comprehensive suite covering:
   - Body scanner: prompt injection risk levels (none/low/medium/high), pattern triggers, content type validation, channel validation, metadata sanitization, XSS stripping, control character handling
   - Auth middleware: token creation/validation, expiry, wrong secret, scope enforcement, admin bypass, query param vs Bearer header, optional auth
   - Token revocation: revoke and check, different subjects, revoked token rejection, post-revocation token acceptance
@@ -151,8 +151,8 @@ Token revocation is now implemented as an in-memory revocation list in the gatew
   - Prometheus metrics: recording, serving, connection gauge, path normalization
   - Config loading: defaults, custom port, invalid target, auth enabled/disabled, TLS, origins, rate limit, env helpers
   - **7 fuzz targets** (46 seed corpus entries): prompt injection, XSS sanitize, control chars, channel validation, output scan, token create/validate, KV parser
-- **Wizard tests (55+ tests):** Session tokens (JTI nonce), TOTP/MFA (RFC vector, clock skew), middleware (auth 9 cases, CORS 5, rate limit 4), API (health, login with/without MFA, prerequisites, config, restart, SPA fallback), config loading, audit logging
-- **Total: 250 tests + 7 fuzz targets across the project**
+- **Wizard tests (188 tests):** Session tokens (JTI nonce), TOTP/MFA (RFC vector, clock skew), middleware (auth, CORS, rate limit, RBAC), API (health, login with/without MFA, prerequisites, config, restart, SPA fallback, gateway proxy, cost history, setup), config loading, audit logging, session generation
+- **Total: 534 tests + 7 fuzz targets across the project**
 - **E2E:** `scripts/verify-deployment.sh` validates a live deployment (Docker containers, health endpoints, security headers, rate limiting, body scanner, auth, metrics)
 - **CI pipeline (GitHub Actions):** 5 parallel jobs on every push/PR:
   1. **Gateway build + test** — `go test -race` with coverage reporting + coverage threshold (>60%) + fuzz seed corpus
@@ -283,7 +283,7 @@ Before a release, run `make vulncheck` and `make lint` from the safepaw root and
 | Logging | §2 Logging; request ID and event table. |
 | Defense in depth | §3; OpenClaw not exposed when gateway fails. Output scanning added. |
 | Prompt injection updates | §6; pattern review and ML note. |
-| Automated testing | §7; 101 tests total. E2E verification script added. |
+| Automated testing | §7; 534 tests + 7 fuzz targets. E2E verification script added. |
 | Documentation | §8; security config and incident response. |
 | Wizard UX / best practices | §9; password, auth, TLS, rate limit. Secure cookies added. |
 | Design boundaries / adoption | §10 Design boundaries and adoption considerations. |

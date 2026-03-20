@@ -1,11 +1,11 @@
 ========================================
-InstallerClaw demo — what I did for you
+SafePaw demo — what I did for you
 ========================================
 
 1. CREATED YOUR .env FILE
    - Demo wizard password: DemoPassword123!
    - Auth is off so you can open the gateway in the browser without tokens.
-   - All in:  NOPEnclaw\beautifulplanet\safepaw\.env
+   - All in:  safepaw\.env
 
 2. YOU ONLY NEED TO DO 2 THINGS
    A) Start Docker Desktop (from Start menu). Wait until it says "Docker Desktop is running".
