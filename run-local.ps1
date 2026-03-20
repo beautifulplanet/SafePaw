@@ -49,7 +49,9 @@ Start-Sleep -Seconds 1
 
 # Start wizard
 Write-Host "[3/3] Starting wizard on :3000" -ForegroundColor Green
-$env:WIZARD_ADMIN_PASSWORD = "DemoPassword123!"
+$chars = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()-_=+"
+$localWizardPassword = -join (1..16 | ForEach-Object { $chars[(Get-Random -Minimum 0 -Maximum $chars.Length)] })
+$env:WIZARD_ADMIN_PASSWORD = $localWizardPassword
 $env:WIZARD_PORT = "3000"
 $env:SECURE_COOKIES = "false"
 $env:OPENCLAW_HEALTH_URL = "http://localhost:18789/health"
@@ -63,7 +65,7 @@ Write-Host "  ALL RUNNING" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Wizard:   http://localhost:3000" -ForegroundColor White
-Write-Host "  Password: DemoPassword123!" -ForegroundColor Yellow
+Write-Host "  Password: $localWizardPassword" -ForegroundColor Yellow
 Write-Host "  Gateway:  http://localhost:8080/health" -ForegroundColor White
 Write-Host "  Backend:  http://localhost:18789" -ForegroundColor White
 Write-Host ""

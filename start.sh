@@ -30,6 +30,13 @@ fail()  { echo -e "${RED}✗${NC} $*"; exit 1; }
 # ── Parse args ────────────────────────────────────────────────
 
 MODE="full"
+DEMO_WIZARD_PASSWORD=""
+
+generate_password() {
+  # Exclude quote/backslash characters to avoid shell and env parsing issues.
+  tr -dc 'A-Za-z0-9!@#$%^&*()_+=-[]{}' </dev/urandom | head -c 16
+}
+
 for arg in "$@"; do
   case "$arg" in
     --demo)  MODE="demo" ;;
@@ -164,19 +171,31 @@ fi
 if [ "$MODE" = "demo" ]; then
   info "Starting demo mode (no API key needed)..."
   COMPOSE_FILE="docker-compose.demo.yml"
+  DEMO_WIZARD_PASSWORD="$(generate_password)"
 else
   info "Building and starting services (first run takes ~90s)..."
   COMPOSE_FILE="docker-compose.yml"
 fi
 
-docker compose -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; do
-  # Show progress but filter noise
-  case "$line" in
-    *"pulling"*|*"Building"*|*"Created"*|*"Started"*|*"running"*)
-      echo -e "  ${CYAN}${line}${NC}"
-      ;;
-  esac
-done
+if [ "$MODE" = "demo" ]; then
+  WIZARD_ADMIN_PASSWORD="$DEMO_WIZARD_PASSWORD" docker compose -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; do
+    # Show progress but filter noise
+    case "$line" in
+      *"pulling"*|*"Building"*|*"Created"*|*"Started"*|*"running"*)
+        echo -e "  ${CYAN}${line}${NC}"
+        ;;
+    esac
+  done
+else
+  docker compose -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; do
+    # Show progress but filter noise
+    case "$line" in
+      *"pulling"*|*"Building"*|*"Created"*|*"Started"*|*"running"*)
+        echo -e "  ${CYAN}${line}${NC}"
+        ;;
+    esac
+  done
+fi
 # Check if docker compose failed (PIPESTATUS[0] holds its exit code)
 COMPOSE_EXIT=${PIPESTATUS[0]}
 if [ "${COMPOSE_EXIT:-0}" -ne 0 ]; then
@@ -213,7 +232,7 @@ echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "  ${BOLD}Wizard:${NC}   http://localhost:3000"
 
 if [ "$MODE" = "demo" ]; then
-  echo -e "  ${BOLD}Password:${NC} DemoPassword123!"
+  echo -e "  ${BOLD}Password:${NC} ${DEMO_WIZARD_PASSWORD}"
 else
   # Extract password from .env
   PW=$(grep "^WIZARD_ADMIN_PASSWORD=" .env 2>/dev/null | cut -d= -f2- || echo "")

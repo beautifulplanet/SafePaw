@@ -18,7 +18,7 @@ services:
     environment:
       WIZARD_PORT: "3000"
       WIZARD_BIND_ADDR: "0.0.0.0"  # Inside container; host port locked to 127.0.0.1 below
-      WIZARD_ADMIN_PASSWORD: ${WIZARD_ADMIN_PASSWORD:-DemoPassword123!}
+      WIZARD_ADMIN_PASSWORD: ${WIZARD_ADMIN_PASSWORD:-SET_VIA_START_SCRIPT_OR_ENV}
       SECURE_COOKIES: "false"
       OPENCLAW_HEALTH_URL: "http://mockbackend:18789/health"
       DOCKER_HOST: "tcp://docker-socket-proxy:2375"

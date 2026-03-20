@@ -9,6 +9,8 @@ echo   3 services, minimal resources
 echo ========================================
 echo.
 
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "-join((1..16) | ForEach-Object { [char](Get-Random -InputObject ('abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%%^&*()-_=+') ) })"`) do set DEMO_WIZ_PW=%%i
+set "WIZARD_ADMIN_PASSWORD=%DEMO_WIZ_PW%"
 docker compose -f docker-compose.demo.yml up -d --build
 if errorlevel 1 (
     echo.
@@ -33,7 +35,7 @@ start http://localhost:3000
 echo.
 echo ========================================
 echo   Wizard:   http://localhost:3000
-echo   Password: DemoPassword123!
+echo   Password: %DEMO_WIZ_PW%
 echo   Gateway:  http://localhost:8080/health
 echo ========================================
 echo.

@@ -57,7 +57,9 @@ if "%MODE%"=="full" (
 :: ── Launch ──────────────────────────────────────────────────
 
 if "%MODE%"=="demo" (
+    for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "-join((1..16) | ForEach-Object { [char](Get-Random -InputObject ('abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%%^&*()-_=+') ) })"`) do set DEMO_WIZ_PW=%%i
     echo Starting demo mode...
+    set "WIZARD_ADMIN_PASSWORD=%DEMO_WIZ_PW%"
     docker compose -f docker-compose.demo.yml up -d --build
 ) else (
     echo Building and starting services (first run takes ~90s^)...
@@ -117,7 +119,7 @@ echo.
 echo ==========================================
 if "%MODE%"=="demo" (
     echo   Wizard:   http://localhost:3000
-    echo   Password: DemoPassword123!
+    echo   Password: %DEMO_WIZ_PW%
 ) else (
     echo   Wizard:   http://localhost:3000
     for /f "tokens=1,* delims==" %%a in ('findstr "^WIZARD_ADMIN_PASSWORD=" .env 2^>nul') do echo   Password: %%b

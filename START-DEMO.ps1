@@ -17,6 +17,9 @@ if ($args -contains "--stop") {
 }
 
 if ($mode -eq "demo") {
+    $chars = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()-_=+"
+    $demoPassword = -join (1..16 | ForEach-Object { $chars[(Get-Random -Minimum 0 -Maximum $chars.Length)] })
+    $env:WIZARD_ADMIN_PASSWORD = $demoPassword
     Write-Host "Starting demo (SafePaw only, no API key)..." -ForegroundColor Cyan
     docker compose -f docker-compose.demo.yml up -d --build
 } else {
@@ -33,7 +36,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "`nDone. Wait about 30-60 seconds for everything to be ready." -ForegroundColor Green
 Write-Host "`nWizard:  http://localhost:3000" -ForegroundColor White
 if ($mode -eq "demo") {
-    Write-Host "Password: DemoPassword123!" -ForegroundColor Yellow
+    Write-Host "Password: $demoPassword" -ForegroundColor Yellow
 } else {
     Write-Host "Password: check .env WIZARD_ADMIN_PASSWORD or docker compose logs wizard" -ForegroundColor Gray
 }

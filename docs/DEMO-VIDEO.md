@@ -18,7 +18,7 @@ Use this script to record a short, professional demo showing **SafePaw** running
   ./scripts/demo-prep.sh
   # Then: cp .env.demo .env   (only for recording; use your real .env otherwise)
   ```
-  **Windows:** Run `demo-prep.sh` in Git Bash or WSL, or manually: copy `.env.example` to `.env`, set `WIZARD_ADMIN_PASSWORD=DemoPassword123!` and `AUTH_ENABLED=false` so you can log in and hit the gateway without tokens.
+  **Windows:** Run `demo-prep.sh` in Git Bash or WSL, or manually: copy `.env.example` to `.env`, set a temporary `WIZARD_ADMIN_PASSWORD` and `AUTH_ENABLED=false` so you can log in and hit the gateway without tokens.
 
   Or manually: set `WIZARD_ADMIN_PASSWORD=YourDemoPassword` in `.env` so you can log in without reading logs. For a simpler gateway segment, you can set `AUTH_ENABLED=false` in `.env` **only for the demo** (so you can hit the gateway without generating a token).
 

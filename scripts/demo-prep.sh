@@ -25,8 +25,8 @@ if [ ! -f "$ENV_EXAMPLE" ]; then
   exit 1
 fi
 
-# Demo password: known for video, never use in production
-WIZARD_DEMO_PASSWORD="DemoPassword123!"
+# Demo password: generated per run for safer recordings
+WIZARD_DEMO_PASSWORD="$(openssl rand -base64 18 | tr -d '=+/' | head -c 16)"
 REDIS_DEMO="demo-redis-password-$(openssl rand -hex 8)"
 POSTGRES_DEMO="demo-postgres-password-$(openssl rand -hex 8)"
 AUTH_DEMO="demo-auth-secret-$(openssl rand -hex 24)"
@@ -46,7 +46,7 @@ fi
 
 echo "Created: $ENV_DEMO"
 echo ""
-echo "Demo wizard login password: $WIZARD_DEMO_PASSWORD"
+echo "Demo wizard login password (generated): $WIZARD_DEMO_PASSWORD"
 echo "Gateway auth is DISABLED (AUTH_ENABLED=false) so you can hit :8080 without a token."
 echo ""
 echo "For recording:"
