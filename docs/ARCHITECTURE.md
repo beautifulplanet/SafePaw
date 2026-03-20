@@ -44,8 +44,8 @@ The gateway is a security-hardened reverse proxy. Every request to OpenClaw pass
 | Token revocation | Redis-backed persistent revocation list |
 | Rate limiting | Per-IP sliding window with configurable threshold |
 | Brute-force protection | IP banning with escalating durations (5m → 15m → 60m → 240m) |
-| Prompt injection scanning | 14 heuristic patterns with risk levels (none/low/medium/high) |
-| Output scanning | XSS, secret leak, encoding evasion detection |
+| Prompt injection scanning | 14 heuristic patterns on HTTP `POST/PUT/PATCH` with `application/json` body only. WebSocket chat messages are **not** scanned by the body scanner — they bypass this layer after the initial HTTP upgrade. |
+| Output scanning | XSS, secret leak, encoding evasion detection on **HTTP responses only**. WebSocket streams are scanned and risk-logged but passed through unmodified — modifying payload bytes without updating binary frame headers would corrupt the stream and cause client failures. See `output_scanner.go` for the documented trade-off. |
 | Security headers | HSTS, CSP, X-Frame-Options, X-Content-Type-Options |
 | Request IDs | Server-generated UUID (client headers ignored) |
 | Metrics | Prometheus-compatible text format at `/metrics` |

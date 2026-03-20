@@ -20,9 +20,11 @@ No cloud. No accounts. No telemetry. **We don't collect your data — at all.** 
 
 ## What is this?
 
-InstallerClaw wraps [OpenClaw](https://github.com/nicepkg/openclaw) (or any HTTP backend) in a hardened local perimeter: a **Go reverse-proxy gateway** with auth, rate limiting, and prompt-injection scanning, plus a **React wizard** for setup, monitoring, and admin. Everything runs in Docker Compose on your machine. Nothing phones home.
+Most self-hosted AI backends ship with security features that are **opt-in and scattered across docs**. Auth needs manual setup. Rate limiting needs configuration. SSRF and brute-force protection require knowing they exist first. Most people skip it and run exposed.
 
-**Think of it as a firewall for your AI stack** — if you self-host an assistant and don't want it naked on the network, this is the missing layer.
+InstallerClaw makes the secure path the easy path. It wraps [OpenClaw](https://github.com/nicepkg/openclaw) (or any HTTP backend) in a hardened local perimeter — a **Go reverse-proxy gateway** with auth, rate limiting, and prompt-injection scanning, plus a **React wizard** for setup, monitoring, and admin — and ships with **secure defaults on**: auth enforced, rate limiting active, brute-force protection on, output scanning running. Everything runs in Docker Compose on your machine with a single command. Nothing phones home.
+
+**Think of it as the deadbolt kit for your AI stack** — pre-configured, pre-tested, secure out of the box. Not because your backend is broken. Because hardening it yourself takes expertise most people don't have and time nobody wants to spend.
 
 ## Who needs this?
 
@@ -195,10 +197,33 @@ Heuristic pattern-matching — 14 patterns for prompt injection, plus an output 
 
 ---
 
+## What SafePaw does NOT cover
+
+SafePaw is a **transport-layer perimeter**. It secures the path between clients and the AI backend. It does not sandbox what happens inside the backend or on the host.
+
+| Threat | SafePaw coverage |
+|--------|-----------------|
+| Unauthenticated access to the AI backend | ✅ Blocked (HMAC auth + brute-force IP bans) |
+| Credential stuffing / brute force | ✅ Blocked (rate limiting + escalating bans) |
+| Prompt injection in HTTP request bodies | ✅ Flagged (14-pattern heuristic scanner) |
+| XSS / secret leaks in HTTP responses | ✅ Sanitized (output scanner) |
+| WebSocket stream injection/exfiltration | ⚠️ Logged only — not blocked (see note below) |
+| Agent executing dangerous host tool calls | ❌ Out of scope — transport layer only |
+| Browser SSRF to cloud metadata endpoints | ❌ Out of scope — host/browser sandbox layer |
+| Arbitrary JS execution via browser tools | ❌ Out of scope — backend sandbox responsibility |
+| Plugin/hook filesystem integrity | ❌ Out of scope — host-level controls |
+
+**WebSocket note:** Output sanitization (stripping XSS, secret leak patterns) applies to HTTP responses only. WebSocket streams are scanned and logged but passed through unmodified — modifying payload bytes without updating binary frame headers corrupts the stream. This is a documented design trade-off in `services/gateway/middleware/output_scanner.go`. Most real-time AI chat traffic flows over WebSocket. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+
+**SafePaw secures the front door. It does not sandbox what happens inside the house.** For host-level and agent-level sandboxing, configure your backend's sandbox mode and run it in Docker with restricted capabilities.
+
+---
+
 ## Design boundaries
 
 InstallerClaw secures a single AI stack with depth, not breadth:
 
+- **Transport-layer scope.** Auth, rate limiting, scanning, and audit logging at the HTTP/WebSocket boundary. Host-level and agent-level controls are out of scope by design.
 - **Scanning is heuristic.** Pattern-based tripwires, not ML classifiers. Documented as a scope boundary in [THREAT-MODEL.md](THREAT-MODEL.md).
 - **Single-instance.** Designed for indie and small-team deployments. Enterprise can layer WAF and external IdP on top.
 - **Local-first.** No cloud dependencies at runtime. Your data stays on your machine.

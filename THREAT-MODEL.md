@@ -135,7 +135,20 @@ WebSocket streams are scanned in real-time via `ScanningReader`.
 
 ---
 
-## 4. Residual Risks & Known Gaps
+## 4. Explicit Out-of-Scope Threats
+
+The following threat classes are **outside SafePaw's scope by design**. They are documented here so reviewers understand the boundary, not because they are unknown.
+
+| Threat | Why out of scope | Recommended control |
+|--------|-----------------|---------------------|
+| **Agent-mediated tool authorization** — a successful prompt injection causes the AI to call dangerous tools (e.g. shell exec, file delete) via legitimate-looking authenticated WebSocket traffic | SafePaw operates at the transport layer. It cannot distinguish "user asks agent to delete files" from "injected prompt tells agent to delete files" — both are valid authenticated WS frames. | Configure backend sandbox mode; restrict which tools are enabled in your AI stack. |
+| **Browser SSRF to internal/cloud-metadata targets** (e.g. `169.254.169.254`) | The AI backend's browser tool makes outbound connections. SafePaw proxies inbound client traffic only; it has no control over outbound requests the backend initiates. | Enable SSRF policy controls in your AI backend; restrict outbound network access at the Docker/firewall level. |
+| **Host-level privilege escalation via tool calls** | Tool execution happens inside the AI backend, not through the gateway. | Run the backend in Docker with restricted capabilities (`--cap-drop ALL`, `--read-only`, no privileged flag). |
+| **Arbitrary JS execution via `eval`/`new Function()` in browser automation** | Browser automation internals are a backend implementation detail beyond the transport boundary. | Run the AI backend in a sandboxed environment; use browser profiles with restricted permissions. |
+
+---
+
+## 5. Residual Risks & Known Gaps
 
 > **Last updated**: 2026-03-10 (PL2 proxy signing, PL3 browsing threats)
 
@@ -155,7 +168,7 @@ WebSocket streams are scanned in real-time via `ScanningReader`.
 
 ---
 
-## 5. Review Schedule
+## 6. Review Schedule
 
 - **Quarterly**: Review STRIDE table against new features
 - **On incident**: Update residual risks and mitigations
@@ -164,7 +177,7 @@ WebSocket streams are scanned in real-time via `ScanningReader`.
 
 ---
 
-## 6. References
+## 7. References
 
 - [SECURITY.md](./SECURITY.md) — Security architecture details
 - [RUNBOOK.md](./RUNBOOK.md) — Incident response playbooks
