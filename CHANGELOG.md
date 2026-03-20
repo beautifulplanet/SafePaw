@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+*Nothing yet.*
+
+## [0.2.0] — 2026-03-20
+
 ### Added
 - **RBAC** — Three-tier role-based access control for wizard API (admin, operator,
   viewer). Login returns role; `RequireRole()` middleware enforces per-endpoint
@@ -91,5 +95,6 @@ First tagged release. Core security gateway and admin wizard operational.
 
 ---
 
-[Unreleased]: https://github.com/beautifulplanet/SafePaw/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/beautifulplanet/SafePaw/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/beautifulplanet/SafePaw/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/beautifulplanet/SafePaw/releases/tag/v0.1.0
