@@ -1,7 +1,7 @@
 # =============================================================
 # SafePaw OpenClaw — Dedicated Dockerfile
 # =============================================================
-# Runs the OpenClaw AI assistant inside the InstallerClaw/SafePaw
+# Runs the OpenClaw AI assistant inside the SafePaw
 # perimeter. OpenClaw is NOT exposed to the host; all traffic
 # goes through the gateway.
 #

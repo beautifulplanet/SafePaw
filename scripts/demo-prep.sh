@@ -3,7 +3,7 @@
 # SafePaw — Demo / Video Prep
 # =============================================================
 # Creates .env.demo with safe, known values for recording the
-# InstallerClaw demo video. No real API keys or secrets.
+# SafePaw demo video. No real API keys or secrets.
 #
 # Usage (from safepaw directory):
 #   ./scripts/demo-prep.sh

@@ -1,5 +1,5 @@
 {
-  "name": "NOPEnclaw OPSEC Sandbox",
+  "name": "SafePaw Dev Sandbox",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
@@ -36,6 +36,6 @@
       ]
     }
   },
-  "postCreateCommand": "echo 'NOPEnclaw sandbox initialized. OPSEC enforced.'",
+  "postCreateCommand": "echo 'SafePaw dev sandbox initialized.'",
   "remoteUser": "vscode"
 }

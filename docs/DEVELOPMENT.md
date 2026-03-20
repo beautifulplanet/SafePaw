@@ -1,6 +1,6 @@
 # Development Guide
 
-Configuration reference, build commands, testing, and project structure for SafePaw (InstallerClaw).
+Configuration reference, build commands, testing, and project structure for SafePaw.
 
 **Related:** [CONTRIBUTING.md](../CONTRIBUTING.md) — coding standards and PR process · [PITFALLS.md](../PITFALLS.md) — known gotchas · [README.md](../README.md) — project overview
 

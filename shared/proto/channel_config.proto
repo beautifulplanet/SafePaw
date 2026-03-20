@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Channel Configuration Schema
+// SafePaw Channel Configuration Schema
 // =============================================================
 // Each messaging platform (Discord, Telegram, Slack, etc.)
 // is a "channel." This schema defines how each channel is

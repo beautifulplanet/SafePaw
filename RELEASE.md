@@ -46,7 +46,7 @@ If OpenClaw is niche, you may get more traction with:
 
 - **“A security perimeter and deploy wizard for self-hosted AI assistants (OpenClaw first).”**
 
-That frames it as an extensible pattern, not a one-off. The root README already mentions “self-hosted AI assistants” and “InstallerClaw” as the product name; you can tighten the tagline in the repo description when you go public.
+That frames it as an extensible pattern, not a one-off. The root README already mentions “self-hosted AI assistants” and “SafePaw” as the product name; you can tighten the tagline in the repo description when you go public.
 
 ---
 

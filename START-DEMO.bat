@@ -1,10 +1,10 @@
 @echo off
-title InstallerClaw LITE Demo
+title SafePaw LITE Demo
 cd /d "%~dp0"
 
 echo.
 echo ========================================
-echo   InstallerClaw LITE Demo
+echo   SafePaw LITE Demo
 echo   3 services, minimal resources
 echo ========================================
 echo.

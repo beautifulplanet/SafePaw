@@ -1,4 +1,4 @@
-# NOPEnclaw Shared: Protobuf Schemas
+# SafePaw Shared: Protobuf Schemas
 
 The **single source of truth** for all data structures flowing between services.
 
@@ -37,8 +37,8 @@ npm install -g ts-proto
 
 ## Generated Output
 
-- **Go** bindings → `shared/proto/gen/go/` (module: `nopenclaw/proto`)
-- **TypeScript** bindings → `shared/proto/gen/ts/` (package: `@nopenclaw/proto`)
+- **Go** bindings -> `shared/proto/gen/go/` (module: `nopenclaw/proto` -- legacy name, rename pending)
+- **TypeScript** bindings -> `shared/proto/gen/ts/` (package: `@nopenclaw/proto` -- legacy name, rename pending)
 
 ## Rules
 

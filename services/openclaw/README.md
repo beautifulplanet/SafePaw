@@ -1,6 +1,6 @@
 # OpenClaw service (SafePaw)
 
-Dockerfile for the **OpenClaw** AI assistant, used by the InstallerClaw/SafePaw stack.
+Dockerfile for the **OpenClaw** AI assistant, used by the SafePaw stack.
 
 - **Build-time install** — `openclaw` is installed when the image is built, not at container start. Faster startup and reproducible builds.
 - **Non-root** — Runs as the `node` user (from the official Node image).

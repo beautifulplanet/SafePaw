@@ -1,7 +1,7 @@
 // =============================================================
-// NOPEnclaw Message Schema
+// SafePaw Message Schema
 // =============================================================
-// THE core data structure. Every message flowing through NOPEnclaw
+// THE core data structure. Every message flowing through SafePaw
 // — from user → gateway → router → agent and back — uses this.
 //
 // Think of this as the "envelope" that carries every note

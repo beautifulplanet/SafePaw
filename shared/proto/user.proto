@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw User Schema
+// SafePaw User Schema
 // =============================================================
 // Represents a unified user across all channels.
 // A single person might be on Discord AND Telegram — this
@@ -34,7 +34,7 @@ message PlatformIdentity {
 
 // The unified User record
 message User {
-  string id             = 1;  // NOPEnclaw internal UUID
+  string id             = 1;  // SafePaw internal UUID
   string display_name   = 2;  // Primary display name
   UserRole role         = 3;  // Permission level
 

@@ -1,4 +1,4 @@
-# SafePaw / InstallerClaw — Safeguards
+# SafePaw — Safeguards
 
 Lessons from a session that froze a Windows machine. Follow these before running the stack.
 

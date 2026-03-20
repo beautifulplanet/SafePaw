@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="beautifulplanet/android-chrome-192x192.png" alt="SafePaw Gateway" width="80" />
+<img src="services/wizard/ui/public/favicon.svg" alt="SafePaw Gateway" width="80" />
 
 # SafePaw Gateway
 

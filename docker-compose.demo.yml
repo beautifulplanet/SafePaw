@@ -1,5 +1,5 @@
 # ===========================================================
-# InstallerClaw LITE demo — 3 services, minimal resources
+# SafePaw LITE demo — 3 services, minimal resources
 # ===========================================================
 # Wizard (Go)     :3000  — Setup UI + dashboard
 # Gateway (Go)    :8080  — Security reverse proxy

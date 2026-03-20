@@ -1,6 +1,6 @@
-# InstallerClaw / SafePaw — Demo Video Script (LinkedIn)
+# SafePaw — Demo Video Script (LinkedIn)
 
-Use this script to record a short, professional demo showing **InstallerClaw** (SafePaw) running in real time: one-command deploy, Wizard UI, live service dashboard, and the security perimeter in action.
+Use this script to record a short, professional demo showing **SafePaw** running in real time: one-command deploy, Wizard UI, live service dashboard, and the security perimeter in action.
 
 ---
 
@@ -47,7 +47,7 @@ Leave this terminal available to show `docker compose ps` or `docker compose log
 **Screen:** Your face or a simple title card.
 
 **Say (example):**  
-*“Self-hosted AI assistants are powerful—but you don’t want them exposed without a security layer. InstallerClaw adds a one-command security perimeter around OpenClaw: auth, rate limiting, and prompt-injection scanning. Here’s it running in real time.”*
+*“Self-hosted AI assistants are powerful—but you don’t want them exposed without a security layer. SafePaw adds a one-command security perimeter around OpenClaw: auth, rate limiting, and prompt-injection scanning. Here’s it running in real time.”*
 
 ---
 
@@ -143,7 +143,7 @@ Leave this terminal available to show `docker compose ps` or `docker compose log
 2. Contrast: `curl -s http://localhost:8080/health` succeeds.
 
 **Say (example):**  
-*“If we try to hit OpenClaw directly on its port, we can’t—it’s not exposed. The only way in is through the gateway. That’s the perimeter InstallerClaw adds.”*
+*“If we try to hit OpenClaw directly on its port, we can’t—it’s not exposed. The only way in is through the gateway. That’s the perimeter SafePaw adds.”*
 
 ---
 
@@ -152,7 +152,7 @@ Leave this terminal available to show `docker compose ps` or `docker compose log
 **Screen:** Your face or a closing slide.
 
 **Say (example):**  
-*“InstallerClaw: a security perimeter and one-command deploy for OpenClaw. If you run self-hosted AI, check the repo link in the description. Thanks for watching.”*
+*“SafePaw: a security perimeter and one-command deploy for OpenClaw. If you run self-hosted AI, check the repo link in the description. Thanks for watching.”*
 
 ---
 

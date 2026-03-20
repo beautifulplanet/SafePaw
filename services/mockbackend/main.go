@@ -43,11 +43,11 @@ func main() {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`<!DOCTYPE html>
-<html><head><title>InstallerClaw Mock Backend</title>
+<html><head><title>SafePaw Mock Backend</title>
 <style>body{font-family:monospace;max-width:700px;margin:40px auto;background:#1a1a2e;color:#e0e0e0;padding:20px}
 a{color:#0ff;text-decoration:none}a:hover{text-decoration:underline}
 h1{color:#0ff}li{margin:8px 0}</style></head>
-<body><h1>&#9881; InstallerClaw Mock Backend</h1>
+<body><h1>&#9881; SafePaw Mock Backend</h1>
 <p>Available endpoints for T6/T7 gateway integration testing:</p>
 <ul>
 <li><a href="/health">GET /health</a> &mdash; 200 OK health check</li>

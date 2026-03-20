@@ -1,4 +1,4 @@
-# InstallerClaw — Run locally (no Docker)
+# SafePaw — Run locally (no Docker)
 # 3 Go processes: mockbackend, gateway, wizard
 # Press ENTER to stop everything
 
@@ -7,7 +7,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  InstallerClaw — Local Mode (no Docker)" -ForegroundColor Cyan
+Write-Host "  SafePaw — Local Mode (no Docker)" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 

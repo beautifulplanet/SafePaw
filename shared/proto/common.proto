@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Common Types
+// SafePaw Common Types
 // =============================================================
 // Shared primitives used across all service boundaries.
 // Keep this lean — only put truly universal types here.

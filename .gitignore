@@ -88,3 +88,10 @@ AGENTS.md
 # 12. Local agent context — portable but never committed
 .agents/
 .project/
+
+# 13. AI session logs and working notes — never commit
+plan/
+.ai/
+
+# 14. IDE-specific rules and config — local only
+.cursor/rules/

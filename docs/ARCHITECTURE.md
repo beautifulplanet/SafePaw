@@ -1,10 +1,10 @@
 # Architecture Guide
 
-> Complete technical architecture of InstallerClaw (SafePaw) — the security perimeter for self-hosted AI assistants.
+> Complete technical architecture of SafePaw (SafePaw) — the security perimeter for self-hosted AI assistants.
 
 ## System Overview
 
-InstallerClaw is a Go-based security gateway and administration wizard that wraps [OpenClaw](https://github.com/nicepkg/openclaw) in a hardened Docker environment. It provides authentication, rate limiting, prompt-injection scanning, observability, and guided setup through a single-command deployment.
+SafePaw is a Go-based security gateway and administration wizard that wraps [OpenClaw](https://github.com/nicepkg/openclaw) in a hardened Docker environment. It provides authentication, rate limiting, prompt-injection scanning, observability, and guided setup through a single-command deployment.
 
 ```mermaid
 graph TB

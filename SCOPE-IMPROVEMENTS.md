@@ -79,7 +79,7 @@ Items below are **not** yet fully in place. They are grouped by theme and ordere
 
 #### Gateway testing without real backend: strategy and pitfalls
 
-**Goal:** Validate gateway/proxy/scanning and operational features without running OpenClaw or InstallerClaw as the backend.
+**Goal:** Validate gateway/proxy/scanning and operational features without running OpenClaw or SafePaw as the backend.
 
 **Approaches (by priority):**
 

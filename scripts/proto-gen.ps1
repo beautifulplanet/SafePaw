@@ -1,5 +1,5 @@
 # =============================================================
-# NOPEnclaw Protobuf Compilation Script (Windows/PowerShell)
+# SafePaw Protobuf Compilation Script (Windows/PowerShell)
 # =============================================================
 # Compiles .proto files into Go and TypeScript bindings.
 #
@@ -33,7 +33,7 @@ $ProtoDir = Join-Path $ProjectRoot "shared\proto"
 $GenGoDir = Join-Path $ProjectRoot "shared\proto\gen\go"
 $GenTsDir = Join-Path $ProjectRoot "shared\proto\gen\ts"
 
-Write-Host "NOPEnclaw Proto Compiler" -ForegroundColor Cyan
+Write-Host "SafePaw Proto Compiler" -ForegroundColor Cyan
 Write-Host "========================="
 
 # Check prerequisites
