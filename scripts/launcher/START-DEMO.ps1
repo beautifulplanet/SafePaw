@@ -1,10 +1,9 @@
-& (Join-Path $PSScriptRoot "scripts/launcher/START-DEMO.ps1") @args
 # SafePaw — PowerShell start/stop (alternative to start.bat)
 # Preferred one-click menu: LAUNCH.bat (full / demo / stop / processes).
 # This script supports the same modes for PowerShell users: no args = full, --demo = demo, --stop = shut down.
 
 $ErrorActionPreference = "Stop"
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$here = Resolve-Path (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "..\..")
 Set-Location $here
 
 $mode = "full"

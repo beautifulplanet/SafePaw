@@ -1,8 +1,7 @@
 @echo off
-call "%~dp0scripts\launcher\START-DEMO.bat" %*
-@echo off
 title SafePaw LITE Demo
-cd /d "%~dp0"
+set "ROOT=%~dp0..\..\\"
+cd /d "%ROOT%"
 
 echo.
 echo ========================================

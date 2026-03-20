@@ -1,8 +1,7 @@
 @echo off
-call "%~dp0scripts\launcher\start.bat" %*
-@echo off
 title SafePaw - One-Command Start
-cd /d "%~dp0"
+set "ROOT=%~dp0..\..\\"
+cd /d "%ROOT%"
 
 echo.
 echo   SafePaw - Starting up...

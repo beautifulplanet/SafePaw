@@ -1,10 +1,9 @@
-& (Join-Path $PSScriptRoot "scripts/launcher/run-local.ps1") @args
 # SafePaw — Run locally (no Docker)
 # 3 Go processes: mockbackend, gateway, wizard
 # Press ENTER to stop everything
 
 $ErrorActionPreference = "Stop"
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$here = Resolve-Path (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "..\..")
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
