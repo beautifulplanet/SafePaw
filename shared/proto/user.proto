@@ -8,9 +8,9 @@
 
 syntax = "proto3";
 
-package nopenclaw.user;
+package safepaw.user;
 
-option go_package = "nopenclaw/proto/user";
+option go_package = "safepaw/proto/user";
 
 import "common.proto";
 
@@ -29,7 +29,7 @@ message PlatformIdentity {
   string platform_id  = 2;  // Platform-specific user ID
   string display_name = 3;  // How they appear on that platform
   bool   verified     = 4;  // Has this identity been verified?
-  nopenclaw.common.Timestamp linked_at = 5;
+  safepaw.common.Timestamp linked_at = 5;
 }
 
 // The unified User record
@@ -45,9 +45,9 @@ message User {
   map<string, string> preferences = 5;
 
   // Account timestamps
-  nopenclaw.common.Timestamp created_at = 6;
-  nopenclaw.common.Timestamp updated_at = 7;
-  nopenclaw.common.Timestamp last_seen  = 8;
+  safepaw.common.Timestamp created_at = 6;
+  safepaw.common.Timestamp updated_at = 7;
+  safepaw.common.Timestamp last_seen  = 8;
 
   // Safety: is this user blocked/banned?
   bool blocked = 9;

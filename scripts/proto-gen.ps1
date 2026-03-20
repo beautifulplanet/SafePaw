@@ -64,7 +64,7 @@ Write-Host "  -> Go bindings..." -ForegroundColor Yellow
 & protoc `
     --proto_path="$ProtoDir" `
     --go_out="$GenGoDir" `
-    --go_opt=module=nopenclaw/proto `
+    --go_opt=module=safepaw/proto `
     @protoFiles
 
 if ($LASTEXITCODE -ne 0) { Write-Error "Go proto generation failed"; exit 1 }
@@ -93,7 +93,7 @@ Write-Host "  -> Verifying Go compilation..." -ForegroundColor Yellow
 Push-Location $GenGoDir
 try {
     if (-not (Test-Path "go.mod")) {
-        & go mod init nopenclaw/proto 2>&1 | Out-Null
+        & go mod init safepaw/proto 2>&1 | Out-Null
         & go mod tidy 2>&1 | Out-Null
     }
     & go build ./... 2>&1

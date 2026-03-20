@@ -6,7 +6,7 @@
 
 /* eslint-disable */
 
-export const protobufPackage = "nopenclaw.common";
+export const protobufPackage = "safepaw.common";
 
 /** Timestamp in UTC (ISO 8601 compatible) */
 export interface Timestamp {

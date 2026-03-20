@@ -1,4 +1,4 @@
-module nopenclaw/proto
+module safepaw/proto
 
 go 1.25.0
 

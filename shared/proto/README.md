@@ -37,8 +37,8 @@ npm install -g ts-proto
 
 ## Generated Output
 
-- **Go** bindings -> `shared/proto/gen/go/` (module: `nopenclaw/proto` -- legacy name, rename pending)
-- **TypeScript** bindings -> `shared/proto/gen/ts/` (package: `@nopenclaw/proto` -- legacy name, rename pending)
+- **Go** bindings -> `shared/proto/gen/go/` (module: `safepaw/proto`)
+- **TypeScript** bindings -> `shared/proto/gen/ts/` (package: `@safepaw/proto`)
 
 ## Rules
 

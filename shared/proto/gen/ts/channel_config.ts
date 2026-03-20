@@ -7,7 +7,7 @@
 /* eslint-disable */
 import { Timestamp } from "./common";
 
-export const protobufPackage = "nopenclaw.channel";
+export const protobufPackage = "safepaw.channel";
 
 /** Channel status */
 export enum ChannelStatus {

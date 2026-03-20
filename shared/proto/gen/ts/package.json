@@ -1,8 +1,8 @@
 {
-  "name": "@nopenclaw/proto",
+  "name": "@safepaw/proto",
   "version": "0.1.0",
   "private": true,
-  "description": "Generated protobuf types for NOPEnclaw",
+  "description": "Generated protobuf types for SafePaw",
   "main": "message.ts",
   "types": "message.ts",
   "exports": {

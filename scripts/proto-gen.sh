@@ -50,7 +50,7 @@ echo "  -> Go bindings..."
 protoc \
     --proto_path="$PROTO_DIR" \
     --go_out="$GEN_GO_DIR" \
-    --go_opt=module=nopenclaw/proto \
+    --go_opt=module=safepaw/proto \
     "${PROTO_FILES[@]}"
 
 # Compile TypeScript bindings (using ts-proto for better TS ergonomics)
@@ -68,7 +68,7 @@ protoc \
 echo "  -> Verifying Go compilation..."
 pushd "$GEN_GO_DIR" >/dev/null
 if [ ! -f go.mod ]; then
-    go mod init nopenclaw/proto
+    go mod init safepaw/proto
     go mod tidy
 fi
 go build ./...

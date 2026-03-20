@@ -21,7 +21,7 @@ RUN mkdir -p /workspace/shared/proto/gen/go /workspace/shared/proto/gen/ts
 RUN protoc \
     --proto_path=/workspace/shared/proto \
     --go_out=/workspace/shared/proto/gen/go \
-    --go_opt=module=nopenclaw/proto \
+    --go_opt=module=safepaw/proto \
     /workspace/shared/proto/*.proto
 
 # Generate TypeScript
@@ -36,7 +36,7 @@ RUN protoc \
 
 # Init Go module and verify compilation
 WORKDIR /workspace/shared/proto/gen/go
-RUN go mod init nopenclaw/proto && go mod tidy && go build ./...
+RUN go mod init safepaw/proto && go mod tidy && go build ./...
 
 # Output stage — just the generated files
 FROM scratch AS output

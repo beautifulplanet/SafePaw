@@ -1,7 +1,7 @@
 // =============================================================
-// NOPEnclaw Message Schema
+// SafePaw Message Schema
 // =============================================================
-// THE core data structure. Every message flowing through NOPEnclaw
+// THE core data structure. Every message flowing through SafePaw
 // — from user → gateway → router → agent and back — uses this.
 //
 // Think of this as the "envelope" that carries every note
@@ -19,7 +19,7 @@ package message
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	common "nopenclaw/proto/common"
+	common "safepaw/proto/common"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -154,9 +154,9 @@ type Message struct {
 	// === Routing ===
 	Sender    *common.UserId `protobuf:"bytes,4,opt,name=sender,proto3" json:"sender,omitempty"`                                         // Who sent this
 	Channel   string         `protobuf:"bytes,5,opt,name=channel,proto3" json:"channel,omitempty"`                                       // Channel name (e.g., "discord", "telegram")
-	Direction Direction      `protobuf:"varint,6,opt,name=direction,proto3,enum=nopenclaw.message.Direction" json:"direction,omitempty"` // Inbound or outbound
+	Direction Direction      `protobuf:"varint,6,opt,name=direction,proto3,enum=safepaw.message.Direction" json:"direction,omitempty"` // Inbound or outbound
 	// === Payload ===
-	ContentType ContentType       `protobuf:"varint,7,opt,name=content_type,json=contentType,proto3,enum=nopenclaw.message.ContentType" json:"content_type,omitempty"`
+	ContentType ContentType       `protobuf:"varint,7,opt,name=content_type,json=contentType,proto3,enum=safepaw.message.ContentType" json:"content_type,omitempty"`
 	Content     string            `protobuf:"bytes,8,opt,name=content,proto3" json:"content,omitempty"`                                                                             // The actual message text/data
 	Metadata    map[string]string `protobuf:"bytes,9,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Extensible key-value pairs
 	// === Timestamps ===
@@ -339,29 +339,29 @@ var File_message_proto protoreflect.FileDescriptor
 
 const file_message_proto_rawDesc = "" +
 	"\n" +
-	"\rmessage.proto\x12\x11nopenclaw.message\x1a\fcommon.proto\"\x82\x05\n" +
+	"\rmessage.proto\x12\x11safepaw.message\x1a\fcommon.proto\"\x82\x05\n" +
 	"\aMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x02 \x01(\tR\tsessionId\x12'\n" +
 	"\x0fconversation_id\x18\x03 \x01(\tR\x0econversationId\x120\n" +
-	"\x06sender\x18\x04 \x01(\v2\x18.nopenclaw.common.UserIdR\x06sender\x12\x18\n" +
+	"\x06sender\x18\x04 \x01(\v2\x18.safepaw.common.UserIdR\x06sender\x12\x18\n" +
 	"\achannel\x18\x05 \x01(\tR\achannel\x12:\n" +
-	"\tdirection\x18\x06 \x01(\x0e2\x1c.nopenclaw.message.DirectionR\tdirection\x12A\n" +
-	"\fcontent_type\x18\a \x01(\x0e2\x1e.nopenclaw.message.ContentTypeR\vcontentType\x12\x18\n" +
+	"\tdirection\x18\x06 \x01(\x0e2\x1c.safepaw.message.DirectionR\tdirection\x12A\n" +
+	"\fcontent_type\x18\a \x01(\x0e2\x1e.safepaw.message.ContentTypeR\vcontentType\x12\x18\n" +
 	"\acontent\x18\b \x01(\tR\acontent\x12D\n" +
-	"\bmetadata\x18\t \x03(\v2(.nopenclaw.message.Message.MetadataEntryR\bmetadata\x12:\n" +
+	"\bmetadata\x18\t \x03(\v2(.safepaw.message.Message.MetadataEntryR\bmetadata\x12:\n" +
 	"\n" +
 	"created_at\x18\n" +
-	" \x01(\v2\x1b.nopenclaw.common.TimestampR\tcreatedAt\x12>\n" +
-	"\fprocessed_at\x18\v \x01(\v2\x1b.nopenclaw.common.TimestampR\vprocessedAt\x12\x1e\n" +
+	" \x01(\v2\x1b.safepaw.common.TimestampR\tcreatedAt\x12>\n" +
+	"\fprocessed_at\x18\v \x01(\v2\x1b.safepaw.common.TimestampR\vprocessedAt\x12\x1e\n" +
 	"\vreply_to_id\x18\f \x01(\tR\treplyToId\x12\x1b\n" +
 	"\tthread_id\x18\r \x01(\tR\bthreadId\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"F\n" +
 	"\fMessageBatch\x126\n" +
-	"\bmessages\x18\x01 \x03(\v2\x1a.nopenclaw.message.MessageR\bmessages*A\n" +
+	"\bmessages\x18\x01 \x03(\v2\x1a.safepaw.message.MessageR\bmessages*A\n" +
 	"\tDirection\x12\x19\n" +
 	"\x15DIRECTION_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aINBOUND\x10\x01\x12\f\n" +
@@ -374,7 +374,7 @@ const file_message_proto_rawDesc = "" +
 	"\aCOMMAND\x10\x04\x12\n" +
 	"\n" +
 	"\x06SYSTEM\x10\x05\x12\f\n" +
-	"\bREACTION\x10\x06B\x19Z\x17nopenclaw/proto/messageb\x06proto3"
+	"\bREACTION\x10\x06B\x19Z\x17safepaw/proto/messageb\x06proto3"
 
 var (
 	file_message_proto_rawDescOnce sync.Once
@@ -391,22 +391,22 @@ func file_message_proto_rawDescGZIP() []byte {
 var file_message_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_message_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_message_proto_goTypes = []any{
-	(Direction)(0),           // 0: nopenclaw.message.Direction
-	(ContentType)(0),         // 1: nopenclaw.message.ContentType
-	(*Message)(nil),          // 2: nopenclaw.message.Message
-	(*MessageBatch)(nil),     // 3: nopenclaw.message.MessageBatch
-	nil,                      // 4: nopenclaw.message.Message.MetadataEntry
-	(*common.UserId)(nil),    // 5: nopenclaw.common.UserId
-	(*common.Timestamp)(nil), // 6: nopenclaw.common.Timestamp
+	(Direction)(0),           // 0: safepaw.message.Direction
+	(ContentType)(0),         // 1: safepaw.message.ContentType
+	(*Message)(nil),          // 2: safepaw.message.Message
+	(*MessageBatch)(nil),     // 3: safepaw.message.MessageBatch
+	nil,                      // 4: safepaw.message.Message.MetadataEntry
+	(*common.UserId)(nil),    // 5: safepaw.common.UserId
+	(*common.Timestamp)(nil), // 6: safepaw.common.Timestamp
 }
 var file_message_proto_depIdxs = []int32{
-	5, // 0: nopenclaw.message.Message.sender:type_name -> nopenclaw.common.UserId
-	0, // 1: nopenclaw.message.Message.direction:type_name -> nopenclaw.message.Direction
-	1, // 2: nopenclaw.message.Message.content_type:type_name -> nopenclaw.message.ContentType
-	4, // 3: nopenclaw.message.Message.metadata:type_name -> nopenclaw.message.Message.MetadataEntry
-	6, // 4: nopenclaw.message.Message.created_at:type_name -> nopenclaw.common.Timestamp
-	6, // 5: nopenclaw.message.Message.processed_at:type_name -> nopenclaw.common.Timestamp
-	2, // 6: nopenclaw.message.MessageBatch.messages:type_name -> nopenclaw.message.Message
+	5, // 0: safepaw.message.Message.sender:type_name -> safepaw.common.UserId
+	0, // 1: safepaw.message.Message.direction:type_name -> safepaw.message.Direction
+	1, // 2: safepaw.message.Message.content_type:type_name -> safepaw.message.ContentType
+	4, // 3: safepaw.message.Message.metadata:type_name -> safepaw.message.Message.MetadataEntry
+	6, // 4: safepaw.message.Message.created_at:type_name -> safepaw.common.Timestamp
+	6, // 5: safepaw.message.Message.processed_at:type_name -> safepaw.common.Timestamp
+	2, // 6: safepaw.message.MessageBatch.messages:type_name -> safepaw.message.Message
 	7, // [7:7] is the sub-list for method output_type
 	7, // [7:7] is the sub-list for method input_type
 	7, // [7:7] is the sub-list for extension type_name

@@ -7,7 +7,7 @@
 /* eslint-disable */
 import { Timestamp, UserId } from "./common";
 
-export const protobufPackage = "nopenclaw.message";
+export const protobufPackage = "safepaw.message";
 
 /** Direction of the message in the pipeline */
 export enum Direction {

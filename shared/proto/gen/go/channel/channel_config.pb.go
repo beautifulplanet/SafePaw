@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Channel Configuration Schema
+// SafePaw Channel Configuration Schema
 // =============================================================
 // Each messaging platform (Discord, Telegram, Slack, etc.)
 // is a "channel." This schema defines how each channel is
@@ -20,7 +20,7 @@ package channel
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	common "nopenclaw/proto/common"
+	common "safepaw/proto/common"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -156,7 +156,7 @@ type ChannelConfig struct {
 	Id      string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                          // UUID v4
 	Channel string                 `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`                // Channel name (e.g., "discord")
 	AgentId string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"` // Which agent handles this channel
-	Status  ChannelStatus          `protobuf:"varint,4,opt,name=status,proto3,enum=nopenclaw.channel.ChannelStatus" json:"status,omitempty"`
+	Status  ChannelStatus          `protobuf:"varint,4,opt,name=status,proto3,enum=safepaw.channel.ChannelStatus" json:"status,omitempty"`
 	// Connection credentials (encrypted at rest)
 	// SECURITY: These are stored encrypted in Postgres, never in plaintext
 	Credentials map[string]string `protobuf:"bytes,5,rep,name=credentials,proto3" json:"credentials,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -337,7 +337,7 @@ var File_channel_config_proto protoreflect.FileDescriptor
 
 const file_channel_config_proto_rawDesc = "" +
 	"\n" +
-	"\x14channel_config.proto\x12\x11nopenclaw.channel\x1a\fcommon.proto\"\x96\x01\n" +
+	"\x14channel_config.proto\x12\x11safepaw.channel\x1a\fcommon.proto\"\x96\x01\n" +
 	"\tRateLimit\x125\n" +
 	"\x17max_messages_per_minute\x18\x01 \x01(\x05R\x14maxMessagesPerMinute\x121\n" +
 	"\x15max_messages_per_hour\x18\x02 \x01(\x05R\x12maxMessagesPerHour\x12\x1f\n" +
@@ -347,20 +347,20 @@ const file_channel_config_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\achannel\x18\x02 \x01(\tR\achannel\x12\x19\n" +
 	"\bagent_id\x18\x03 \x01(\tR\aagentId\x128\n" +
-	"\x06status\x18\x04 \x01(\x0e2 .nopenclaw.channel.ChannelStatusR\x06status\x12S\n" +
-	"\vcredentials\x18\x05 \x03(\v21.nopenclaw.channel.ChannelConfig.CredentialsEntryR\vcredentials\x12;\n" +
+	"\x06status\x18\x04 \x01(\x0e2 .safepaw.channel.ChannelStatusR\x06status\x12S\n" +
+	"\vcredentials\x18\x05 \x03(\v21.safepaw.channel.ChannelConfig.CredentialsEntryR\vcredentials\x12;\n" +
 	"\n" +
-	"rate_limit\x18\x06 \x01(\v2\x1c.nopenclaw.channel.RateLimitR\trateLimit\x12\x1f\n" +
+	"rate_limit\x18\x06 \x01(\v2\x1c.safepaw.channel.RateLimitR\trateLimit\x12\x1f\n" +
 	"\vallow_media\x18\a \x01(\bR\n" +
 	"allowMedia\x12#\n" +
 	"\rallow_threads\x18\b \x01(\bR\fallowThreads\x12,\n" +
 	"\x12max_message_length\x18\t \x01(\x05R\x10maxMessageLength\x12J\n" +
 	"\bfeatures\x18\n" +
-	" \x03(\v2..nopenclaw.channel.ChannelConfig.FeaturesEntryR\bfeatures\x12:\n" +
+	" \x03(\v2..safepaw.channel.ChannelConfig.FeaturesEntryR\bfeatures\x12:\n" +
 	"\n" +
-	"created_at\x18\v \x01(\v2\x1b.nopenclaw.common.TimestampR\tcreatedAt\x12:\n" +
+	"created_at\x18\v \x01(\v2\x1b.safepaw.common.TimestampR\tcreatedAt\x12:\n" +
 	"\n" +
-	"updated_at\x18\f \x01(\v2\x1b.nopenclaw.common.TimestampR\tupdatedAt\x1a>\n" +
+	"updated_at\x18\f \x01(\v2\x1b.safepaw.common.TimestampR\tupdatedAt\x1a>\n" +
 	"\x10CredentialsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a;\n" +
@@ -368,7 +368,7 @@ const file_channel_config_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\bR\x05value:\x028\x01\"O\n" +
 	"\x0fChannelRegistry\x12<\n" +
-	"\bchannels\x18\x01 \x03(\v2 .nopenclaw.channel.ChannelConfigR\bchannels*`\n" +
+	"\bchannels\x18\x01 \x03(\v2 .safepaw.channel.ChannelConfigR\bchannels*`\n" +
 	"\rChannelStatus\x12\x1e\n" +
 	"\x1aCHANNEL_STATUS_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
@@ -376,7 +376,7 @@ const file_channel_config_proto_rawDesc = "" +
 	"\n" +
 	"\x06PAUSED\x10\x02\x12\f\n" +
 	"\bDISABLED\x10\x03\x12\t\n" +
-	"\x05ERROR\x10\x04B\x19Z\x17nopenclaw/proto/channelb\x06proto3"
+	"\x05ERROR\x10\x04B\x19Z\x17safepaw/proto/channelb\x06proto3"
 
 var (
 	file_channel_config_proto_rawDescOnce sync.Once
@@ -393,22 +393,22 @@ func file_channel_config_proto_rawDescGZIP() []byte {
 var file_channel_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_channel_config_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_channel_config_proto_goTypes = []any{
-	(ChannelStatus)(0),       // 0: nopenclaw.channel.ChannelStatus
-	(*RateLimit)(nil),        // 1: nopenclaw.channel.RateLimit
-	(*ChannelConfig)(nil),    // 2: nopenclaw.channel.ChannelConfig
-	(*ChannelRegistry)(nil),  // 3: nopenclaw.channel.ChannelRegistry
-	nil,                      // 4: nopenclaw.channel.ChannelConfig.CredentialsEntry
-	nil,                      // 5: nopenclaw.channel.ChannelConfig.FeaturesEntry
-	(*common.Timestamp)(nil), // 6: nopenclaw.common.Timestamp
+	(ChannelStatus)(0),       // 0: safepaw.channel.ChannelStatus
+	(*RateLimit)(nil),        // 1: safepaw.channel.RateLimit
+	(*ChannelConfig)(nil),    // 2: safepaw.channel.ChannelConfig
+	(*ChannelRegistry)(nil),  // 3: safepaw.channel.ChannelRegistry
+	nil,                      // 4: safepaw.channel.ChannelConfig.CredentialsEntry
+	nil,                      // 5: safepaw.channel.ChannelConfig.FeaturesEntry
+	(*common.Timestamp)(nil), // 6: safepaw.common.Timestamp
 }
 var file_channel_config_proto_depIdxs = []int32{
-	0, // 0: nopenclaw.channel.ChannelConfig.status:type_name -> nopenclaw.channel.ChannelStatus
-	4, // 1: nopenclaw.channel.ChannelConfig.credentials:type_name -> nopenclaw.channel.ChannelConfig.CredentialsEntry
-	1, // 2: nopenclaw.channel.ChannelConfig.rate_limit:type_name -> nopenclaw.channel.RateLimit
-	5, // 3: nopenclaw.channel.ChannelConfig.features:type_name -> nopenclaw.channel.ChannelConfig.FeaturesEntry
-	6, // 4: nopenclaw.channel.ChannelConfig.created_at:type_name -> nopenclaw.common.Timestamp
-	6, // 5: nopenclaw.channel.ChannelConfig.updated_at:type_name -> nopenclaw.common.Timestamp
-	2, // 6: nopenclaw.channel.ChannelRegistry.channels:type_name -> nopenclaw.channel.ChannelConfig
+	0, // 0: safepaw.channel.ChannelConfig.status:type_name -> safepaw.channel.ChannelStatus
+	4, // 1: safepaw.channel.ChannelConfig.credentials:type_name -> safepaw.channel.ChannelConfig.CredentialsEntry
+	1, // 2: safepaw.channel.ChannelConfig.rate_limit:type_name -> safepaw.channel.RateLimit
+	5, // 3: safepaw.channel.ChannelConfig.features:type_name -> safepaw.channel.ChannelConfig.FeaturesEntry
+	6, // 4: safepaw.channel.ChannelConfig.created_at:type_name -> safepaw.common.Timestamp
+	6, // 5: safepaw.channel.ChannelConfig.updated_at:type_name -> safepaw.common.Timestamp
+	2, // 6: safepaw.channel.ChannelRegistry.channels:type_name -> safepaw.channel.ChannelConfig
 	7, // [7:7] is the sub-list for method output_type
 	7, // [7:7] is the sub-list for method input_type
 	7, // [7:7] is the sub-list for extension type_name

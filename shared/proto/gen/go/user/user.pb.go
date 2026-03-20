@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw User Schema
+// SafePaw User Schema
 // =============================================================
 // Represents a unified user across all channels.
 // A single person might be on Discord AND Telegram — this
@@ -17,7 +17,7 @@ package user
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	common "nopenclaw/proto/common"
+	common "safepaw/proto/common"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -166,9 +166,9 @@ func (x *PlatformIdentity) GetLinkedAt() *common.Timestamp {
 // The unified User record
 type User struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
-	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                      // NOPEnclaw internal UUID
+	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                      // SafePaw internal UUID
 	DisplayName string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"` // Primary display name
-	Role        UserRole               `protobuf:"varint,3,opt,name=role,proto3,enum=nopenclaw.user.UserRole" json:"role,omitempty"`    // Permission level
+	Role        UserRole               `protobuf:"varint,3,opt,name=role,proto3,enum=safepaw.user.UserRole" json:"role,omitempty"`    // Permission level
 	// All linked platform identities
 	Identities []*PlatformIdentity `protobuf:"bytes,4,rep,name=identities,proto3" json:"identities,omitempty"`
 	// User preferences (language, timezone, etc.)
@@ -289,27 +289,27 @@ var File_user_proto protoreflect.FileDescriptor
 const file_user_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"user.proto\x12\x0enopenclaw.user\x1a\fcommon.proto\"\xc6\x01\n" +
+	"user.proto\x12\x0esafepaw.user\x1a\fcommon.proto\"\xc6\x01\n" +
 	"\x10PlatformIdentity\x12\x18\n" +
 	"\achannel\x18\x01 \x01(\tR\achannel\x12\x1f\n" +
 	"\vplatform_id\x18\x02 \x01(\tR\n" +
 	"platformId\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12\x1a\n" +
 	"\bverified\x18\x04 \x01(\bR\bverified\x128\n" +
-	"\tlinked_at\x18\x05 \x01(\v2\x1b.nopenclaw.common.TimestampR\blinkedAt\"\xa1\x04\n" +
+	"\tlinked_at\x18\x05 \x01(\v2\x1b.safepaw.common.TimestampR\blinkedAt\"\xa1\x04\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12,\n" +
-	"\x04role\x18\x03 \x01(\x0e2\x18.nopenclaw.user.UserRoleR\x04role\x12@\n" +
+	"\x04role\x18\x03 \x01(\x0e2\x18.safepaw.user.UserRoleR\x04role\x12@\n" +
 	"\n" +
-	"identities\x18\x04 \x03(\v2 .nopenclaw.user.PlatformIdentityR\n" +
+	"identities\x18\x04 \x03(\v2 .safepaw.user.PlatformIdentityR\n" +
 	"identities\x12G\n" +
-	"\vpreferences\x18\x05 \x03(\v2%.nopenclaw.user.User.PreferencesEntryR\vpreferences\x12:\n" +
+	"\vpreferences\x18\x05 \x03(\v2%.safepaw.user.User.PreferencesEntryR\vpreferences\x12:\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1b.nopenclaw.common.TimestampR\tcreatedAt\x12:\n" +
+	"created_at\x18\x06 \x01(\v2\x1b.safepaw.common.TimestampR\tcreatedAt\x12:\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1b.nopenclaw.common.TimestampR\tupdatedAt\x128\n" +
-	"\tlast_seen\x18\b \x01(\v2\x1b.nopenclaw.common.TimestampR\blastSeen\x12\x18\n" +
+	"updated_at\x18\a \x01(\v2\x1b.safepaw.common.TimestampR\tupdatedAt\x128\n" +
+	"\tlast_seen\x18\b \x01(\v2\x1b.safepaw.common.TimestampR\blastSeen\x12\x18\n" +
 	"\ablocked\x18\t \x01(\bR\ablocked\x12!\n" +
 	"\fblock_reason\x18\n" +
 	" \x01(\tR\vblockReason\x1a>\n" +
@@ -322,7 +322,7 @@ const file_user_proto_rawDesc = "" +
 	"\tMODERATOR\x10\x02\x12\t\n" +
 	"\x05ADMIN\x10\x03\x12\n" +
 	"\n" +
-	"\x06SYSTEM\x10\x04B\x16Z\x14nopenclaw/proto/userb\x06proto3"
+	"\x06SYSTEM\x10\x04B\x16Z\x14safepaw/proto/userb\x06proto3"
 
 var (
 	file_user_proto_rawDescOnce sync.Once
@@ -339,20 +339,20 @@ func file_user_proto_rawDescGZIP() []byte {
 var file_user_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_user_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_user_proto_goTypes = []any{
-	(UserRole)(0),            // 0: nopenclaw.user.UserRole
-	(*PlatformIdentity)(nil), // 1: nopenclaw.user.PlatformIdentity
-	(*User)(nil),             // 2: nopenclaw.user.User
-	nil,                      // 3: nopenclaw.user.User.PreferencesEntry
-	(*common.Timestamp)(nil), // 4: nopenclaw.common.Timestamp
+	(UserRole)(0),            // 0: safepaw.user.UserRole
+	(*PlatformIdentity)(nil), // 1: safepaw.user.PlatformIdentity
+	(*User)(nil),             // 2: safepaw.user.User
+	nil,                      // 3: safepaw.user.User.PreferencesEntry
+	(*common.Timestamp)(nil), // 4: safepaw.common.Timestamp
 }
 var file_user_proto_depIdxs = []int32{
-	4, // 0: nopenclaw.user.PlatformIdentity.linked_at:type_name -> nopenclaw.common.Timestamp
-	0, // 1: nopenclaw.user.User.role:type_name -> nopenclaw.user.UserRole
-	1, // 2: nopenclaw.user.User.identities:type_name -> nopenclaw.user.PlatformIdentity
-	3, // 3: nopenclaw.user.User.preferences:type_name -> nopenclaw.user.User.PreferencesEntry
-	4, // 4: nopenclaw.user.User.created_at:type_name -> nopenclaw.common.Timestamp
-	4, // 5: nopenclaw.user.User.updated_at:type_name -> nopenclaw.common.Timestamp
-	4, // 6: nopenclaw.user.User.last_seen:type_name -> nopenclaw.common.Timestamp
+	4, // 0: safepaw.user.PlatformIdentity.linked_at:type_name -> safepaw.common.Timestamp
+	0, // 1: safepaw.user.User.role:type_name -> safepaw.user.UserRole
+	1, // 2: safepaw.user.User.identities:type_name -> safepaw.user.PlatformIdentity
+	3, // 3: safepaw.user.User.preferences:type_name -> safepaw.user.User.PreferencesEntry
+	4, // 4: safepaw.user.User.created_at:type_name -> safepaw.common.Timestamp
+	4, // 5: safepaw.user.User.updated_at:type_name -> safepaw.common.Timestamp
+	4, // 6: safepaw.user.User.last_seen:type_name -> safepaw.common.Timestamp
 	7, // [7:7] is the sub-list for method output_type
 	7, // [7:7] is the sub-list for method input_type
 	7, // [7:7] is the sub-list for extension type_name

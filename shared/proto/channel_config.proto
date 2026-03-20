@@ -11,9 +11,9 @@
 
 syntax = "proto3";
 
-package nopenclaw.channel;
+package safepaw.channel;
 
-option go_package = "nopenclaw/proto/channel";
+option go_package = "safepaw/proto/channel";
 
 import "common.proto";
 
@@ -54,8 +54,8 @@ message ChannelConfig {
   map<string, bool> features     = 10;  // Toggleable features per channel
 
   // Metadata
-  nopenclaw.common.Timestamp created_at = 11;
-  nopenclaw.common.Timestamp updated_at = 12;
+  safepaw.common.Timestamp created_at = 11;
+  safepaw.common.Timestamp updated_at = 12;
 }
 
 // List of all configured channels

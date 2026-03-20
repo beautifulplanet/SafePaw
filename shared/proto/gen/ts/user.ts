@@ -7,7 +7,7 @@
 /* eslint-disable */
 import { Timestamp } from "./common";
 
-export const protobufPackage = "nopenclaw.user";
+export const protobufPackage = "safepaw.user";
 
 /** User's role/trust level */
 export enum UserRole {
@@ -80,7 +80,7 @@ export interface PlatformIdentity {
 
 /** The unified User record */
 export interface User {
-  /** NOPEnclaw internal UUID */
+  /** SafePaw internal UUID */
   id: string;
   /** Primary display name */
   displayName: string;

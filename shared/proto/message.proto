@@ -10,9 +10,9 @@
 
 syntax = "proto3";
 
-package nopenclaw.message;
+package safepaw.message;
 
-option go_package = "nopenclaw/proto/message";
+option go_package = "safepaw/proto/message";
 
 import "common.proto";
 
@@ -42,7 +42,7 @@ message Message {
   string conversation_id = 3;  // Links to agent.conversations
 
   // === Routing ===
-  nopenclaw.common.UserId sender    = 4;  // Who sent this
+  safepaw.common.UserId sender    = 4;  // Who sent this
   string channel       = 5;  // Channel name (e.g., "discord", "telegram")
   Direction direction  = 6;  // Inbound or outbound
 
@@ -52,8 +52,8 @@ message Message {
   map<string, string> metadata = 9;  // Extensible key-value pairs
 
   // === Timestamps ===
-  nopenclaw.common.Timestamp created_at  = 10;
-  nopenclaw.common.Timestamp processed_at = 11;
+  safepaw.common.Timestamp created_at  = 10;
+  safepaw.common.Timestamp processed_at = 11;
 
   // === Threading ===
   string reply_to_id   = 12;  // Optional: ID of message being replied to

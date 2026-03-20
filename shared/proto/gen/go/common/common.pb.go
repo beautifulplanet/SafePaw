@@ -1,5 +1,5 @@
 // =============================================================
-// NOPEnclaw Common Types
+// SafePaw Common Types
 // =============================================================
 // Shared primitives used across all service boundaries.
 // Keep this lean — only put truly universal types here.
@@ -146,7 +146,7 @@ var File_common_proto protoreflect.FileDescriptor
 
 const file_common_proto_rawDesc = "" +
 	"\n" +
-	"\fcommon.proto\x12\x10nopenclaw.common\";\n" +
+	"\fcommon.proto\x12\x10safepaw.common\";\n" +
 	"\tTimestamp\x12\x18\n" +
 	"\aseconds\x18\x01 \x01(\x03R\aseconds\x12\x14\n" +
 	"\x05nanos\x18\x02 \x01(\x05R\x05nanos\"S\n" +
@@ -154,7 +154,7 @@ const file_common_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\achannel\x18\x02 \x01(\tR\achannel\x12\x1f\n" +
 	"\vplatform_id\x18\x03 \x01(\tR\n" +
-	"platformIdB\x18Z\x16nopenclaw/proto/commonb\x06proto3"
+	"platformIdB\x18Z\x16safepaw/proto/commonb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once
@@ -170,8 +170,8 @@ func file_common_proto_rawDescGZIP() []byte {
 
 var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_common_proto_goTypes = []any{
-	(*Timestamp)(nil), // 0: nopenclaw.common.Timestamp
-	(*UserId)(nil),    // 1: nopenclaw.common.UserId
+	(*Timestamp)(nil), // 0: safepaw.common.Timestamp
+	(*UserId)(nil),    // 1: safepaw.common.UserId
 }
 var file_common_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type

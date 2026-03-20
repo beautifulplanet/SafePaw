@@ -7,9 +7,9 @@
 
 syntax = "proto3";
 
-package nopenclaw.common;
+package safepaw.common;
 
-option go_package = "nopenclaw/proto/common";
+option go_package = "safepaw/proto/common";
 
 // Timestamp in UTC (ISO 8601 compatible)
 message Timestamp {
