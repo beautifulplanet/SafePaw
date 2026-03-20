@@ -1,5 +1,11 @@
-# Normalize line endings for CI (go mod tidy check)
+# Normalize all text files to LF (prevents CRLF/LF noise in diffs)
+* text=auto eol=lf
+
+# Explicit overrides for CI-sensitive files
 go.mod text eol=lf
 go.sum text eol=lf
 **/go.mod text eol=lf
 **/go.sum text eol=lf
+
+# Keep Windows batch files as CRLF
+*.bat text eol=crlf

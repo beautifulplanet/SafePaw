@@ -131,7 +131,7 @@ Client → [TCP Upgrade] → SecurityHeaders → Auth → WS Tunnel
        → OutputScanner(backend→client) → Client
 ```
 
-WebSocket streams are scanned in real-time via `ScanningReader`.
+WebSocket streams are scanned in real-time via `ScanningReader` — **log-only, not blocking**. Modifying WebSocket payload bytes without updating binary frame headers would corrupt the stream. Findings are logged for alerting but data passes through unmodified.
 
 ---
 

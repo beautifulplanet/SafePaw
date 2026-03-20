@@ -6,7 +6,7 @@
 
 **The security perimeter for self-hosted AI assistants.**
 
-**Free, open-source OpenClaw security gateway — sandboxed execution with a documented threat model.**
+**Free, open-source security gateway for self-hosted AI backends — secure defaults, documented threat model, 534 tests.**
 
 No cloud. No accounts. No telemetry. **We don't collect your data — at all.** You can scan the repo to verify; see [docs/NO-DATA-COLLECTION.md](docs/NO-DATA-COLLECTION.md). Just a gateway, a wizard, and 534 tests.
 
@@ -14,7 +14,7 @@ No cloud. No accounts. No telemetry. **We don't collect your data — at all.** 
 
 </div>
 
-**SafePaw Gateway is a standalone security program developed by BeautifulPlanet. It is NOT a fork of OpenPaw and has no affiliation with Flexasaurusrex.**
+**SafePaw is a standalone security program developed by BeautifulPlanet. It is NOT a fork of OpenPaw and has no affiliation with Flexasaurusrex.**
 
 ---
 
@@ -22,13 +22,13 @@ No cloud. No accounts. No telemetry. **We don't collect your data — at all.** 
 
 Most self-hosted AI backends ship with security features that are **opt-in and scattered across docs**. Auth needs manual setup. Rate limiting needs configuration. SSRF and brute-force protection require knowing they exist first. Most people skip it and run exposed.
 
-InstallerClaw makes the secure path the easy path. It wraps [OpenClaw](https://github.com/nicepkg/openclaw) (or any HTTP backend) in a hardened local perimeter — a **Go reverse-proxy gateway** with auth, rate limiting, and prompt-injection scanning, plus a **React wizard** for setup, monitoring, and admin — and ships with **secure defaults on**: auth enforced, rate limiting active, brute-force protection on, output scanning running. Everything runs in Docker Compose on your machine with a single command. Nothing phones home.
+SafePaw makes the secure path the easy path. It wraps [OpenClaw](https://github.com/nicepkg/openclaw) (or any HTTP backend) in a hardened local perimeter — a **Go reverse-proxy gateway** with auth, rate limiting, and prompt-injection scanning, plus a **React wizard** for setup, monitoring, and admin — and ships with **secure defaults on**: auth enforced, rate limiting active, brute-force protection on, output scanning running. Everything runs in Docker Compose on your machine with a single command. Nothing phones home.
 
 **Think of it as the deadbolt kit for your AI stack** — pre-configured, pre-tested, secure out of the box. Not because your backend is broken. Because hardening it yourself takes expertise most people don't have and time nobody wants to spend.
 
 ## Who needs this?
 
-| You are… | Your problem | InstallerClaw gives you |
+| You are… | Your problem | SafePaw gives you |
 |----------|-------------|----------------------|
 | **Tinkerer** who just got OpenClaw running | It's exposed on a port with no auth, no rate limiting, no scanning | Gateway with HMAC auth, brute-force protection, 14-pattern prompt-injection scanner |
 | **Small-team admin** sharing an AI assistant | No audit trail, no MFA, users share one password | Wizard with session tokens, optional TOTP, per-action audit log |
@@ -221,7 +221,7 @@ SafePaw is a **transport-layer perimeter**. It secures the path between clients 
 
 ## Design boundaries
 
-InstallerClaw secures a single AI stack with depth, not breadth:
+SafePaw secures a single AI stack with depth, not breadth:
 
 - **Transport-layer scope.** Auth, rate limiting, scanning, and audit logging at the HTTP/WebSocket boundary. Host-level and agent-level controls are out of scope by design.
 - **Scanning is heuristic.** Pattern-based tripwires, not ML classifiers. Documented as a scope boundary in [THREAT-MODEL.md](THREAT-MODEL.md).

@@ -84,3 +84,7 @@ CONTEXT-OFFLOAD.md
 
 # 11. Local workflow directives — personal to this machine, never push
 AGENTS.md
+
+# 12. Local agent context — portable but never committed
+.agents/
+.project/
